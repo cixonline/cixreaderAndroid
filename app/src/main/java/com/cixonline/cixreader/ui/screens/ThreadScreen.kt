@@ -1,0 +1,505 @@
+package com.cixonline.cixreader.ui.screens
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.cixonline.cixreader.R
+import com.cixonline.cixreader.models.CIXMessage
+import com.cixonline.cixreader.viewmodel.TopicViewModel
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.*
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ThreadScreen(
+    viewModel: TopicViewModel,
+    onBackClick: () -> Unit,
+    onLogout: () -> Unit,
+    onSettingsClick: () -> Unit
+) {
+    val messages by viewModel.messages.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+
+    var selectedRootId by remember { 
+        mutableStateOf<Int?>(if (viewModel.initialRootId != 0) viewModel.initialRootId else null) 
+    }
+    var selectedMessage by remember { mutableStateOf<CIXMessage?>(null) }
+    var showMenu by remember { mutableStateOf(false) }
+    var showReplyPane by remember { mutableStateOf(false) }
+
+    val coroutineScope = rememberCoroutineScope()
+
+    // Automatically select the next unread message when messages are loaded
+    LaunchedEffect(messages) {
+        if (messages.isNotEmpty() && selectedMessage == null) {
+            // If we have an initial rootId, we want to jump to that message specifically if it's unread,
+            // or find the next unread within that thread or topic.
+            val nextUnread = viewModel.findNextUnread(null)
+            if (nextUnread != null) {
+                selectedMessage = nextUnread
+                selectedRootId = nextUnread.rootId
+            } else {
+                // If no unread, or if we came from a specific root, handle it
+                if (selectedRootId != null && selectedRootId != 0) {
+                    val targetMsg = messages.find { it.remoteId == selectedRootId }
+                    if (targetMsg != null) {
+                        selectedMessage = targetMsg
+                        selectedRootId = targetMsg.rootId
+                    } else {
+                        // If root message not found, maybe it's a child message ID passed as rootId
+                        val anyMsg = messages.find { it.remoteId == selectedRootId }
+                        if (anyMsg != null) {
+                            selectedMessage = anyMsg
+                            selectedRootId = anyMsg.rootId
+                        }
+                    }
+                } else {
+                    // If no unread and no root selected, select the first message (newest root)
+                    val firstRoot = messages.filter { it.isRoot }.sortedByDescending { it.date }.firstOrNull()
+                    if (firstRoot != null) {
+                        selectedMessage = firstRoot
+                        selectedRootId = firstRoot.remoteId
+                    }
+                }
+            }
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(id = R.drawable.cix_logo),
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = viewModel.forumName + " / " + viewModel.topicName,
+                                color = Color.White.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFFD91B5C),
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White,
+                    actionIconContentColor = Color.White
+                ),
+                navigationIcon = {
+                    IconButton(onClick = {
+                        if (selectedRootId != null && viewModel.initialRootId == 0) {
+                            selectedRootId = null
+                            selectedMessage = null
+                            showReplyPane = false
+                        } else {
+                            onBackClick()
+                        }
+                    }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Settings") },
+                                onClick = {
+                                    showMenu = false
+                                    onSettingsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Logout") },
+                                onClick = {
+                                    showMenu = false
+                                    onLogout()
+                                }
+                            )
+                        }
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Box(modifier = Modifier.fillMaxSize().padding(padding).imePadding()) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Top Pane (Thread Pane)
+                Box(modifier = Modifier.weight(if (showReplyPane) 0.5f else 1f)) {
+                    if (selectedRootId == null || selectedRootId == 0) {
+                        RootList(
+                            messages = messages,
+                            onRootClick = { root ->
+                                selectedRootId = root.remoteId
+                            }
+                        )
+                    } else {
+                        ExpandedThreadView(
+                            messages = messages,
+                            rootId = selectedRootId!!,
+                            selectedMessageId = selectedMessage?.remoteId,
+                            onMessageClick = { msg ->
+                                selectedMessage = msg
+                            }
+                        )
+                    }
+                }
+
+                if (selectedMessage != null) {
+                    MessageActionBar(
+                        message = selectedMessage!!,
+                        replyActive = showReplyPane,
+                        onReplyClick = { showReplyPane = !showReplyPane },
+                        onNextUnreadClick = {
+                            val next = viewModel.findNextUnread(selectedMessage?.remoteId)
+                            if (next != null) {
+                                if (selectedMessage!!.unread) {
+                                    viewModel.markAsRead(selectedMessage!!)
+                                }
+                                selectedMessage = next
+                                if (next.rootId != selectedRootId) {
+                                    selectedRootId = next.rootId
+                                }
+                                showReplyPane = false
+                            }
+                        }
+                    )
+                } else {
+                    HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                }
+
+                // Middle Pane (Message Viewer)
+                Box(modifier = Modifier.weight(if (showReplyPane) 0.5f else 1f)) {
+                    if (selectedMessage != null) {
+                        MessageViewer(message = selectedMessage!!)
+                    } else {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "Select a thread to start reading",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                    }
+                }
+
+                // Bottom Pane (Reply Pane)
+                if (showReplyPane && selectedMessage != null) {
+                    HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                    Box(modifier = Modifier.height(200.dp)) {
+                        ReplyPane(
+                            replyTo = selectedMessage!!,
+                            onCancel = { showReplyPane = false },
+                            onPost = { body ->
+                                coroutineScope.launch {
+                                    if (viewModel.postReply(selectedMessage!!.remoteId, body)) {
+                                        showReplyPane = false
+                                    }
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+            
+            if (isLoading && messages.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ReplyPane(
+    replyTo: CIXMessage,
+    onCancel: () -> Unit,
+    onPost: (String) -> Unit
+) {
+    var text by remember { mutableStateOf("") }
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.surface
+    ) {
+        Column(modifier = Modifier.padding(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Reply to ${replyTo.author} (#${replyTo.remoteId})",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Row {
+                    TextButton(onClick = onCancel) {
+                        Text("Cancel", style = MaterialTheme.typography.labelLarge)
+                    }
+                    Button(
+                        onClick = { onPost(text) },
+                        enabled = text.isNotBlank(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
+                    ) {
+                        Text("Post")
+                    }
+                }
+            }
+            
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                placeholder = { Text("Type your message here...", style = MaterialTheme.typography.bodySmall) },
+                textStyle = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+}
+
+@Composable
+fun MessageActionBar(
+    message: CIXMessage,
+    replyActive: Boolean,
+    onReplyClick: () -> Unit,
+    onNextUnreadClick: () -> Unit
+) {
+    val dateFormat = remember { SimpleDateFormat("dd MMM yyyy HH:mm", Locale.getDefault()) }
+    val dateString = remember(message.date) { dateFormat.format(Date(message.date)) }
+
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "#${message.remoteId}",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = message.author,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Text(
+                    text = dateString,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+
+            Row {
+                IconButton(onClick = onReplyClick) {
+                    Icon(
+                        if (replyActive) Icons.Default.Close else Icons.Default.Reply,
+                        contentDescription = "Reply",
+                        tint = if (replyActive) MaterialTheme.colorScheme.error else LocalContentColor.current
+                    )
+                }
+                if (!replyActive) {
+                    IconButton(onClick = onNextUnreadClick) {
+                        Icon(Icons.Default.NavigateNext, contentDescription = "Next Unread")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RootList(messages: List<CIXMessage>, onRootClick: (CIXMessage) -> Unit) {
+    val roots = remember(messages) { messages.filter { it.isRoot }.sortedByDescending { it.date } }
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        items(roots) { message ->
+            val childCount = messages.count { it.rootId == message.remoteId && !it.isRoot }
+            val unreadChildren = messages.count { it.rootId == message.remoteId && it.unread }
+
+            ThreadItem(
+                message = message,
+                childCount = childCount,
+                unreadChildren = unreadChildren,
+                onClick = { onRootClick(message) }
+            )
+            HorizontalDivider()
+        }
+    }
+}
+
+@Composable
+fun ExpandedThreadView(
+    messages: List<CIXMessage>,
+    rootId: Int,
+    selectedMessageId: Int?,
+    onMessageClick: (CIXMessage) -> Unit
+) {
+    val threadMessages = remember(messages, rootId) {
+        val children = messages.groupBy { it.commentId }
+        val result = mutableListOf<Pair<CIXMessage, Int>>()
+        fun walk(m: CIXMessage, depth: Int) {
+            result.add(m to depth)
+            children[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it, depth + 1) }
+        }
+        val root = messages.find { it.remoteId == rootId }
+        if (root != null) walk(root, 0)
+        result
+    }
+
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        items(threadMessages) { (message, depth) ->
+            ThreadRow(
+                message = message,
+                level = depth,
+                isSelected = message.remoteId == selectedMessageId,
+                onClick = { onMessageClick(message) }
+            )
+            HorizontalDivider(modifier = Modifier.padding(start = (depth * 12).dp))
+        }
+    }
+}
+
+@Composable
+fun ThreadRow(message: CIXMessage, level: Int, isSelected: Boolean, onClick: () -> Unit) {
+    Surface(
+        color = if (isSelected) Color(0xFFD91B5C) else MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(start = (level * 12 + 8).dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = message.body.take(100).replace("\n", " "),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = if (message.unread) FontWeight.ExtraBold else FontWeight.Normal,
+                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = message.author,
+                maxLines = 1,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = if (message.unread) FontWeight.ExtraBold else FontWeight.Normal,
+                color = if (isSelected) Color.White else MaterialTheme.colorScheme.secondary,
+                textAlign = TextAlign.End
+            )
+        }
+    }
+}
+
+@Composable
+fun MessageViewer(message: CIXMessage) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+    ) {
+        Text(
+            text = message.body,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@Composable
+fun ThreadItem(
+    message: CIXMessage,
+    childCount: Int,
+    unreadChildren: Int,
+    onClick: () -> Unit
+) {
+    val dateFormat = remember { SimpleDateFormat("dd MMM yyyy HH:mm", Locale.getDefault()) }
+    val dateString = remember(message.date) { dateFormat.format(Date(message.date)) }
+
+    ListItem(
+        headlineContent = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = message.author,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = if (message.unread || unreadChildren > 0) FontWeight.ExtraBold else FontWeight.Normal
+                )
+                Text(
+                    text = dateString,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+        },
+        supportingContent = {
+            Column {
+                Text(
+                    text = message.body.take(100).replace("\n", " "),
+                    maxLines = 2,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (message.unread || unreadChildren > 0) FontWeight.Bold else FontWeight.Normal
+                )
+                Text(
+                    text = "Replies: $childCount" + if (unreadChildren > 0) " ($unreadChildren unread)" else "",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (unreadChildren > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                    fontWeight = if (unreadChildren > 0) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+        },
+        trailingContent = {
+            Text(text = "#${message.remoteId}", style = MaterialTheme.typography.labelSmall)
+        },
+        modifier = Modifier.clickable(onClick = onClick)
+    )
+}

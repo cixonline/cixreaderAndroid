@@ -1,0 +1,274 @@
+package com.cixonline.cixreader.ui.screens
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.RocketLaunch
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.cixonline.cixreader.R
+import com.cixonline.cixreader.api.InterestingThreadApi
+import com.cixonline.cixreader.utils.DateUtils
+import com.cixonline.cixreader.viewmodel.WelcomeViewModel
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun WelcomeScreen(
+    viewModel: WelcomeViewModel,
+    onExploreForums: () -> Unit,
+    onDirectoryClick: () -> Unit,
+    onThreadClick: (forum: String, topic: String, rootId: Int) -> Unit,
+    onLogout: () -> Unit,
+    onSettingsClick: () -> Unit
+) {
+    val threads by viewModel.interestingThreads.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    var showMenu by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.refresh()
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(id = R.drawable.cix_logo),
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Welcome to CIX Reader")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFFD91B5C),
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White,
+                    actionIconContentColor = Color.White
+                ),
+                actions = {
+                    IconButton(onClick = { viewModel.refresh() }) {
+                        Icon(
+                            Icons.Default.Refresh, 
+                            contentDescription = "Refresh",
+                            tint = Color.White
+                        )
+                    }
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(
+                                Icons.Default.MoreVert, 
+                                contentDescription = "Menu",
+                                tint = Color.White
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Settings") },
+                                onClick = {
+                                    showMenu = false
+                                    onSettingsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Logout") },
+                                onClick = {
+                                    showMenu = false
+                                    onLogout()
+                                }
+                            )
+                        }
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // My Forums Button
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onExploreForums() },
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(Icons.Default.Explore, contentDescription = null)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "My Forums",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                // Directory Button
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onDirectoryClick() },
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(Icons.Default.MenuBook, contentDescription = null)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Directory",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            // Jump In Button
+            if (threads.isNotEmpty()) {
+                Button(
+                    onClick = {
+                        val firstThread = threads.first()
+                        onThreadClick(
+                            firstThread.forum ?: "",
+                            firstThread.topic ?: "",
+                            firstThread.rootId
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFD91B5C)
+                    )
+                ) {
+                    Icon(Icons.Default.RocketLaunch, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Jump In")
+                }
+            }
+
+            Text(
+                text = "Recent Threads",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            if (isLoading && threads.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else if (threads.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No recent threads found", style = MaterialTheme.typography.bodyLarge)
+                }
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(threads) { thread ->
+                        InterestingThreadItem(
+                            thread = thread,
+                            onClick = {
+                                onThreadClick(
+                                    thread.forum ?: "",
+                                    thread.topic ?: "",
+                                    thread.rootId
+                                )
+                            }
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun InterestingThreadItem(thread: InterestingThreadApi, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "${thread.forum} / ${thread.topic}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.secondary
+            )
+            Text(
+                text = DateUtils.formatCixDate(dateStr = thread.dateTime),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = thread.author ?: "",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = thread.subject ?: thread.body?.substringBefore("\n")?.trim() ?: "",
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}

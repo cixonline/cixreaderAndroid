@@ -1,0 +1,136 @@
+package com.cixonline.cixreader.ui.screens
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import com.cixonline.cixreader.R
+import com.cixonline.cixreader.models.Folder
+import com.cixonline.cixreader.viewmodel.TopicListViewModel
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TopicListScreen(
+    viewModel: TopicListViewModel,
+    forumName: String,
+    onBackClick: () -> Unit,
+    onTopicClick: (topicName: String, topicId: Int) -> Unit,
+    onLogout: () -> Unit,
+    onSettingsClick: () -> Unit
+) {
+    val topics by viewModel.topics.collectAsState(initial = emptyList())
+    var showMenu by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.refresh()
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(id = R.drawable.cix_logo),
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text( text = "TopicListScreen",
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text( text = forumName,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFFD91B5C),
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White,
+                    actionIconContentColor = Color.White
+                ),
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { viewModel.refresh() }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                    }
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Settings") },
+                                onClick = {
+                                    showMenu = false
+                                    onSettingsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Logout") },
+                                onClick = {
+                                    showMenu = false
+                                    onLogout()
+                                }
+                            )
+                        }
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            if (viewModel.isLoading && topics.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else if (topics.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No topics found.", style = MaterialTheme.typography.bodyLarge)
+                }
+            } else {
+                val sortedTopics = remember(topics) {
+                    topics.sortedWith(
+                        compareByDescending<Folder> { it.unread > 0 }
+                            .thenBy { it.name.lowercase() }
+                    )
+                }
+
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(sortedTopics) { topic ->
+                        ListItem(
+                            headlineContent = { Text(topic.name) },
+                            supportingContent = { Text("Unread: ${topic.unread}") },
+                            modifier = Modifier.clickable { onTopicClick(topic.name, topic.id) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
