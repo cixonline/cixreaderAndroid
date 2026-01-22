@@ -164,7 +164,8 @@ fun ThreadScreen(
                         onMessageClick = { msg ->
                             selectedMessage = msg
                             selectedRootId = getEffectiveRootId(msg)
-                        }
+                        },
+                        onCollapse = { selectedRootId = null }
                     )
                 }
 
@@ -249,7 +250,8 @@ fun CombinedThreadList(
     selectedRootId: Int?,
     selectedMessageId: Int?,
     fontSizeMultiplier: Float,
-    onMessageClick: (CIXMessage) -> Unit
+    onMessageClick: (CIXMessage) -> Unit,
+    onCollapse: () -> Unit
 ) {
     val displayItems = remember(messages, selectedRootId) {
         val result = mutableListOf<ThreadDisplayItem>()
@@ -290,9 +292,10 @@ fun CombinedThreadList(
                         level = item.depth,
                         isSelected = item.message.remoteId == selectedMessageId,
                         fontSizeMultiplier = fontSizeMultiplier,
-                        onClick = { onMessageClick(item.message) }
+                        onClick = { onMessageClick(item.message) },
+                        onCollapse = if (item.depth == 0) onCollapse else null
                     )
-                    HorizontalDivider(modifier = Modifier.padding(start = (item.depth * 12).dp))
+                    HorizontalDivider(modifier = Modifier.padding(start = (item.depth * 12 + 32).dp))
                 }
             }
         }
@@ -435,16 +438,42 @@ fun MessageActionBar(
 }
 
 @Composable
-fun ThreadRow(message: CIXMessage, level: Int, isSelected: Boolean, fontSizeMultiplier: Float, onClick: () -> Unit) {
+fun ThreadRow(
+    message: CIXMessage, 
+    level: Int, 
+    isSelected: Boolean, 
+    fontSizeMultiplier: Float, 
+    onClick: () -> Unit,
+    onCollapse: (() -> Unit)? = null
+) {
     Surface(
         color = if (isSelected) Color(0xFFD91B5C) else MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
     ) {
         Row(
             modifier = Modifier
-                .padding(start = (level * 12 + 8).dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
+                .padding(
+                    start = if (onCollapse != null) 4.dp else (level * 12 + 32).dp, 
+                    top = 4.dp, 
+                    bottom = 4.dp, 
+                    end = 8.dp
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (onCollapse != null) {
+                IconButton(
+                    onClick = onCollapse,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        Icons.Default.ExpandLess,
+                        contentDescription = "Collapse",
+                        tint = if (isSelected) Color.White else MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+            }
             Text(
                 text = message.body.take(100).replace("\n", " "),
                 maxLines = 1,
