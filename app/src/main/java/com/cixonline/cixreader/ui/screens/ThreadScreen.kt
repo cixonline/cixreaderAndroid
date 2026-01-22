@@ -1,10 +1,12 @@
 package com.cixonline.cixreader.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -165,7 +167,8 @@ fun ThreadScreen(
                             selectedMessage = msg
                             selectedRootId = getEffectiveRootId(msg)
                         },
-                        onCollapse = { selectedRootId = null }
+                        onCollapse = { selectedRootId = null },
+                        listState = listState
                     )
                 }
 
@@ -244,6 +247,7 @@ fun ThreadScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CombinedThreadList(
     messages: List<CIXMessage>,
@@ -251,7 +255,8 @@ fun CombinedThreadList(
     selectedMessageId: Int?,
     fontSizeMultiplier: Float,
     onMessageClick: (CIXMessage) -> Unit,
-    onCollapse: () -> Unit
+    onCollapse: () -> Unit,
+    listState: LazyListState
 ) {
     val displayItems = remember(messages, selectedRootId) {
         val result = mutableListOf<ThreadDisplayItem>()
@@ -273,29 +278,73 @@ fun CombinedThreadList(
         result
     }
 
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(displayItems) { item ->
-            when (item) {
-                is ThreadDisplayItem.Collapsed -> {
-                    ThreadItem(
-                        message = item.message,
-                        childCount = item.childCount,
-                        unreadChildren = item.unreadChildren,
-                        fontSizeMultiplier = fontSizeMultiplier,
-                        onClick = { onMessageClick(item.message) }
-                    )
-                    HorizontalDivider()
+    // Centering scroll logic
+    LaunchedEffect(selectedMessageId) {
+        if (selectedMessageId != null) {
+            val index = displayItems.indexOfFirst {
+                when (it) {
+                    is ThreadDisplayItem.Collapsed -> it.message.remoteId == selectedMessageId
+                    is ThreadDisplayItem.Expanded -> it.message.remoteId == selectedMessageId
                 }
-                is ThreadDisplayItem.Expanded -> {
-                    ThreadRow(
-                        message = item.message,
-                        level = item.depth,
-                        isSelected = item.message.remoteId == selectedMessageId,
-                        fontSizeMultiplier = fontSizeMultiplier,
-                        onClick = { onMessageClick(item.message) },
-                        onCollapse = if (item.depth == 0) onCollapse else null
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(start = (item.depth * 12 + 32).dp))
+            }
+            if (index != -1) {
+                val layoutInfo = listState.layoutInfo
+                val viewportHeight = layoutInfo.viewportSize.height
+                if (viewportHeight > 0) {
+                    val visibleItem = layoutInfo.visibleItemsInfo.find { it.index == index }
+                    val itemSize = visibleItem?.size ?: 120 // Estimate
+                    val offset = (viewportHeight - itemSize) / 2
+                    listState.animateScrollToItem(index, -offset)
+                } else {
+                    listState.animateScrollToItem(index)
+                }
+            }
+        }
+    }
+
+    LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        displayItems.forEach { item ->
+            if (item is ThreadDisplayItem.Expanded && item.depth == 0) {
+                stickyHeader(key = "header-${item.message.remoteId}") {
+                    Column {
+                        ThreadRow(
+                            message = item.message,
+                            level = item.depth,
+                            isSelected = item.message.remoteId == selectedMessageId,
+                            fontSizeMultiplier = fontSizeMultiplier,
+                            onClick = { onMessageClick(item.message) },
+                            onCollapse = onCollapse
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(start = (item.depth * 12 + 32).dp))
+                    }
+                }
+            } else {
+                item(key = when(item) {
+                    is ThreadDisplayItem.Collapsed -> "collapsed-${item.message.remoteId}"
+                    is ThreadDisplayItem.Expanded -> "msg-${item.message.remoteId}"
+                }) {
+                    when (item) {
+                        is ThreadDisplayItem.Collapsed -> {
+                            ThreadItem(
+                                message = item.message,
+                                childCount = item.childCount,
+                                unreadChildren = item.unreadChildren,
+                                fontSizeMultiplier = fontSizeMultiplier,
+                                onClick = { onMessageClick(item.message) }
+                            )
+                            HorizontalDivider()
+                        }
+                        is ThreadDisplayItem.Expanded -> {
+                            ThreadRow(
+                                message = item.message,
+                                level = item.depth,
+                                isSelected = item.message.remoteId == selectedMessageId,
+                                fontSizeMultiplier = fontSizeMultiplier,
+                                onClick = { onMessageClick(item.message) }
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(start = (item.depth * 12 + 32).dp))
+                        }
+                    }
                 }
             }
         }
@@ -479,7 +528,8 @@ fun ThreadRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall.copy(
-                    fontSize = MaterialTheme.typography.bodySmall.fontSize * fontSizeMultiplier
+                    fontSize = MaterialTheme.typography.bodySmall.fontSize * fontSizeMultiplier,
+                    textAlign = if (isSelected) TextAlign.Center else TextAlign.Start
                 ),
                 fontWeight = if (message.unread) FontWeight.ExtraBold else FontWeight.Normal,
                 color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
