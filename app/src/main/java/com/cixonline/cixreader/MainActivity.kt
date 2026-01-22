@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -47,7 +49,9 @@ class MainActivity : ComponentActivity() {
         val settingsManager = SettingsManager(this)
 
         setContent {
-            CIXReaderTheme {
+            val fontSizeMultiplier = settingsManager.getFontSize()
+            
+            CIXReaderTheme(fontSizeMultiplier = fontSizeMultiplier) {
                 val navController = rememberNavController()
                 
                 val (savedUser, savedPass) = settingsManager.getCredentials()
