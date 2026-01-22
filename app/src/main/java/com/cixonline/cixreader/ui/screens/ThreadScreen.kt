@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -21,7 +22,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.viewmodel.TopicViewModel
@@ -29,6 +29,11 @@ import com.cixonline.cixreader.utils.SettingsManager
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+
+sealed class ThreadDisplayItem {
+    data class Collapsed(val message: CIXMessage, val childCount: Int, val unreadChildren: Int) : ThreadDisplayItem()
+    data class Expanded(val message: CIXMessage, val depth: Int) : ThreadDisplayItem()
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,6 +48,8 @@ fun ThreadScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val fontSizeMultiplier = remember { settingsManager.getFontSize() }
 
+    val getEffectiveRootId = { msg: CIXMessage -> if (msg.rootId != 0) msg.rootId else msg.remoteId }
+
     var selectedRootId by remember { 
         mutableStateOf<Int?>(if (viewModel.initialRootId != 0) viewModel.initialRootId else null) 
     }
@@ -51,13 +58,14 @@ fun ThreadScreen(
     var showReplyPane by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
 
-    // Automatically select the next unread message when messages are loaded
+    // Automatically select message and expand thread
     LaunchedEffect(messages) {
         if (messages.isNotEmpty() && selectedMessage == null) {
             // Priority 1: If we have an initial rootId, try to find a message within that thread
             if (selectedRootId != null && selectedRootId != 0) {
-                val threadMessages = messages.filter { it.rootId == selectedRootId }
+                val threadMessages = messages.filter { getEffectiveRootId(it) == selectedRootId }
                 if (threadMessages.isNotEmpty()) {
                     val nextUnreadInThread = threadMessages.find { it.unread }
                     selectedMessage = nextUnreadInThread ?: threadMessages.first()
@@ -69,7 +77,7 @@ fun ThreadScreen(
                 val nextUnread = viewModel.findNextUnread(null)
                 if (nextUnread != null) {
                     selectedMessage = nextUnread
-                    selectedRootId = nextUnread.rootId
+                    selectedRootId = getEffectiveRootId(nextUnread)
                 }
             }
 
@@ -78,7 +86,7 @@ fun ThreadScreen(
                 val firstRoot = messages.filter { it.isRoot }.sortedByDescending { it.date }.firstOrNull()
                 if (firstRoot != null) {
                     selectedMessage = firstRoot
-                    selectedRootId = firstRoot.remoteId
+                    selectedRootId = getEffectiveRootId(firstRoot)
                 }
             }
         }
@@ -111,15 +119,7 @@ fun ThreadScreen(
                     actionIconContentColor = Color.White
                 ),
                 navigationIcon = {
-                    IconButton(onClick = {
-                        if (selectedRootId != null && viewModel.initialRootId == 0) {
-                            selectedRootId = null
-                            selectedMessage = null
-                            showReplyPane = false
-                        } else {
-                            onBackClick()
-                        }
-                    }) {
+                    IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -154,27 +154,18 @@ fun ThreadScreen(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).imePadding()) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Top Pane (Thread Pane)
+                // Top Pane (Combined Thread List)
                 Box(modifier = Modifier.weight(if (showReplyPane) 0.5f else 1f)) {
-                    if (selectedRootId == null || selectedRootId == 0) {
-                        RootList(
-                            messages = messages,
-                            fontSizeMultiplier = fontSizeMultiplier,
-                            onRootClick = { root ->
-                                selectedRootId = if (root.rootId != 0) root.rootId else root.remoteId
-                            }
-                        )
-                    } else {
-                        ExpandedThreadView(
-                            messages = messages,
-                            rootId = selectedRootId!!,
-                            selectedMessageId = selectedMessage?.remoteId,
-                            fontSizeMultiplier = fontSizeMultiplier,
-                            onMessageClick = { msg ->
-                                selectedMessage = msg
-                            }
-                        )
-                    }
+                    CombinedThreadList(
+                        messages = messages,
+                        selectedRootId = selectedRootId,
+                        selectedMessageId = selectedMessage?.remoteId,
+                        fontSizeMultiplier = fontSizeMultiplier,
+                        onMessageClick = { msg ->
+                            selectedMessage = msg
+                            selectedRootId = getEffectiveRootId(msg)
+                        }
+                    )
                 }
 
                 if (selectedMessage != null) {
@@ -189,9 +180,7 @@ fun ThreadScreen(
                                     viewModel.markAsRead(selectedMessage!!)
                                 }
                                 selectedMessage = next
-                                if (next.rootId != selectedRootId) {
-                                    selectedRootId = next.rootId
-                                }
+                                selectedRootId = getEffectiveRootId(next)
                                 showReplyPane = false
                             }
                         }
@@ -212,9 +201,7 @@ fun ThreadScreen(
                             fontSizeMultiplier = fontSizeMultiplier,
                             onParentClick = { parent ->
                                 selectedMessage = parent
-                                if (parent.rootId != selectedRootId) {
-                                    selectedRootId = parent.rootId
-                                }
+                                selectedRootId = getEffectiveRootId(parent)
                             }
                         )
                     } else {
@@ -254,6 +241,86 @@ fun ThreadScreen(
             }
         }
     }
+}
+
+@Composable
+fun CombinedThreadList(
+    messages: List<CIXMessage>,
+    selectedRootId: Int?,
+    selectedMessageId: Int?,
+    fontSizeMultiplier: Float,
+    onMessageClick: (CIXMessage) -> Unit
+) {
+    val displayItems = remember(messages, selectedRootId) {
+        val result = mutableListOf<ThreadDisplayItem>()
+        val roots = messages.filter { it.isRoot }.sortedByDescending { it.date }
+        
+        roots.forEach { root ->
+            val rootId = if (root.rootId != 0) root.rootId else root.remoteId
+            if (rootId == selectedRootId) {
+                val tree = buildThreadTree(messages, rootId)
+                tree.forEach { (msg, depth) ->
+                    result.add(ThreadDisplayItem.Expanded(msg, depth))
+                }
+            } else {
+                val childCount = messages.count { it.rootId == rootId && !it.isRoot }
+                val unreadChildren = messages.count { it.rootId == rootId && it.unread }
+                result.add(ThreadDisplayItem.Collapsed(root, childCount, unreadChildren))
+            }
+        }
+        result
+    }
+
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        items(displayItems) { item ->
+            when (item) {
+                is ThreadDisplayItem.Collapsed -> {
+                    ThreadItem(
+                        message = item.message,
+                        childCount = item.childCount,
+                        unreadChildren = item.unreadChildren,
+                        fontSizeMultiplier = fontSizeMultiplier,
+                        onClick = { onMessageClick(item.message) }
+                    )
+                    HorizontalDivider()
+                }
+                is ThreadDisplayItem.Expanded -> {
+                    ThreadRow(
+                        message = item.message,
+                        level = item.depth,
+                        isSelected = item.message.remoteId == selectedMessageId,
+                        fontSizeMultiplier = fontSizeMultiplier,
+                        onClick = { onMessageClick(item.message) }
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(start = (item.depth * 12).dp))
+                }
+            }
+        }
+    }
+}
+
+fun buildThreadTree(messages: List<CIXMessage>, rootId: Int): List<Pair<CIXMessage, Int>> {
+    val children = messages.groupBy { it.commentId }
+    val result = mutableListOf<Pair<CIXMessage, Int>>()
+    
+    fun walk(m: CIXMessage, depth: Int) {
+        result.add(m to depth)
+        children[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it, depth + 1) }
+    }
+    
+    val root = messages.find { it.remoteId == rootId }
+    if (root != null) {
+        walk(root, 0)
+    } else {
+        val threadNodes = messages.filter { (it.rootId != 0 && it.rootId == rootId) || (it.rootId == 0 && it.remoteId == rootId) }
+            .sortedBy { it.date }
+        threadNodes.forEach { node ->
+            if (messages.none { it.remoteId == node.commentId }) {
+                walk(node, 0)
+            }
+        }
+    }
+    return result
 }
 
 @Composable
@@ -363,73 +430,6 @@ fun MessageActionBar(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-fun RootList(messages: List<CIXMessage>, fontSizeMultiplier: Float, onRootClick: (CIXMessage) -> Unit) {
-    val roots = remember(messages) { messages.filter { it.isRoot }.sortedByDescending { it.date } }
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(roots) { message ->
-            val childCount = messages.count { it.rootId == message.remoteId && !it.isRoot }
-            val unreadChildren = messages.count { it.rootId == message.remoteId && it.unread }
-
-            ThreadItem(
-                message = message,
-                childCount = childCount,
-                unreadChildren = unreadChildren,
-                fontSizeMultiplier = fontSizeMultiplier,
-                onClick = { onRootClick(message) }
-            )
-            HorizontalDivider()
-        }
-    }
-}
-
-@Composable
-fun ExpandedThreadView(
-    messages: List<CIXMessage>,
-    rootId: Int,
-    selectedMessageId: Int?,
-    fontSizeMultiplier: Float,
-    onMessageClick: (CIXMessage) -> Unit
-) {
-    val threadMessages = remember(messages, rootId) {
-        val children = messages.groupBy { it.commentId }
-        val result = mutableListOf<Pair<CIXMessage, Int>>()
-        
-        fun walk(m: CIXMessage, depth: Int) {
-            result.add(m to depth)
-            children[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it, depth + 1) }
-        }
-        
-        val root = messages.find { it.remoteId == rootId }
-        if (root != null) {
-            walk(root, 0)
-        } else {
-            // If the explicit root message is missing, show all messages belonging to this rootId
-            val threadNodes = messages.filter { it.rootId == rootId }.sortedBy { it.date }
-            // Find "local roots" (messages whose parent is NOT in our current list)
-            threadNodes.forEach { node ->
-                if (messages.none { it.remoteId == node.commentId }) {
-                    walk(node, 0)
-                }
-            }
-        }
-        result
-    }
-
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(threadMessages) { (message, depth) ->
-            ThreadRow(
-                message = message,
-                level = depth,
-                isSelected = message.remoteId == selectedMessageId,
-                fontSizeMultiplier = fontSizeMultiplier,
-                onClick = { onMessageClick(message) }
-            )
-            HorizontalDivider(modifier = Modifier.padding(start = (depth * 12).dp))
         }
     }
 }
@@ -580,7 +580,7 @@ fun ThreadItem(
             }
         },
         trailingContent = {
-            Text(text = "#${message.remoteId}", style = MaterialTheme.typography.labelSmall)
+            Icon(Icons.Default.ChevronRight, contentDescription = "Expand", tint = MaterialTheme.colorScheme.outline)
         },
         modifier = Modifier.clickable(onClick = onClick)
     )

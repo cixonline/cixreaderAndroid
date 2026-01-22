@@ -58,7 +58,7 @@ fun WelcomeScreen(
                             modifier = Modifier.size(32.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Welcome to CIX Reader")
+                        Text("Welcomes you to CIX Reader")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
