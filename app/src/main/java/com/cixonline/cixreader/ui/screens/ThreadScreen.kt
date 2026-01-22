@@ -198,7 +198,19 @@ fun ThreadScreen(
                 // Middle Pane (Message Viewer)
                 Box(modifier = Modifier.weight(if (showReplyPane) 0.5f else 1f)) {
                     if (selectedMessage != null) {
-                        MessageViewer(message = selectedMessage!!)
+                        val parentMessage = remember(selectedMessage, messages) {
+                            messages.find { it.remoteId == selectedMessage?.commentId }
+                        }
+                        MessageViewer(
+                            message = selectedMessage!!,
+                            parentMessage = parentMessage,
+                            onParentClick = { parent ->
+                                selectedMessage = parent
+                                if (parent.rootId != selectedRootId) {
+                                    selectedRootId = parent.rootId
+                                }
+                            }
+                        )
                     } else {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(
@@ -421,7 +433,7 @@ fun ThreadRow(message: CIXMessage, level: Int, isSelected: Boolean, onClick: () 
     ) {
         Row(
             modifier = Modifier
-                .padding(start = (level * 12 + 8).dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
+                .padding(start = (level * 12 + 8).dp, top = 4.dp, bottom = 4.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
@@ -447,13 +459,54 @@ fun ThreadRow(message: CIXMessage, level: Int, isSelected: Boolean, onClick: () 
 }
 
 @Composable
-fun MessageViewer(message: CIXMessage) {
+fun MessageViewer(
+    message: CIXMessage,
+    parentMessage: CIXMessage? = null,
+    onParentClick: (CIXMessage) -> Unit = {}
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
+        if (parentMessage != null) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp)
+                    .clickable { onParentClick(parentMessage) }
+            ) {
+                Column(modifier = Modifier.padding(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.SubdirectoryArrowRight,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "In reply to ${parentMessage.author} (#${parentMessage.remoteId})",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = parentMessage.body.take(200).replace("\n", " ") + if (parentMessage.body.length > 200) "..." else "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+
         Text(
             text = message.body,
             style = MaterialTheme.typography.bodyMedium,

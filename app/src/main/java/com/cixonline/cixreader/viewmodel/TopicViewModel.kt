@@ -63,15 +63,90 @@ class TopicViewModel(
         }
     }
 
+    private fun getEffectiveRootId(msg: CIXMessage): Int {
+        return if (msg.rootId != 0) msg.rootId else msg.remoteId
+    }
+
+    private fun getThreadInOrder(allMessages: List<CIXMessage>, rootId: Int): List<CIXMessage> {
+        val children = allMessages.groupBy { it.commentId }
+        val result = mutableListOf<CIXMessage>()
+        
+        fun walk(m: CIXMessage) {
+            result.add(m)
+            children[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it) }
+        }
+        
+        val root = allMessages.find { it.remoteId == rootId }
+        if (root != null) {
+            walk(root)
+        } else {
+            // If explicit root is missing, collect all messages with this rootId
+            val threadNodes = allMessages.filter { (it.rootId != 0 && it.rootId == rootId) || (it.rootId == 0 && it.remoteId == rootId) }
+                .sortedBy { it.date }
+            
+            val seen = mutableSetOf<Int>()
+            threadNodes.forEach { node ->
+                if (!seen.contains(node.remoteId) && allMessages.none { it.remoteId == node.commentId }) {
+                    // This is a "local root"
+                    fun localWalk(m: CIXMessage) {
+                        if (seen.add(m.remoteId)) {
+                            result.add(m)
+                            children[m.remoteId]?.sortedBy { it.date }?.forEach { localWalk(it) }
+                        }
+                    }
+                    localWalk(node)
+                }
+            }
+        }
+        return result
+    }
+
     fun findNextUnread(currentMessageId: Int?): CIXMessage? {
         val allMessages = messages.value
-        val currentIndex = if (currentMessageId != null) {
-            allMessages.indexOfFirst { it.remoteId == currentMessageId }
-        } else -1
+        if (allMessages.isEmpty()) return null
+
+        val roots = allMessages.filter { it.isRoot }.sortedByDescending { it.date }
         
-        for (i in (currentIndex + 1) until allMessages.size) {
-            if (allMessages[i].unread) return allMessages[i]
+        if (currentMessageId == null) {
+            // Find first unread following thread order
+            for (root in roots) {
+                val thread = getThreadInOrder(allMessages, root.remoteId)
+                val unread = thread.find { it.unread }
+                if (unread != null) return unread
+            }
+            return null
         }
+
+        val currentMsg = allMessages.find { it.remoteId == currentMessageId } ?: return null
+        val currentRootId = getEffectiveRootId(currentMsg)
+        
+        // 1. Search in the current thread after the current message
+        val currentThread = getThreadInOrder(allMessages, currentRootId)
+        val currentIndex = currentThread.indexOfFirst { it.remoteId == currentMessageId }
+        if (currentIndex != -1) {
+            for (i in (currentIndex + 1) until currentThread.size) {
+                if (currentThread[i].unread) return currentThread[i]
+            }
+        }
+        
+        // 2. Search in subsequent threads
+        val currentRootIndex = roots.indexOfFirst { getEffectiveRootId(it) == currentRootId }
+        if (currentRootIndex != -1) {
+            for (i in (currentRootIndex + 1) until roots.size) {
+                val nextThread = getThreadInOrder(allMessages, getEffectiveRootId(roots[i]))
+                val unread = nextThread.find { it.unread }
+                if (unread != null) return unread
+            }
+        }
+        
+        // 3. Wrap around to earlier threads
+        val limit = if (currentRootIndex != -1) currentRootIndex else roots.size
+        for (i in 0 until limit) {
+            val nextThread = getThreadInOrder(allMessages, getEffectiveRootId(roots[i]))
+            val unread = nextThread.find { it.unread }
+            if (unread != null) return unread
+        }
+
         return null
     }
 
