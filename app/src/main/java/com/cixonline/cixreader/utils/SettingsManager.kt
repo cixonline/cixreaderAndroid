@@ -44,4 +44,14 @@ class SettingsManager(context: Context) {
             .remove("password")
             .apply()
     }
+
+    fun saveFontSize(size: Float) {
+        sharedPreferences.edit()
+            .putFloat("font_size_multiplier", size)
+            .apply()
+    }
+
+    fun getFontSize(): Float {
+        return sharedPreferences.getFloat("font_size_multiplier", 1.0f)
+    }
 }

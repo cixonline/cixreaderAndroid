@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.viewmodel.TopicViewModel
+import com.cixonline.cixreader.utils.SettingsManager
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -35,10 +36,12 @@ fun ThreadScreen(
     viewModel: TopicViewModel,
     onBackClick: () -> Unit,
     onLogout: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    settingsManager: SettingsManager
 ) {
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val fontSizeMultiplier = remember { settingsManager.getFontSize() }
 
     var selectedRootId by remember { 
         mutableStateOf<Int?>(if (viewModel.initialRootId != 0) viewModel.initialRootId else null) 
@@ -96,6 +99,7 @@ fun ThreadScreen(
                             Text(
                                 text = viewModel.forumName + " / " + viewModel.topicName,
                                 color = Color.White.copy(alpha = 0.7f),
+                                style = MaterialTheme.typography.labelSmall
                             )
                         }
                     }
@@ -155,6 +159,7 @@ fun ThreadScreen(
                     if (selectedRootId == null || selectedRootId == 0) {
                         RootList(
                             messages = messages,
+                            fontSizeMultiplier = fontSizeMultiplier,
                             onRootClick = { root ->
                                 selectedRootId = if (root.rootId != 0) root.rootId else root.remoteId
                             }
@@ -164,6 +169,7 @@ fun ThreadScreen(
                             messages = messages,
                             rootId = selectedRootId!!,
                             selectedMessageId = selectedMessage?.remoteId,
+                            fontSizeMultiplier = fontSizeMultiplier,
                             onMessageClick = { msg ->
                                 selectedMessage = msg
                             }
@@ -203,6 +209,7 @@ fun ThreadScreen(
                         MessageViewer(
                             message = selectedMessage!!,
                             parentMessage = parentMessage,
+                            fontSizeMultiplier = fontSizeMultiplier,
                             onParentClick = { parent ->
                                 selectedMessage = parent
                                 if (parent.rootId != selectedRootId) {
@@ -361,7 +368,7 @@ fun MessageActionBar(
 }
 
 @Composable
-fun RootList(messages: List<CIXMessage>, onRootClick: (CIXMessage) -> Unit) {
+fun RootList(messages: List<CIXMessage>, fontSizeMultiplier: Float, onRootClick: (CIXMessage) -> Unit) {
     val roots = remember(messages) { messages.filter { it.isRoot }.sortedByDescending { it.date } }
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(roots) { message ->
@@ -372,6 +379,7 @@ fun RootList(messages: List<CIXMessage>, onRootClick: (CIXMessage) -> Unit) {
                 message = message,
                 childCount = childCount,
                 unreadChildren = unreadChildren,
+                fontSizeMultiplier = fontSizeMultiplier,
                 onClick = { onRootClick(message) }
             )
             HorizontalDivider()
@@ -384,6 +392,7 @@ fun ExpandedThreadView(
     messages: List<CIXMessage>,
     rootId: Int,
     selectedMessageId: Int?,
+    fontSizeMultiplier: Float,
     onMessageClick: (CIXMessage) -> Unit
 ) {
     val threadMessages = remember(messages, rootId) {
@@ -417,6 +426,7 @@ fun ExpandedThreadView(
                 message = message,
                 level = depth,
                 isSelected = message.remoteId == selectedMessageId,
+                fontSizeMultiplier = fontSizeMultiplier,
                 onClick = { onMessageClick(message) }
             )
             HorizontalDivider(modifier = Modifier.padding(start = (depth * 12).dp))
@@ -425,21 +435,23 @@ fun ExpandedThreadView(
 }
 
 @Composable
-fun ThreadRow(message: CIXMessage, level: Int, isSelected: Boolean, onClick: () -> Unit) {
+fun ThreadRow(message: CIXMessage, level: Int, isSelected: Boolean, fontSizeMultiplier: Float, onClick: () -> Unit) {
     Surface(
         color = if (isSelected) Color(0xFFD91B5C) else MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
     ) {
         Row(
             modifier = Modifier
-                .padding(start = (level * 12 + 8).dp, top = 4.dp, bottom = 4.dp, end = 8.dp),
+                .padding(start = (level * 12 + 8).dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = message.body.take(100).replace("\n", " "),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = MaterialTheme.typography.bodySmall.fontSize * fontSizeMultiplier
+                ),
                 fontWeight = if (message.unread) FontWeight.ExtraBold else FontWeight.Normal,
                 color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f)
@@ -461,6 +473,7 @@ fun ThreadRow(message: CIXMessage, level: Int, isSelected: Boolean, onClick: () 
 fun MessageViewer(
     message: CIXMessage,
     parentMessage: CIXMessage? = null,
+    fontSizeMultiplier: Float,
     onParentClick: (CIXMessage) -> Unit = {}
 ) {
     Column(
@@ -497,7 +510,9 @@ fun MessageViewer(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = parentMessage.body.take(200).replace("\n", " ") + if (parentMessage.body.length > 200) "..." else "",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = MaterialTheme.typography.bodySmall.fontSize * fontSizeMultiplier
+                        ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
@@ -508,7 +523,9 @@ fun MessageViewer(
 
         Text(
             text = message.body,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = MaterialTheme.typography.bodyMedium.fontSize * fontSizeMultiplier
+            ),
             color = MaterialTheme.colorScheme.onSurface
         )
     }
@@ -519,6 +536,7 @@ fun ThreadItem(
     message: CIXMessage,
     childCount: Int,
     unreadChildren: Int,
+    fontSizeMultiplier: Float,
     onClick: () -> Unit
 ) {
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy HH:mm", Locale.getDefault()) }
@@ -548,7 +566,9 @@ fun ThreadItem(
                 Text(
                     text = message.body.take(100).replace("\n", " "),
                     maxLines = 2,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * fontSizeMultiplier
+                    ),
                     fontWeight = if (message.unread || unreadChildren > 0) FontWeight.Bold else FontWeight.Normal
                 )
                 Text(
