@@ -49,7 +49,7 @@ fun TopicListScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text( text = forumName,
-                            color = Color.White.copy(alpha = 0.7f)
+                            color = Color.White.copy(alpha = 0.7f),
                         )
                     }
                 },
