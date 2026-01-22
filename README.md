@@ -5,8 +5,11 @@ This is the source code for the port of the CIXReader CIX offline reader to Andr
 ## Building CIXReader
 
 1: Install Android Studio
+
 2: Clone this repo
+
 3: Build the app
+
 4: Either run in a local virtual device or on a paired android device.
 
 ## Contributions
