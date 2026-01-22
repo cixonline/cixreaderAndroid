@@ -108,7 +108,8 @@ fun ThreadScreen(
                         Column {
                             Text(
                                 text = viewModel.forumName + " / " + viewModel.topicName,
-                                color = Color.White.copy(alpha = 0.7f)
+                                color = Color.White.copy(alpha = 0.7f),
+                                style = MaterialTheme.typography.labelSmall
                             )
                         }
                     }
@@ -155,6 +156,27 @@ fun ThreadScreen(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).imePadding()) {
             Column(modifier = Modifier.fillMaxSize()) {
+                // Persistent Root Header (Stuck to top of display content)
+                val expandedRoot = remember(messages, selectedRootId) {
+                    if (selectedRootId != null) {
+                        messages.find { getEffectiveRootId(it) == selectedRootId && it.isRoot }
+                    } else null
+                }
+
+                if (expandedRoot != null) {
+                    ThreadRow(
+                        message = expandedRoot,
+                        level = 0,
+                        isSelected = expandedRoot.remoteId == selectedMessage?.remoteId,
+                        fontSizeMultiplier = fontSizeMultiplier,
+                        onClick = { 
+                            selectedMessage = expandedRoot
+                        },
+                        onCollapse = { selectedRootId = null }
+                    )
+                    HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                }
+
                 // Top Pane (Combined Thread List)
                 Box(modifier = Modifier.weight(if (showReplyPane) 0.5f else 1f)) {
                     CombinedThreadList(
@@ -266,7 +288,10 @@ fun CombinedThreadList(
             if (rootId == selectedRootId) {
                 val tree = buildThreadTree(messages, rootId)
                 tree.forEach { (msg, depth) ->
-                    result.add(ThreadDisplayItem.Expanded(msg, depth))
+                    // Skip root (depth 0) as it is now displayed in the global persistent header
+                    if (depth > 0) {
+                        result.add(ThreadDisplayItem.Expanded(msg, depth))
+                    }
                 }
             } else {
                 val childCount = messages.count { it.rootId == rootId && !it.isRoot }
@@ -303,46 +328,30 @@ fun CombinedThreadList(
 
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         displayItems.forEach { item ->
-            if (item is ThreadDisplayItem.Expanded && item.depth == 0) {
-                stickyHeader(key = "header-${item.message.remoteId}") {
-                    Column {
+            item(key = when(item) {
+                is ThreadDisplayItem.Collapsed -> "collapsed-${item.message.remoteId}"
+                is ThreadDisplayItem.Expanded -> "msg-${item.message.remoteId}"
+            }) {
+                when (item) {
+                    is ThreadDisplayItem.Collapsed -> {
+                        ThreadItem(
+                            message = item.message,
+                            childCount = item.childCount,
+                            unreadChildren = item.unreadChildren,
+                            fontSizeMultiplier = fontSizeMultiplier,
+                            onClick = { onMessageClick(item.message) }
+                        )
+                        HorizontalDivider()
+                    }
+                    is ThreadDisplayItem.Expanded -> {
                         ThreadRow(
                             message = item.message,
                             level = item.depth,
                             isSelected = item.message.remoteId == selectedMessageId,
                             fontSizeMultiplier = fontSizeMultiplier,
-                            onClick = { onMessageClick(item.message) },
-                            onCollapse = onCollapse
+                            onClick = { onMessageClick(item.message) }
                         )
                         HorizontalDivider(modifier = Modifier.padding(start = (item.depth * 12 + 32).dp))
-                    }
-                }
-            } else {
-                item(key = when(item) {
-                    is ThreadDisplayItem.Collapsed -> "collapsed-${item.message.remoteId}"
-                    is ThreadDisplayItem.Expanded -> "msg-${item.message.remoteId}"
-                }) {
-                    when (item) {
-                        is ThreadDisplayItem.Collapsed -> {
-                            ThreadItem(
-                                message = item.message,
-                                childCount = item.childCount,
-                                unreadChildren = item.unreadChildren,
-                                fontSizeMultiplier = fontSizeMultiplier,
-                                onClick = { onMessageClick(item.message) }
-                            )
-                            HorizontalDivider()
-                        }
-                        is ThreadDisplayItem.Expanded -> {
-                            ThreadRow(
-                                message = item.message,
-                                level = item.depth,
-                                isSelected = item.message.remoteId == selectedMessageId,
-                                fontSizeMultiplier = fontSizeMultiplier,
-                                onClick = { onMessageClick(item.message) }
-                            )
-                            HorizontalDivider(modifier = Modifier.padding(start = (item.depth * 12 + 32).dp))
-                        }
                     }
                 }
             }
@@ -527,7 +536,6 @@ fun ThreadRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall.copy(
-                    fontSize = MaterialTheme.typography.bodySmall.fontSize * fontSizeMultiplier,
                     textAlign = if (isSelected) TextAlign.Center else TextAlign.Start
                 ),
                 fontWeight = if (message.unread) FontWeight.ExtraBold else FontWeight.Normal,
@@ -588,9 +596,7 @@ fun MessageViewer(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = parentMessage.body.take(200).replace("\n", " ") + if (parentMessage.body.length > 200) "..." else "",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontSize = MaterialTheme.typography.bodySmall.fontSize * fontSizeMultiplier
-                        ),
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
@@ -601,9 +607,7 @@ fun MessageViewer(
 
         Text(
             text = message.body,
-            style = MaterialTheme.typography.bodyMedium.copy(
-                fontSize = MaterialTheme.typography.bodyMedium.fontSize * fontSizeMultiplier
-            ),
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface
         )
     }
@@ -644,9 +648,7 @@ fun ThreadItem(
                 Text(
                     text = message.body.take(100).replace("\n", " "),
                     maxLines = 2,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * fontSizeMultiplier
-                    ),
+                    style = MaterialTheme.typography.bodyMedium,
                     fontWeight = if (message.unread || unreadChildren > 0) FontWeight.Bold else FontWeight.Normal
                 )
                 Text(
