@@ -48,10 +48,6 @@ fun TopicListScreen(
                             modifier = Modifier.size(32.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text( text = "TopicListScreen",
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
                         Text( text = forumName,
                             color = Color.White.copy(alpha = 0.7f)
                         )
