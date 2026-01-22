@@ -18,14 +18,14 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE topicId = :topicId ORDER BY remoteId DESC LIMIT 1")
     suspend fun getLatestMessage(topicId: Int): CIXMessage?
 
-    @Query("""
-        SELECT m.*, t.name as topicName, f.name as forumName 
-        FROM messages m
-        JOIN folders t ON m.topicId = t.id
-        JOIN folders f ON t.parentId = f.id
-        ORDER BY m.date DESC LIMIT :count
-    """)
-    fun getRecentMessages(count: Int): Flow<List<MessageWithFolder>>
+    @Query("SELECT COUNT(*) FROM messages WHERE topicId = :topicId")
+    suspend fun getMessageCount(topicId: Int): Int
+
+    @Query("SELECT * FROM messages ORDER BY date DESC LIMIT :count")
+    fun getRecentMessages(count: Int): Flow<List<CIXMessage>>
+
+    @Query("SELECT * FROM messages WHERE unread = 1 ORDER BY date ASC LIMIT 1")
+    suspend fun getFirstUnreadMessage(): CIXMessage?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(message: CIXMessage)
@@ -42,9 +42,3 @@ interface MessageDao {
     @Query("SELECT COUNT(*) FROM messages WHERE topicId = :topicId AND unread = 1")
     suspend fun getUnreadCount(topicId: Int): Int
 }
-
-data class MessageWithFolder(
-    @Embedded val message: CIXMessage,
-    val topicName: String,
-    val forumName: String
-)

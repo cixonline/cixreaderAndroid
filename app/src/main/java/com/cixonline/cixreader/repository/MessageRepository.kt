@@ -44,13 +44,11 @@ class MessageRepository(
         try {
             val latestMessage = messageDao.getLatestMessage(topicId)
             
-            if (!force && latestMessage != null) {
-                return@withContext
-            }
-
-            val since = latestMessage?.remoteId?.toString()
-            val encodedForum = HtmlUtils.urlEncode(HtmlUtils.decodeHtml(forum))
-            val encodedTopic = HtmlUtils.urlEncode(HtmlUtils.decodeHtml(topic))
+            // Fetch messages since the last one we have in the database
+            val since = if (force) null else latestMessage?.remoteId?.toString()
+            
+            val encodedForum = HtmlUtils.cixEncode(forum)
+            val encodedTopic = HtmlUtils.cixEncode(topic)
             
             val resultSet = api.getMessages(encodedForum, encodedTopic, since = since)
             
@@ -62,7 +60,10 @@ class MessageRepository(
                     date = DateUtils.parseCixDate(apiMsg.dateTime),
                     commentId = apiMsg.replyTo,
                     rootId = apiMsg.rootId,
-                    topicId = topicId
+                    topicId = topicId,
+                    forumName = forum,
+                    topicName = topic,
+                    unread = true
                 )
             }
             if (messages.isNotEmpty()) {
@@ -91,7 +92,7 @@ class MessageRepository(
 
     suspend fun joinForum(forum: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val encodedForum = HtmlUtils.urlEncode(HtmlUtils.decodeHtml(forum))
+            val encodedForum = HtmlUtils.cixEncode(forum)
             val response = api.joinForum(encodedForum)
             val result = extractStringFromXml(response.string())
             result == "Success"

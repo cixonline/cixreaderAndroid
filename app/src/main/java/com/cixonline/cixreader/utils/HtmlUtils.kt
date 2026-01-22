@@ -21,16 +21,24 @@ object HtmlUtils {
     }
 
     /**
-     * Specifically encodes a CIX category name for use in a URL path.
+     * Encodes a string for use in a CIX API path segment.
      * The CIX API requires ampersands to be replaced with "+and+".
+     * We keep the '+' characters unencoded as required by the CIX API.
      */
-    fun cixCategoryEncode(text: String?): String {
+    fun cixEncode(text: String?): String {
         if (text.isNullOrEmpty()) return ""
         // First decode any existing HTML entities (like &amp;)
         val decoded = decodeHtml(text)
         // CIX API specific replacement for ampersands
-        val safe = decoded.replace("&", "+and+")
-        // Then standard URL encode for the rest of the path segment
-        return Uri.encode(safe)
+        val withAnd = decoded.replace("&", "+and+")
+        // Standard URL encode but allow '+' to remain for "+and+"
+        return Uri.encode(withAnd, "+")
+    }
+
+    /**
+     * Specifically encodes a CIX category name for use in a URL path.
+     */
+    fun cixCategoryEncode(text: String?): String {
+        return cixEncode(text)
     }
 }

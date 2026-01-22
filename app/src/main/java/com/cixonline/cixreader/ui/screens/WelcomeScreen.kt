@@ -24,6 +24,7 @@ import com.cixonline.cixreader.R
 import com.cixonline.cixreader.api.InterestingThreadApi
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.viewmodel.WelcomeViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,19 +32,22 @@ fun WelcomeScreen(
     viewModel: WelcomeViewModel,
     onExploreForums: () -> Unit,
     onDirectoryClick: () -> Unit,
-    onThreadClick: (forum: String, topic: String, rootId: Int) -> Unit,
+    onThreadClick: (forum: String, topic: String, topicId: Int, rootId: Int) -> Unit,
     onLogout: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
     val threads by viewModel.interestingThreads.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     var showMenu by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
         viewModel.refresh()
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -168,27 +172,43 @@ fun WelcomeScreen(
             }
 
             // Jump In Button
-            if (threads.isNotEmpty()) {
-                Button(
-                    onClick = {
-                        val firstThread = threads.first()
-                        onThreadClick(
-                            firstThread.forum ?: "",
-                            firstThread.topic ?: "",
-                            firstThread.rootId
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFD91B5C)
-                    )
-                ) {
-                    Icon(Icons.Default.RocketLaunch, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Jump In")
-                }
+            Button(
+                onClick = {
+                    scope.launch {
+                        val firstUnread = viewModel.getFirstUnreadMessage()
+                        if (firstUnread != null) {
+                            onThreadClick(
+                                firstUnread.forumName,
+                                firstUnread.topicName,
+                                firstUnread.topicId,
+                                firstUnread.rootId
+                            )
+                        } else if (threads.isNotEmpty()) {
+                            // Fallback to interesting threads if no unread in cache
+                            val firstThread = threads.first()
+                            val forum = firstThread.forum ?: ""
+                            val topic = firstThread.topic ?: ""
+                            onThreadClick(
+                                forum,
+                                topic,
+                                (forum + topic).hashCode(),
+                                firstThread.rootId
+                            )
+                        } else {
+                            snackbarHostState.showSnackbar("No unread messages or recent threads found")
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFD91B5C)
+                )
+            ) {
+                Icon(Icons.Default.RocketLaunch, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Jump In")
             }
 
             Text(
@@ -212,9 +232,12 @@ fun WelcomeScreen(
                         InterestingThreadItem(
                             thread = thread,
                             onClick = {
+                                val forum = thread.forum ?: ""
+                                val topic = thread.topic ?: ""
                                 onThreadClick(
-                                    thread.forum ?: "",
-                                    thread.topic ?: "",
+                                    forum,
+                                    topic,
+                                    (forum + topic).hashCode(),
                                     thread.rootId
                                 )
                             }

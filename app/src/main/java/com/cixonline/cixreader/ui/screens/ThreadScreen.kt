@@ -52,34 +52,30 @@ fun ThreadScreen(
     // Automatically select the next unread message when messages are loaded
     LaunchedEffect(messages) {
         if (messages.isNotEmpty() && selectedMessage == null) {
-            // If we have an initial rootId, we want to jump to that message specifically if it's unread,
-            // or find the next unread within that thread or topic.
-            val nextUnread = viewModel.findNextUnread(null)
-            if (nextUnread != null) {
-                selectedMessage = nextUnread
-                selectedRootId = nextUnread.rootId
-            } else {
-                // If no unread, or if we came from a specific root, handle it
-                if (selectedRootId != null && selectedRootId != 0) {
-                    val targetMsg = messages.find { it.remoteId == selectedRootId }
-                    if (targetMsg != null) {
-                        selectedMessage = targetMsg
-                        selectedRootId = targetMsg.rootId
-                    } else {
-                        // If root message not found, maybe it's a child message ID passed as rootId
-                        val anyMsg = messages.find { it.remoteId == selectedRootId }
-                        if (anyMsg != null) {
-                            selectedMessage = anyMsg
-                            selectedRootId = anyMsg.rootId
-                        }
-                    }
-                } else {
-                    // If no unread and no root selected, select the first message (newest root)
-                    val firstRoot = messages.filter { it.isRoot }.sortedByDescending { it.date }.firstOrNull()
-                    if (firstRoot != null) {
-                        selectedMessage = firstRoot
-                        selectedRootId = firstRoot.remoteId
-                    }
+            // Priority 1: If we have an initial rootId, try to find a message within that thread
+            if (selectedRootId != null && selectedRootId != 0) {
+                val threadMessages = messages.filter { it.rootId == selectedRootId }
+                if (threadMessages.isNotEmpty()) {
+                    val nextUnreadInThread = threadMessages.find { it.unread }
+                    selectedMessage = nextUnreadInThread ?: threadMessages.first()
+                }
+            }
+            
+            // Priority 2: Find any unread message in the topic
+            if (selectedMessage == null) {
+                val nextUnread = viewModel.findNextUnread(null)
+                if (nextUnread != null) {
+                    selectedMessage = nextUnread
+                    selectedRootId = nextUnread.rootId
+                }
+            }
+
+            // Priority 3: Select the newest root message
+            if (selectedMessage == null) {
+                val firstRoot = messages.filter { it.isRoot }.sortedByDescending { it.date }.firstOrNull()
+                if (firstRoot != null) {
+                    selectedMessage = firstRoot
+                    selectedRootId = firstRoot.remoteId
                 }
             }
         }
@@ -99,7 +95,8 @@ fun ThreadScreen(
                         Column {
                             Text(
                                 text = viewModel.forumName + " / " + viewModel.topicName,
-                                color = Color.White.copy(alpha = 0.7f)
+                                color = Color.White.copy(alpha = 0.7f),
+                                style = MaterialTheme.typography.labelSmall
                             )
                         }
                     }
@@ -160,7 +157,7 @@ fun ThreadScreen(
                         RootList(
                             messages = messages,
                             onRootClick = { root ->
-                                selectedRootId = root.remoteId
+                                selectedRootId = if (root.rootId != 0) root.rootId else root.remoteId
                             }
                         )
                     } else {
@@ -381,12 +378,25 @@ fun ExpandedThreadView(
     val threadMessages = remember(messages, rootId) {
         val children = messages.groupBy { it.commentId }
         val result = mutableListOf<Pair<CIXMessage, Int>>()
+        
         fun walk(m: CIXMessage, depth: Int) {
             result.add(m to depth)
             children[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it, depth + 1) }
         }
+        
         val root = messages.find { it.remoteId == rootId }
-        if (root != null) walk(root, 0)
+        if (root != null) {
+            walk(root, 0)
+        } else {
+            // If the explicit root message is missing, show all messages belonging to this rootId
+            val threadNodes = messages.filter { it.rootId == rootId }.sortedBy { it.date }
+            // Find "local roots" (messages whose parent is NOT in our current list)
+            threadNodes.forEach { node ->
+                if (messages.none { it.remoteId == node.commentId }) {
+                    walk(node, 0)
+                }
+            }
+        }
         result
     }
 

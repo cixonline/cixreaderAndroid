@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.cixonline.cixreader.api.CixApi
 import com.cixonline.cixreader.api.InterestingThreadApi
 import com.cixonline.cixreader.db.MessageDao
+import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.api.WhoApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -36,6 +37,10 @@ class WelcomeViewModel(
                 _isLoading.value = false
             }
         }
+    }
+
+    suspend fun getFirstUnreadMessage(): CIXMessage? {
+        return messageDao.getFirstUnreadMessage()
     }
 }
 

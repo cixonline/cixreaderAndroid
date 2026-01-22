@@ -94,8 +94,7 @@ class MainActivity : ComponentActivity() {
                             onDirectoryClick = {
                                 navController.navigate("directory")
                             },
-                            onThreadClick = { forum, topic, rootId ->
-                                val topicId = (forum + topic).hashCode()
+                            onThreadClick = { forum, topic, topicId, rootId ->
                                 navController.navigate("thread/$forum/$topic/$topicId?rootId=$rootId")
                             },
                             onLogout = onLogout,

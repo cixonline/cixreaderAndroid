@@ -19,6 +19,8 @@ data class CIXMessage(
     val commentId: Int,
     val rootId: Int,
     val topicId: Int,
+    val forumName: String = "",
+    val topicName: String = "",
     val unread: Boolean = true,
     val priority: Boolean = false,
     val starred: Boolean = false,

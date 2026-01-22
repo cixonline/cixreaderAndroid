@@ -9,7 +9,7 @@ import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.models.DirForum
 
-@Database(entities = [Folder::class, CIXMessage::class, DirForum::class], version = 2, exportSchema = false)
+@Database(entities = [Folder::class, CIXMessage::class, DirForum::class], version = 3, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun folderDao(): FolderDao
