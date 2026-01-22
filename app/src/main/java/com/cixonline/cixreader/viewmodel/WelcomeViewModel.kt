@@ -15,6 +15,17 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
+data class InterestingThreadUI(
+    val forum: String,
+    val topic: String,
+    val rootId: Int,
+    val author: String,
+    val dateTime: String,
+    val body: String?,
+    val subject: String?,
+    val isRootResolved: Boolean = false
+)
+
 class WelcomeViewModel(
     private val api: CixApi,
     private val messageDao: MessageDao
@@ -23,11 +34,24 @@ class WelcomeViewModel(
     private val _onlineUsers = MutableStateFlow<List<WhoApi>>(emptyList())
     val onlineUsers: StateFlow<List<WhoApi>> = _onlineUsers
 
-    private val _interestingThreads = MutableStateFlow<List<InterestingThreadApi>>(emptyList())
-    val interestingThreads: StateFlow<List<InterestingThreadApi>> = _interestingThreads
+    private val _interestingThreads = MutableStateFlow<List<InterestingThreadUI>>(emptyList())
+    val interestingThreads: StateFlow<List<InterestingThreadUI>> = _interestingThreads
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
+
+    private fun InterestingThreadApi.toUI(isResolved: Boolean = false): InterestingThreadUI {
+        return InterestingThreadUI(
+            forum = forum ?: "",
+            topic = topic ?: "",
+            rootId = rootId,
+            author = if (author != null) HtmlUtils.decodeHtml(author) else "",
+            dateTime = dateTime ?: "",
+            body = if (body != null) HtmlUtils.decodeHtml(body) else null,
+            subject = if (subject != null && subject!!.isNotBlank()) HtmlUtils.decodeHtml(subject) else null,
+            isRootResolved = isResolved
+        )
+    }
 
     fun refresh() {
         viewModelScope.launch {
@@ -37,7 +61,7 @@ class WelcomeViewModel(
                 val threads = response.messages ?: emptyList()
                 
                 // Show raw threads immediately while we resolve roots
-                _interestingThreads.value = threads
+                _interestingThreads.value = threads.map { it.toUI() }
 
                 // Resolve root messages in parallel
                 val resolvedThreads = threads.map { thread ->
@@ -45,16 +69,25 @@ class WelcomeViewModel(
                         val forum = thread.forum ?: ""
                         val topic = thread.topic ?: ""
                         val rootId = thread.rootId
+                        var isResolved = false
+                        
+                        // Local variables to hold data during resolution
+                        var currentAuthor = thread.author
+                        var currentBody = thread.body
+                        var currentSubject = thread.subject
+                        var currentDateTime = thread.dateTime
+
                         if (rootId > 0) {
                             val pseudoTopicId = (forum + topic).hashCode()
                             
                             // Check DB first
                             val cachedRoot = messageDao.getByRemoteId(rootId, pseudoTopicId)
                             if (cachedRoot != null) {
-                                thread.author = cachedRoot.author
-                                thread.body = cachedRoot.body
-                                thread.subject = null // Force fallback to body (first line) in UI
-                                thread.dateTime = DateUtils.formatDateTime(cachedRoot.date)
+                                currentAuthor = cachedRoot.author
+                                currentBody = cachedRoot.body
+                                currentSubject = null // Force fallback to body (first line) in UI
+                                currentDateTime = DateUtils.formatDateTime(cachedRoot.date)
+                                isResolved = true
                             } else {
                                 // Fetch from API
                                 try {
@@ -66,10 +99,11 @@ class WelcomeViewModel(
                                         val decodedAuthor = HtmlUtils.decodeHtml(rootApi.author ?: "")
                                         val decodedBody = HtmlUtils.decodeHtml(rootApi.body ?: "")
                                         
-                                        thread.author = decodedAuthor
-                                        thread.body = decodedBody
-                                        thread.subject = null // Force fallback to body (first line) in UI
-                                        thread.dateTime = rootApi.dateTime
+                                        currentAuthor = decodedAuthor
+                                        currentBody = decodedBody
+                                        currentSubject = null
+                                        currentDateTime = DateUtils.formatCixDate(rootApi.dateTime)
+                                        isResolved = true
                                         
                                         // Cache it
                                         messageDao.insert(CIXMessage(
@@ -86,11 +120,25 @@ class WelcomeViewModel(
                                         ))
                                     }
                                 } catch (e: Exception) {
-                                    // Fallback to original "latest" message data if root fetch fails
+                                    // Fallback if API call fails
                                 }
                             }
                         }
-                        thread
+                        
+                        if (!isResolved) {
+                            currentDateTime = DateUtils.formatCixDate(currentDateTime)
+                        }
+
+                        InterestingThreadUI(
+                            forum = forum,
+                            topic = topic,
+                            rootId = rootId,
+                            author = if (currentAuthor != null) HtmlUtils.decodeHtml(currentAuthor) else "",
+                            dateTime = currentDateTime ?: "",
+                            body = if (currentBody != null) HtmlUtils.decodeHtml(currentBody) else null,
+                            subject = if (currentSubject != null && currentSubject.isNotBlank()) HtmlUtils.decodeHtml(currentSubject) else null,
+                            isRootResolved = isResolved
+                        )
                     }
                 }.awaitAll()
                 

@@ -21,8 +21,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cixonline.cixreader.R
-import com.cixonline.cixreader.api.InterestingThreadApi
 import com.cixonline.cixreader.utils.DateUtils
+import com.cixonline.cixreader.viewmodel.InterestingThreadUI
 import com.cixonline.cixreader.viewmodel.WelcomeViewModel
 import kotlinx.coroutines.launch
 
@@ -186,12 +186,10 @@ fun WelcomeScreen(
                         } else if (threads.isNotEmpty()) {
                             // Fallback to interesting threads if no unread in cache
                             val firstThread = threads.first()
-                            val forum = firstThread.forum ?: ""
-                            val topic = firstThread.topic ?: ""
                             onThreadClick(
-                                forum,
-                                topic,
-                                (forum + topic).hashCode(),
+                                firstThread.forum,
+                                firstThread.topic,
+                                (firstThread.forum + firstThread.topic).hashCode(),
                                 firstThread.rootId
                             )
                         } else {
@@ -232,12 +230,10 @@ fun WelcomeScreen(
                         InterestingThreadItem(
                             thread = thread,
                             onClick = {
-                                val forum = thread.forum ?: ""
-                                val topic = thread.topic ?: ""
                                 onThreadClick(
-                                    forum,
-                                    topic,
-                                    (forum + topic).hashCode(),
+                                    thread.forum,
+                                    thread.topic,
+                                    (thread.forum + thread.topic).hashCode(),
                                     thread.rootId
                                 )
                             }
@@ -251,7 +247,7 @@ fun WelcomeScreen(
 }
 
 @Composable
-fun InterestingThreadItem(thread: InterestingThreadApi, onClick: () -> Unit) {
+fun InterestingThreadItem(thread: InterestingThreadUI, onClick: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -279,11 +275,19 @@ fun InterestingThreadItem(thread: InterestingThreadApi, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = thread.author ?: "",
+                text = thread.author,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
+            if (thread.isRootResolved) {
+                Text(
+                    text = "ROOT",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFFD91B5C),
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
         Spacer(modifier = Modifier.height(4.dp))
         Text(
@@ -293,5 +297,15 @@ fun InterestingThreadItem(thread: InterestingThreadApi, onClick: () -> Unit) {
             overflow = TextOverflow.Ellipsis,
             fontWeight = FontWeight.Bold
         )
+        if (thread.body != null) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = thread.body!!,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
