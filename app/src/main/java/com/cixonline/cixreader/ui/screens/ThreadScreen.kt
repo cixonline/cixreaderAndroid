@@ -108,7 +108,7 @@ fun ThreadScreen(
                         Column {
                             Text(
                                 text = viewModel.forumName + " / " + viewModel.topicName,
-                                color = Color.White.copy(alpha = 0.7f),
+                                color = Color.White.copy(alpha = 0.7f)
                             )
                         }
                     }
