@@ -71,7 +71,7 @@ class WelcomeViewModel(
                         val rootId = thread.rootId
                         var isResolved = false
                         
-                        // Local variables to hold data during resolution
+                        // Default to original data from InterestingThreadApi (which is the LATEST message)
                         var currentAuthor = thread.author
                         var currentBody = thread.body
                         var currentSubject = thread.subject
@@ -80,36 +80,34 @@ class WelcomeViewModel(
                         if (rootId > 0) {
                             val pseudoTopicId = (forum + topic).hashCode()
                             
-                            // Check DB first
+                            // Check DB first for the ROOT message
                             val cachedRoot = messageDao.getByRemoteId(rootId, pseudoTopicId)
                             if (cachedRoot != null) {
                                 currentAuthor = cachedRoot.author
                                 currentBody = cachedRoot.body
-                                currentSubject = null // Force fallback to body (first line) in UI
+                                currentSubject = null // ROOTs often don't have subjects in CIX, or we prefer body
                                 currentDateTime = DateUtils.formatDateTime(cachedRoot.date)
                                 isResolved = true
                             } else {
-                                // Fetch from API
+                                // Fetch from API: get messages around rootId to find the root
                                 try {
                                     val encodedForum = HtmlUtils.cixEncode(forum)
                                     val encodedTopic = HtmlUtils.cixEncode(topic)
+                                    // since=rootId-1 usually gets the root as the first message
                                     val resultSet = api.getMessages(encodedForum, encodedTopic, since = (rootId - 1).toString())
                                     val rootApi = resultSet.messages.find { it.id == rootId }
                                     if (rootApi != null) {
-                                        val decodedAuthor = HtmlUtils.decodeHtml(rootApi.author ?: "")
-                                        val decodedBody = HtmlUtils.decodeHtml(rootApi.body ?: "")
-                                        
-                                        currentAuthor = decodedAuthor
-                                        currentBody = decodedBody
+                                        currentAuthor = rootApi.author
+                                        currentBody = rootApi.body
                                         currentSubject = null
                                         currentDateTime = DateUtils.formatCixDate(rootApi.dateTime)
                                         isResolved = true
                                         
-                                        // Cache it
+                                        // Cache the resolved root
                                         messageDao.insert(CIXMessage(
                                             remoteId = rootApi.id,
-                                            author = decodedAuthor,
-                                            body = decodedBody,
+                                            author = HtmlUtils.decodeHtml(rootApi.author ?: ""),
+                                            body = HtmlUtils.decodeHtml(rootApi.body ?: ""),
                                             date = DateUtils.parseCixDate(rootApi.dateTime),
                                             commentId = rootApi.replyTo,
                                             rootId = rootApi.rootId,
@@ -120,7 +118,7 @@ class WelcomeViewModel(
                                         ))
                                     }
                                 } catch (e: Exception) {
-                                    // Fallback if API call fails
+                                    // Fallback if API fails
                                 }
                             }
                         }
