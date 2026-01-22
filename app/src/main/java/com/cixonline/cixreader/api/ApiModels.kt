@@ -231,3 +231,52 @@ class WhoApi {
     @field:Element(name = "Topic", required = false)
     var topic: String? = ""
 }
+
+@Root(name = "CategoryResultSet", strict = false)
+@Namespace(reference = "http://cixonline.com")
+class CategoryResultSet {
+    @field:ElementList(name = "Categories", entry = "Category", inline = false, required = false)
+    var categories: List<CategoryResult> = mutableListOf()
+}
+
+@Root(name = "Category", strict = false)
+@Namespace(reference = "http://cixonline.com")
+class CategoryResult {
+    @field:Element(name = "Name", required = false)
+    var name: String? = ""
+
+    @field:Element(name = "Sub", required = false)
+    var sub: String? = ""
+}
+
+@Root(name = "DirListings", strict = false)
+@Namespace(reference = "http://cixonline.com")
+class DirListings {
+    @field:ElementList(name = "Forums", entry = "DirListing", inline = false, required = false)
+    var forums: List<DirListing> = mutableListOf()
+}
+
+@Root(name = "DirListing", strict = false)
+@Namespace(reference = "http://cixonline.com")
+data class DirListing(
+    @field:Element(name = "Forum", required = false)
+    var forum: String? = "",
+
+    @field:Element(name = "Title", required = false)
+    var title: String? = "",
+
+    @field:Element(name = "Recent", required = false)
+    var recent: Int = 0,
+
+    @field:Element(name = "Cat", required = false)
+    var cat: String? = "",
+
+    @field:Element(name = "Sub", required = false)
+    var sub: String? = "",
+
+    @field:Element(name = "Type", required = false)
+    var type: String? = ""
+) {
+    // Required by SimpleXML for deserialization
+    constructor() : this("", "", 0, "", "", "")
+}

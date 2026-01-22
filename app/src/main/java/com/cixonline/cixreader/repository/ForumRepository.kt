@@ -4,6 +4,7 @@ import com.cixonline.cixreader.api.CixApi
 import com.cixonline.cixreader.api.TopicResult
 import com.cixonline.cixreader.db.FolderDao
 import com.cixonline.cixreader.models.Folder
+import com.cixonline.cixreader.utils.HtmlUtils
 import kotlinx.coroutines.flow.Flow
 
 class ForumRepository(
@@ -19,7 +20,7 @@ class ForumRepository(
                 val name = row.name ?: return@mapNotNull null
                 Folder(
                     id = name.hashCode(),
-                    name = name,
+                    name = HtmlUtils.decodeHtml(name),
                     parentId = -1,
                     unread = row.unread?.toIntOrNull() ?: 0,
                     unreadPriority = row.priority?.toIntOrNull() ?: 0
@@ -33,12 +34,14 @@ class ForumRepository(
 
     suspend fun refreshTopics(forumName: String, forumId: Int) {
         try {
-            val resultSet = api.getUserForumTopics(forumName)
+            // Encode forum name for the API call path segment
+            val encodedForumName = HtmlUtils.urlEncode(HtmlUtils.decodeHtml(forumName))
+            val resultSet = api.getUserForumTopics(encodedForumName)
             val topics = resultSet.userTopics.mapNotNull { result ->
                 val name = result.name ?: return@mapNotNull null
                 Folder(
                     id = (forumName + name).hashCode(),
-                    name = name,
+                    name = HtmlUtils.decodeHtml(name),
                     parentId = forumId,
                     unread = result.unread?.toIntOrNull() ?: 0
                 )

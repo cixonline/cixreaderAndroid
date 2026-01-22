@@ -22,6 +22,8 @@ import com.cixonline.cixreader.ui.screens.TopicListScreen
 import com.cixonline.cixreader.ui.screens.WelcomeScreen
 import com.cixonline.cixreader.ui.theme.CIXReaderTheme
 import com.cixonline.cixreader.utils.SettingsManager
+import com.cixonline.cixreader.viewmodel.DirectoryViewModel
+import com.cixonline.cixreader.viewmodel.DirectoryViewModelFactory
 import com.cixonline.cixreader.viewmodel.ForumViewModel
 import com.cixonline.cixreader.viewmodel.ForumViewModelFactory
 import com.cixonline.cixreader.viewmodel.LoginViewModel
@@ -115,7 +117,18 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("directory") {
-                        DirectoryScreen()
+                        val directoryViewModel: DirectoryViewModel = viewModel(
+                            factory = DirectoryViewModelFactory(NetworkClient.api, database.dirForumDao(), database.folderDao())
+                        )
+                        DirectoryScreen(
+                            viewModel = directoryViewModel,
+                            onBackClick = { navController.popBackStack() },
+                            onForumJoined = { forumName ->
+                                navController.navigate("forums") {
+                                    popUpTo("welcome") { inclusive = false }
+                                }
+                            }
+                        )
                     }
                     composable(
                         route = "topics/{forumName}/{forumId}",

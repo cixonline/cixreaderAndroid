@@ -4,7 +4,9 @@ import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
+import retrofit2.converter.scalars.ScalarsConverterFactory
 import retrofit2.converter.simplexml.SimpleXmlConverterFactory
+import java.util.concurrent.TimeUnit
 
 object NetworkClient {
     private const val BASE_URL = "https://api.cixonline.com/v2.0/cix.svc/"
@@ -21,6 +23,9 @@ object NetworkClient {
 
     private val okHttpClient by lazy {
         OkHttpClient.Builder()
+            .connectTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
             .addInterceptor { chain ->
                 val request = chain.request()
                 val currentUsername = username
@@ -43,6 +48,7 @@ object NetworkClient {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
             .client(okHttpClient)
+            .addConverterFactory(ScalarsConverterFactory.create())
             .addConverterFactory(SimpleXmlConverterFactory.create())
             .build()
             .create(CixApi::class.java)
