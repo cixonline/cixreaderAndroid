@@ -34,10 +34,17 @@ class TopicViewModel(
         repository.getMessagesForTopic(topicId),
         _searchQuery
     ) { allMessages, query ->
+        // Filter out withdrawn messages
+        val filtered = allMessages.filter { msg ->
+            !msg.body.contains("<<withdrawn by author>>", ignoreCase = true) &&
+            !msg.body.contains("<<withdrawn by moderator>>", ignoreCase = true) &&
+            !msg.body.contains("<<withdrawn by system administrator>>", ignoreCase = true)
+        }
+        
         if (query.isBlank()) {
-            allMessages
+            filtered
         } else {
-            allMessages.filter { msg ->
+            filtered.filter { msg ->
                 msg.author.contains(query, ignoreCase = true) ||
                 msg.body.contains(query, ignoreCase = true)
             }
