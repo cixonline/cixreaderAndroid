@@ -20,7 +20,6 @@ import com.cixonline.cixreader.ui.screens.LoginScreen
 import com.cixonline.cixreader.ui.screens.SettingsScreen
 import com.cixonline.cixreader.ui.screens.ThreadScreen
 import com.cixonline.cixreader.ui.screens.TopicListScreen
-import com.cixonline.cixreader.ui.screens.TopicViewModelParams
 import com.cixonline.cixreader.ui.screens.WelcomeScreen
 import com.cixonline.cixreader.ui.theme.CIXReaderTheme
 import com.cixonline.cixreader.utils.SettingsManager
@@ -134,7 +133,9 @@ class MainActivity : ComponentActivity() {
                                 navController.navigate("forums") {
                                     popUpTo("welcome") { inclusive = false }
                                 }
-                            }
+                            },
+                            onLogout = onLogout,
+                            onSettingsClick = onSettingsClick
                         )
                     }
                     composable(

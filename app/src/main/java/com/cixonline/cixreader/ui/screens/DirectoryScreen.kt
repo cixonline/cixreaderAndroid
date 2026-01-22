@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,7 +25,9 @@ import com.cixonline.cixreader.viewmodel.DirectoryViewModel
 fun DirectoryScreen(
     viewModel: DirectoryViewModel,
     onBackClick: () -> Unit,
-    onForumJoined: (String) -> Unit
+    onForumJoined: (String) -> Unit,
+    onLogout: () -> Unit,
+    onSettingsClick: () -> Unit
 ) {
     val forums by viewModel.forums.collectAsState()
     val joinedForumNames by viewModel.joinedForumNames.collectAsState()
@@ -32,6 +35,7 @@ fun DirectoryScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     
     var isSearching by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
 
     val filteredForums = remember(forums, searchQuery) {
         if (searchQuery.isBlank()) {
@@ -85,6 +89,30 @@ fun DirectoryScreen(
                     } else {
                         IconButton(onClick = { isSearching = true }) {
                             Icon(Icons.Default.Search, contentDescription = "Search")
+                        }
+                    }
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Settings") },
+                                onClick = {
+                                    showMenu = false
+                                    onSettingsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Logout") },
+                                onClick = {
+                                    showMenu = false
+                                    onLogout()
+                                }
+                            )
                         }
                     }
                 },
