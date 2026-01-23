@@ -101,7 +101,7 @@ fun ThreadScreen(
 
             // Priority 3: Select the newest root message
             if (selectedMessage == null) {
-                val firstRoot = messages.filter { it.isRoot }.sortedByDescending { it.date }.firstOrNull()
+                val firstRoot = messages.filter { it.isRoot }.sortedByDescending { it.date } .firstOrNull()
                 if (firstRoot != null) {
                     selectedMessage = firstRoot
                     selectedRootId = getEffectiveRootId(firstRoot)
@@ -297,7 +297,7 @@ fun CombinedThreadList(
             val rootId = if (root.rootId != 0) root.rootId else root.remoteId
             if (rootId != selectedRootId) {
                 val childCount = messages.count { it.rootId == rootId && !it.isRoot }
-                val unreadChildren = messages.count { it.rootId == rootId && it.unread }
+                val unreadChildren = messages.count { it.rootId == rootId && !it.isRoot && it.unread }
                 result.add(ThreadDisplayItem.Collapsed(root, childCount + 1, unreadChildren))
             }
         }
