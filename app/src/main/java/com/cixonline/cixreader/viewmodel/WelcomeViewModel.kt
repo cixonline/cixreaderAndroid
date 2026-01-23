@@ -62,67 +62,55 @@ class WelcomeViewModel(
         _selectedForum.value = forum
     }
 
-    private fun InterestingThreadApi.toUI(isResolved: Boolean = false): InterestingThreadUI {
-        return InterestingThreadUI(
-            forum = forum ?: "",
-            topic = topic ?: "",
-            rootId = rootId,
-            author = if (author != null) HtmlUtils.decodeHtml(author) else "",
-            dateTime = dateTime ?: "",
-            body = if (body != null) HtmlUtils.decodeHtml(body) else null,
-            subject = if (subject != null && subject!!.isNotBlank()) HtmlUtils.decodeHtml(subject) else null,
-            isRootResolved = isResolved
-        )
-    }
-
     fun refresh() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
+                // Fetch interesting threads from API.
                 val response = api.getInterestingThreads(count = 20)
                 val threads = response.messages ?: emptyList()
                 
-                // Show raw threads immediately while we resolve roots
-                _interestingThreads.value = threads.map { it.toUI() }
+                // Group by thread to avoid duplicates, preserving latest activity order.
+                val uniqueThreads = threads.distinctBy { "${it.forum}/${it.topic}/${it.rootId}" }
 
-                // Resolve root messages in parallel
-                val resolvedThreads = threads.map { thread ->
+                // Resolve root messages in parallel.
+                val resolvedThreads = uniqueThreads.map { thread ->
                     async {
                         val forum = thread.forum ?: ""
                         val topic = thread.topic ?: ""
                         val rootId = thread.rootId
-                        var isResolved = false
+                        val pseudoTopicId = (forum + topic).hashCode()
                         
-                        // Default to original data from InterestingThreadApi (which is the LATEST message)
-                        var currentAuthor = thread.author
-                        var currentBody = thread.body
-                        var currentSubject = thread.subject
-                        var currentDateTime = thread.dateTime
+                        // Initialize with current thread data (likely the latest reply info)
+                        var displayAuthor = thread.author ?: ""
+                        var displayBody = thread.body ?: ""
+                        var displayDateTime = thread.dateTime ?: ""
+                        var displaySubject = thread.subject
+                        
+                        // If the message from interestingthreads API already has a subject, 
+                        // it is almost certainly the root message itself.
+                        var isResolved = !displaySubject.isNullOrBlank()
 
-                        if (rootId > 0) {
-                            val pseudoTopicId = (forum + topic).hashCode()
-                            
-                            // Check DB first for the ROOT message
+                        // If it's a reply (no subject), try to resolve the actual root content.
+                        if (!isResolved && rootId > 0) {
+                            // 1. Try DB
                             val cachedRoot = messageDao.getByRemoteId(rootId, pseudoTopicId)
                             if (cachedRoot != null) {
-                                currentAuthor = cachedRoot.author
-                                currentBody = cachedRoot.body
-                                currentSubject = null // ROOTs often don't have subjects in CIX, or we prefer body
-                                currentDateTime = DateUtils.formatDateTime(cachedRoot.date)
+                                displayAuthor = cachedRoot.author
+                                displayBody = cachedRoot.body
+                                displayDateTime = DateUtils.formatDateTime(cachedRoot.date)
                                 isResolved = true
                             } else {
-                                // Fetch from API: get messages around rootId to find the root
+                                // 2. Try API
                                 try {
                                     val encodedForum = HtmlUtils.cixEncode(forum)
                                     val encodedTopic = HtmlUtils.cixEncode(topic)
-                                    // since=rootId-1 usually gets the root as the first message
                                     val resultSet = api.getMessages(encodedForum, encodedTopic, since = (rootId - 1).toString())
                                     val rootApi = resultSet.messages.find { it.id == rootId }
                                     if (rootApi != null) {
-                                        currentAuthor = rootApi.author
-                                        currentBody = rootApi.body
-                                        currentSubject = null
-                                        currentDateTime = DateUtils.formatCixDate(rootApi.dateTime)
+                                        displayAuthor = rootApi.author ?: ""
+                                        displayBody = rootApi.body ?: ""
+                                        displayDateTime = rootApi.dateTime ?: ""
                                         isResolved = true
                                         
                                         // Cache the resolved root
@@ -140,23 +128,25 @@ class WelcomeViewModel(
                                         ))
                                     }
                                 } catch (e: Exception) {
-                                    // Fallback if API fails
+                                    // Ignore errors during resolution; we will fallback to displaying the interesting message info.
                                 }
                             }
                         }
                         
-                        if (!isResolved) {
-                            currentDateTime = DateUtils.formatCixDate(currentDateTime)
+                        val formattedDateTime = if (displayDateTime.contains("T") || displayDateTime.contains("-")) {
+                            DateUtils.formatCixDate(displayDateTime)
+                        } else {
+                            displayDateTime
                         }
 
                         InterestingThreadUI(
                             forum = forum,
                             topic = topic,
                             rootId = rootId,
-                            author = if (currentAuthor != null) HtmlUtils.decodeHtml(currentAuthor) else "",
-                            dateTime = currentDateTime ?: "",
-                            body = if (currentBody != null) HtmlUtils.decodeHtml(currentBody) else null,
-                            subject = if (currentSubject != null && currentSubject.isNotBlank()) HtmlUtils.decodeHtml(currentSubject) else null,
+                            author = HtmlUtils.decodeHtml(displayAuthor),
+                            dateTime = formattedDateTime,
+                            body = HtmlUtils.decodeHtml(displayBody),
+                            subject = if (!displaySubject.isNullOrBlank()) HtmlUtils.decodeHtml(displaySubject!!) else null,
                             isRootResolved = isResolved
                         )
                     }
