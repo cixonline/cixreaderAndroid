@@ -33,6 +33,9 @@ fun CIXReaderTheme(
         else -> LightColorScheme
     }
 
+    // Identify which styles should be scaled. 
+    // Usually, users want "Content" (Body, Headline, Display) to scale,
+    // while "Chrome" (Title for TopBars, Label for Buttons) stays fixed for UI consistency.
     val scaledTypography = Typography(
         displayLarge = Typography.displayLarge.scale(fontSizeMultiplier),
         displayMedium = Typography.displayMedium.scale(fontSizeMultiplier),
@@ -40,15 +43,21 @@ fun CIXReaderTheme(
         headlineLarge = Typography.headlineLarge.scale(fontSizeMultiplier),
         headlineMedium = Typography.headlineMedium.scale(fontSizeMultiplier),
         headlineSmall = Typography.headlineSmall.scale(fontSizeMultiplier),
-        titleLarge = Typography.titleLarge.scale(fontSizeMultiplier),
-        titleMedium = Typography.titleMedium.scale(fontSizeMultiplier),
-        titleSmall = Typography.titleSmall.scale(fontSizeMultiplier),
+        
+        // Fixed sizes for TopBars and navigation titles
+        titleLarge = Typography.titleLarge,
+        titleMedium = Typography.titleMedium,
+        titleSmall = Typography.titleSmall,
+        
+        // Scaled body text for main content
         bodyLarge = Typography.bodyLarge.scale(fontSizeMultiplier),
         bodyMedium = Typography.bodyMedium.scale(fontSizeMultiplier),
         bodySmall = Typography.bodySmall.scale(fontSizeMultiplier),
-        labelLarge = Typography.labelLarge.scale(fontSizeMultiplier),
-        labelMedium = Typography.labelMedium.scale(fontSizeMultiplier),
-        labelSmall = Typography.labelSmall.scale(fontSizeMultiplier)
+        
+        // Fixed sizes for Buttons and UI labels
+        labelLarge = Typography.labelLarge,
+        labelMedium = Typography.labelMedium,
+        labelSmall = Typography.labelSmall
     )
 
     MaterialTheme(

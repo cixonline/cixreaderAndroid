@@ -118,129 +118,6 @@ fun WelcomeScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // My Forums Button
-                Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { onExploreForums() },
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(Icons.Default.Explore, contentDescription = null)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "My Forums",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-
-                // Directory Button
-                Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { onDirectoryClick() },
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(Icons.Default.MenuBook, contentDescription = null)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Directory",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-
-                // Post Button
-                Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { showPostDialog = true },
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(Icons.Default.Edit, contentDescription = null)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Post",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-
-            // Jump In Button
-            Button(
-                onClick = {
-                    scope.launch {
-                        val firstUnread = viewModel.getFirstUnreadMessage()
-                        if (firstUnread != null) {
-                            onThreadClick(
-                                firstUnread.forumName,
-                                firstUnread.topicName,
-                                firstUnread.topicId,
-                                firstUnread.rootId
-                            )
-                        } else if (threads.isNotEmpty()) {
-                            // Fallback to interesting threads if no unread in cache
-                            val firstThread = threads.first()
-                            onThreadClick(
-                                firstThread.forum,
-                                firstThread.topic,
-                                (firstThread.forum + firstThread.topic).hashCode(),
-                                firstThread.rootId
-                            )
-                        } else {
-                            snackbarHostState.showSnackbar("No unread messages or recent threads found")
-                        }
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFD91B5C)
-                )
-            ) {
-                Icon(Icons.Default.RocketLaunch, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Jump In")
-            }
-
             Text(
                 text = "Recent Threads",
                 style = MaterialTheme.typography.titleLarge,
@@ -248,29 +125,162 @@ fun WelcomeScreen(
                 color = MaterialTheme.colorScheme.primary
             )
 
-            if (isLoading && threads.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+            // Scrollable Recent Threads Section
+            Box(modifier = Modifier.weight(1f)) {
+                if (isLoading && threads.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else if (threads.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("No recent threads found", style = MaterialTheme.typography.bodyLarge)
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(threads) { thread ->
+                            InterestingThreadItem(
+                                thread = thread,
+                                onClick = {
+                                    onThreadClick(
+                                        thread.forum,
+                                        thread.topic,
+                                        (thread.forum + thread.topic).hashCode(),
+                                        thread.rootId
+                                    )
+                                }
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        }
+                    }
                 }
-            } else if (threads.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No recent threads found", style = MaterialTheme.typography.bodyLarge)
-                }
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(threads) { thread ->
-                        InterestingThreadItem(
-                            thread = thread,
-                            onClick = {
+            }
+
+            // Static Bottom Action Section
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            ) {
+                // Jump In Button
+                Button(
+                    onClick = {
+                        scope.launch {
+                            val firstUnread = viewModel.getFirstUnreadMessage()
+                            if (firstUnread != null) {
                                 onThreadClick(
-                                    thread.forum,
-                                    thread.topic,
-                                    (thread.forum + thread.topic).hashCode(),
-                                    thread.rootId
+                                    firstUnread.forumName,
+                                    firstUnread.topicName,
+                                    firstUnread.topicId,
+                                    firstUnread.rootId
                                 )
+                            } else if (threads.isNotEmpty()) {
+                                // Fallback to interesting threads if no unread in cache
+                                val firstThread = threads.first()
+                                onThreadClick(
+                                    firstThread.forum,
+                                    firstThread.topic,
+                                    (firstThread.forum + firstThread.topic).hashCode(),
+                                    firstThread.rootId
+                                )
+                            } else {
+                                snackbarHostState.showSnackbar("No unread messages or recent threads found")
                             }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFD91B5C)
+                    )
+                ) {
+                    Icon(Icons.Default.RocketLaunch, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Jump In")
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // My Forums Button
+                    Card(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onExploreForums() },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
                         )
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .padding(12.dp)
+                                .fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(Icons.Default.Explore, contentDescription = null)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "My Forums",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // Directory Button
+                    Card(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onDirectoryClick() },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .padding(12.dp)
+                                .fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(Icons.Default.MenuBook, contentDescription = null)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Directory",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // Post Button
+                    Card(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { showPostDialog = true },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .padding(12.dp)
+                                .fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = null)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Post",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
