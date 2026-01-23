@@ -10,20 +10,36 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.NavigateNext
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import coil.compose.AsyncImage
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.viewmodel.TopicViewModel
@@ -282,7 +298,7 @@ fun CombinedThreadList(
             if (rootId != selectedRootId) {
                 val childCount = messages.count { it.rootId == rootId && !it.isRoot }
                 val unreadChildren = messages.count { it.rootId == rootId && it.unread }
-                result.add(ThreadDisplayItem.Collapsed(root, childCount, unreadChildren))
+                result.add(ThreadDisplayItem.Collapsed(root, childCount + 1, unreadChildren))
             }
         }
         result
@@ -323,7 +339,7 @@ fun CombinedThreadList(
                 is ThreadDisplayItem.Collapsed -> {
                     ThreadItem(
                         message = item.message,
-                        childCount = item.childCount,
+                        totalMessages = item.childCount,
                         unreadChildren = item.unreadChildren,
                         fontSizeMultiplier = fontSizeMultiplier,
                         onClick = { onMessageClick(item.message) }
@@ -381,8 +397,7 @@ fun ReplyPane(
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.surface
-
-        ) {
+    ) {
         Column(modifier = Modifier.padding(8.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -432,8 +447,7 @@ fun MessageActionBar(
     val dateString = remember(message.date) { dateFormat.format(Date(message.date)) }
 
     Surface(
-        //color = MaterialTheme.colorScheme.surfaceVariant,
-        color = Color( color = 0xFFD91B5C),
+        color = Color(0xFFD91B5C),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -456,28 +470,26 @@ fun MessageActionBar(
                         text = message.author,
                         style = MaterialTheme.typography.labelLarge,
                         color = Color.White
-                        //color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Text(
                     text = dateString,
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.White
-                    //color = MaterialTheme.colorScheme.outline
                 )
             }
 
             Row {
                 IconButton(onClick = onReplyClick) {
                     Icon(
-                        if (replyActive) Icons.Default.Close else Icons.Default.Reply,
+                        if (replyActive) Icons.Default.Close else Icons.AutoMirrored.Filled.Reply,
                         contentDescription = "Reply",
                         tint = if (replyActive) MaterialTheme.colorScheme.error else LocalContentColor.current
                     )
                 }
                 if (!replyActive) {
                     IconButton(onClick = onNextUnreadClick) {
-                        Icon(Icons.Default.NavigateNext, contentDescription = "Next Unread")
+                        Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = "Next Unread")
                     }
                 }
             }
@@ -553,6 +565,9 @@ fun MessageViewer(
     fontSizeMultiplier: Float,
     onParentClick: (CIXMessage) -> Unit = {}
 ) {
+    val uriHandler = LocalUriHandler.current
+    val urls = remember(message.body) { extractUrls(message.body) }
+    
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -596,10 +611,129 @@ fun MessageViewer(
             }
         }
 
-        Text(
-            text = message.body,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface
+        val annotatedString = remember(message.body) {
+            linkify(message.body)
+        }
+
+        ClickableText(
+            text = annotatedString,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                color = MaterialTheme.colorScheme.onSurface
+            ),
+            onClick = { offset ->
+                annotatedString.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                    .firstOrNull()?.let { annotation ->
+                        uriHandler.openUri(annotation.item)
+                    }
+            }
+        )
+
+        if (urls.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            urls.forEach { url ->
+                MediaPreview(url = url)
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun MediaPreview(url: String) {
+    val extension = url.substringAfterLast(".").lowercase()
+    val isImage = remember(extension) { listOf("jpg", "jpeg", "png", "gif", "webp").contains(extension) }
+    val isVideo = remember(extension) { listOf("mp4", "webm", "ogg").contains(extension) }
+    val isAudio = remember(extension) { listOf("mp3", "wav", "m4a").contains(extension) }
+
+    when {
+        isImage -> {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                AsyncImage(
+                    model = url,
+                    contentDescription = "Image preview",
+                    modifier = Modifier.fillMaxWidth().wrapContentHeight(),
+                    contentScale = ContentScale.FillWidth,
+                    placeholder = painterResource(R.drawable.cix_logo),
+                    error = painterResource(android.R.drawable.stat_notify_error)
+                )
+            }
+        }
+        isVideo -> {
+            VideoPlayer(url = url)
+        }
+        isAudio -> {
+            AudioPlayer(url = url)
+        }
+    }
+}
+
+@Composable
+fun VideoPlayer(url: String) {
+    val context = LocalContext.current
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(url))
+            prepare()
+        }
+    }
+
+    DisposableEffect(exoPlayer) {
+        onDispose {
+            exoPlayer.release()
+        }
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth().aspectRatio(16/9f).padding(vertical = 4.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    player = exoPlayer
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
+@Composable
+fun AudioPlayer(url: String) {
+    val context = LocalContext.current
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(url))
+            prepare()
+        }
+    }
+
+    DisposableEffect(exoPlayer) {
+        onDispose {
+            exoPlayer.release()
+        }
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    player = exoPlayer
+                    useController = true
+                    showController()
+                    controllerHideOnTouch = false
+                }
+            },
+            modifier = Modifier.fillMaxWidth().height(100.dp)
         )
     }
 }
@@ -607,13 +741,12 @@ fun MessageViewer(
 @Composable
 fun ThreadItem(
     message: CIXMessage,
-    childCount: Int,
+    totalMessages: Int,
     unreadChildren: Int,
     fontSizeMultiplier: Float,
     onClick: () -> Unit
 ) {
     val totalUnread = unreadChildren + if (message.unread) 1 else 0
-    val totalMessages = childCount + 1
     
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -662,5 +795,31 @@ fun ThreadItem(
                 textAlign = TextAlign.End
             )
         }
+    }
+}
+
+fun extractUrls(text: String): List<String> {
+    val urlPattern = Regex("https?://[\\w:#@%/;$()~_?+\\-=.&!*]+")
+    return urlPattern.findAll(text).map { it.value }.toList()
+}
+
+fun linkify(text: String): AnnotatedString {
+    return buildAnnotatedString {
+        val urlPattern = Regex("https?://[\\w:#@%/;$()~_?+\\-=.&!*]+")
+        var lastIndex = 0
+        urlPattern.findAll(text).forEach { match ->
+            append(text.substring(lastIndex, match.range.first))
+            val url = match.value
+            pushStringAnnotation(tag = "URL", annotation = url)
+            withStyle(style = SpanStyle(
+                color = Color(0xFF0000EE),
+                textDecoration = TextDecoration.Underline
+            )) {
+                append(url)
+            }
+            pop()
+            lastIndex = match.range.last + 1
+        }
+        append(text.substring(lastIndex))
     }
 }
