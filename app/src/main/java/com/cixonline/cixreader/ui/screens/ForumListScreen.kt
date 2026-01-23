@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cixonline.cixreader.R
@@ -163,11 +164,12 @@ fun ForumListScreen(
                         modifier = Modifier.weight(1f).fillMaxHeight()
                     ) {
                         itemsIndexed(forums) { _, forum ->
-                            ListItem(
-                                headlineContent = { Text(forum.name) },
-                                supportingContent = { Text("Unread: ${forum.unread}") },
-                                modifier = Modifier.clickable { onForumClick(forum.name, forum.id) }
+                            CompactListItem(
+                                title = forum.name,
+                                unreadCount = forum.unread,
+                                onClick = { onForumClick(forum.name, forum.id) }
                             )
+                            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         }
                     }
 
@@ -205,6 +207,58 @@ fun ForumListScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun CompactListItem(
+    title: String,
+    unreadCount: Int,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        color = MaterialTheme.colorScheme.surface
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            
+            if (unreadCount > 0) {
+                Surface(
+                    color = Color(0xFFD91B5C),
+                    shape = MaterialTheme.shapes.extraSmall,
+                ) {
+                    Text(
+                        text = unreadCount.toString(),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                    )
+                }
+            } else {
+                Text(
+                    text = "0",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(horizontal = 6.dp)
+                )
             }
         }
     }

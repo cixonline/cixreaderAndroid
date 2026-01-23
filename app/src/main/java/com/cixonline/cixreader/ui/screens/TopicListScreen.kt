@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.Folder
@@ -119,11 +120,12 @@ fun TopicListScreen(
 
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(sortedTopics) { topic ->
-                        ListItem(
-                            headlineContent = { Text(topic.name) },
-                            supportingContent = { Text("Unread: ${topic.unread}") },
-                            modifier = Modifier.clickable { onTopicClick(topic.name, topic.id) }
+                        CompactListItem(
+                            title = topic.name,
+                            unreadCount = topic.unread,
+                            onClick = { onTopicClick(topic.name, topic.id) }
                         )
+                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
                 }
             }
