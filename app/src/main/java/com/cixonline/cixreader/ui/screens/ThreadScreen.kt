@@ -155,27 +155,6 @@ fun ThreadScreen(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).imePadding()) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Persistent Root Header (Stuck to top of display content)
-                val expandedRoot = remember(messages, selectedRootId) {
-                    if (selectedRootId != null) {
-                        messages.find { getEffectiveRootId(it) == selectedRootId && it.isRoot }
-                    } else null
-                }
-
-                if (expandedRoot != null) {
-                    ThreadRow(
-                        message = expandedRoot,
-                        level = 0,
-                        isSelected = expandedRoot.remoteId == selectedMessage?.remoteId,
-                        fontSizeMultiplier = fontSizeMultiplier,
-                        onClick = { 
-                            selectedMessage = expandedRoot
-                        },
-                        onCollapse = { selectedRootId = null }
-                    )
-                    HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                }
-
                 // Top Pane (Combined Thread List)
                 Box(modifier = Modifier.weight(if (showReplyPane) 0.5f else 1f)) {
                     CombinedThreadList(
@@ -282,17 +261,25 @@ fun CombinedThreadList(
         val result = mutableListOf<ThreadDisplayItem>()
         val roots = messages.filter { it.isRoot }.sortedByDescending { it.date }
         
+        // 1. If a thread is expanded, show its messages (including root) at the top
+        if (selectedRootId != null) {
+            val rootMsg = messages.find { (if (it.rootId != 0) it.rootId else it.remoteId) == selectedRootId && it.isRoot }
+            if (rootMsg != null) {
+                result.add(ThreadDisplayItem.Expanded(rootMsg, 0))
+            }
+            val tree = buildThreadTree(messages, selectedRootId)
+            tree.forEach { (msg, depth) ->
+                // Only add children here, root is added above with depth 0
+                if (depth > 0) {
+                    result.add(ThreadDisplayItem.Expanded(msg, depth))
+                }
+            }
+        }
+
+        // 2. Show all other threads as collapsed roots
         roots.forEach { root ->
             val rootId = if (root.rootId != 0) root.rootId else root.remoteId
-            if (rootId == selectedRootId) {
-                val tree = buildThreadTree(messages, rootId)
-                tree.forEach { (msg, depth) ->
-                    // Skip root (depth 0) as it is now displayed in the global persistent header
-                    if (depth > 0) {
-                        result.add(ThreadDisplayItem.Expanded(msg, depth))
-                    }
-                }
-            } else {
+            if (rootId != selectedRootId) {
                 val childCount = messages.count { it.rootId == rootId && !it.isRoot }
                 val unreadChildren = messages.count { it.rootId == rootId && it.unread }
                 result.add(ThreadDisplayItem.Collapsed(root, childCount, unreadChildren))
@@ -302,7 +289,7 @@ fun CombinedThreadList(
     }
 
     // Centering scroll logic
-    LaunchedEffect(selectedMessageId) {
+    LaunchedEffect(selectedMessageId, displayItems) {
         if (selectedMessageId != null) {
             val index = displayItems.indexOfFirst {
                 when (it) {
@@ -315,7 +302,7 @@ fun CombinedThreadList(
                 val viewportHeight = layoutInfo.viewportSize.height
                 if (viewportHeight > 0) {
                     val visibleItem = layoutInfo.visibleItemsInfo.find { it.index == index }
-                    val itemSize = visibleItem?.size ?: 120 // Estimate
+                    val itemSize = visibleItem?.size ?: 40 // Default size for a single line
                     val offset = (viewportHeight - itemSize) / 2
                     listState.animateScrollToItem(index, -offset)
                 } else {
@@ -326,32 +313,33 @@ fun CombinedThreadList(
     }
 
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-        displayItems.forEach { item ->
-            item(key = when(item) {
+        items(displayItems, key = { item ->
+            when(item) {
                 is ThreadDisplayItem.Collapsed -> "collapsed-${item.message.remoteId}"
                 is ThreadDisplayItem.Expanded -> "msg-${item.message.remoteId}"
-            }) {
-                when (item) {
-                    is ThreadDisplayItem.Collapsed -> {
-                        ThreadItem(
-                            message = item.message,
-                            childCount = item.childCount,
-                            unreadChildren = item.unreadChildren,
-                            fontSizeMultiplier = fontSizeMultiplier,
-                            onClick = { onMessageClick(item.message) }
-                        )
-                        HorizontalDivider()
-                    }
-                    is ThreadDisplayItem.Expanded -> {
-                        ThreadRow(
-                            message = item.message,
-                            level = item.depth,
-                            isSelected = item.message.remoteId == selectedMessageId,
-                            fontSizeMultiplier = fontSizeMultiplier,
-                            onClick = { onMessageClick(item.message) }
-                        )
-                        HorizontalDivider(modifier = Modifier.padding(start = (item.depth * 12 + 32).dp))
-                    }
+            }
+        }) { item ->
+            when (item) {
+                is ThreadDisplayItem.Collapsed -> {
+                    ThreadItem(
+                        message = item.message,
+                        childCount = item.childCount,
+                        unreadChildren = item.unreadChildren,
+                        fontSizeMultiplier = fontSizeMultiplier,
+                        onClick = { onMessageClick(item.message) }
+                    )
+                    HorizontalDivider()
+                }
+                is ThreadDisplayItem.Expanded -> {
+                    ThreadRow(
+                        message = item.message,
+                        level = item.depth,
+                        isSelected = item.message.remoteId == selectedMessageId,
+                        fontSizeMultiplier = fontSizeMultiplier,
+                        onClick = { onMessageClick(item.message) },
+                        onCollapse = if (item.depth == 0) onCollapse else null
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(start = (item.depth * 12 + 32).dp))
                 }
             }
         }
