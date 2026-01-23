@@ -263,7 +263,7 @@ fun WelcomeScreen(
                             .weight(1f)
                             .clickable { showPostDialog = true },
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                            containerColor = Color(0xFFD91B5C)
                         )
                     ) {
                         Column(
