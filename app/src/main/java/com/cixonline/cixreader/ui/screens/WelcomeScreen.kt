@@ -211,7 +211,7 @@ fun WelcomeScreen(
                             .weight(1f)
                             .clickable { onExploreForums() },
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                            containerColor = Color(0xFFD91B5C)
                         )
                     ) {
                         Column(
@@ -237,7 +237,7 @@ fun WelcomeScreen(
                             .weight(1f)
                             .clickable { onDirectoryClick() },
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                            containerColor = Color(0xFFD91B5C)
                         )
                     ) {
                         Column(
