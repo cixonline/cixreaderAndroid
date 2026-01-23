@@ -47,6 +47,13 @@ class ForumRepository(
                 )
             }
             folderDao.insertAll(topics)
+            
+            // Calculate total unread count for the forum from its topics
+            val totalUnread = topics.sumOf { it.unread }
+            val forum = folderDao.getById(forumId)
+            if (forum != null && forum.unread != totalUnread) {
+                folderDao.update(forum.copy(unread = totalUnread))
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
