@@ -4,8 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -16,27 +15,10 @@ import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.db.AppDatabase
 import com.cixonline.cixreader.repository.ForumRepository
 import com.cixonline.cixreader.repository.MessageRepository
-import com.cixonline.cixreader.ui.screens.DirectoryScreen
-import com.cixonline.cixreader.ui.screens.ForumListScreen
-import com.cixonline.cixreader.ui.screens.LoginScreen
-import com.cixonline.cixreader.ui.screens.SettingsScreen
-import com.cixonline.cixreader.ui.screens.ThreadScreen
-import com.cixonline.cixreader.ui.screens.TopicListScreen
-import com.cixonline.cixreader.ui.screens.WelcomeScreen
+import com.cixonline.cixreader.ui.screens.*
 import com.cixonline.cixreader.ui.theme.CIXReaderTheme
 import com.cixonline.cixreader.utils.SettingsManager
-import com.cixonline.cixreader.viewmodel.DirectoryViewModel
-import com.cixonline.cixreader.viewmodel.DirectoryViewModelFactory
-import com.cixonline.cixreader.viewmodel.ForumViewModel
-import com.cixonline.cixreader.viewmodel.ForumViewModelFactory
-import com.cixonline.cixreader.viewmodel.LoginViewModel
-import com.cixonline.cixreader.viewmodel.LoginViewModelFactory
-import com.cixonline.cixreader.viewmodel.TopicListViewModel
-import com.cixonline.cixreader.viewmodel.TopicListViewModelFactory
-import com.cixonline.cixreader.viewmodel.TopicViewModel
-import com.cixonline.cixreader.viewmodel.TopicViewModelFactory
-import com.cixonline.cixreader.viewmodel.WelcomeViewModel
-import com.cixonline.cixreader.viewmodel.WelcomeViewModelFactory
+import com.cixonline.cixreader.viewmodel.*
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,9 +31,7 @@ class MainActivity : ComponentActivity() {
         val settingsManager = SettingsManager(this)
 
         setContent {
-            val fontSizeMultiplier = settingsManager.getFontSize()
-            
-            CIXReaderTheme(fontSizeMultiplier = fontSizeMultiplier) {
+            CIXReaderTheme {
                 val navController = rememberNavController()
                 
                 val (savedUser, savedPass) = settingsManager.getCredentials()
@@ -70,7 +50,7 @@ class MainActivity : ComponentActivity() {
                 }
                 
                 val onSettingsClick = {
-                    navController.navigate("settings")
+                    // TODO: Navigate to settings
                 }
 
                 NavHost(navController = navController, startDestination = startDestination) {
@@ -87,15 +67,14 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
-                    composable("settings") {
-                        SettingsScreen(
-                            settingsManager = settingsManager,
-                            onBackClick = { navController.popBackStack() }
-                        )
-                    }
                     composable("welcome") {
                         val welcomeViewModel: WelcomeViewModel = viewModel(
-                            factory = WelcomeViewModelFactory(NetworkClient.api, database.messageDao())
+                            factory = WelcomeViewModelFactory(
+                                NetworkClient.api, 
+                                database.messageDao(), 
+                                database.folderDao(),
+                                database.dirForumDao()
+                            )
                         )
                         WelcomeScreen(
                             viewModel = welcomeViewModel,
@@ -128,14 +107,19 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("directory") {
                         val directoryViewModel: DirectoryViewModel = viewModel(
-                            factory = DirectoryViewModelFactory(NetworkClient.api, database.dirForumDao(), database.folderDao())
+                            factory = DirectoryViewModelFactory(
+                                NetworkClient.api, 
+                                database.dirForumDao(), 
+                                database.folderDao()
+                            )
                         )
                         DirectoryScreen(
                             viewModel = directoryViewModel,
                             onBackClick = { navController.popBackStack() },
                             onForumJoined = { forumName ->
+                                // Refresh forums list after joining
                                 navController.navigate("forums") {
-                                    popUpTo("welcome") { inclusive = false }
+                                    popUpTo("welcome")
                                 }
                             },
                             onLogout = onLogout,

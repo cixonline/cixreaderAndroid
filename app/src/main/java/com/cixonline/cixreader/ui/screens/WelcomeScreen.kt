@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.MoreVert
@@ -20,7 +21,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.cixonline.cixreader.R
+import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.viewmodel.InterestingThreadUI
 import com.cixonline.cixreader.viewmodel.WelcomeViewModel
@@ -39,6 +42,7 @@ fun WelcomeScreen(
     val threads by viewModel.interestingThreads.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     var showMenu by remember { mutableStateOf(false) }
+    var showPostDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -58,7 +62,9 @@ fun WelcomeScreen(
                             modifier = Modifier.size(32.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Welcomes you to CIX Reader")
+                        Text( text = "Reader",
+                              color = Color.White.copy(alpha = 0.7f),
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -169,6 +175,32 @@ fun WelcomeScreen(
                         )
                     }
                 }
+
+                // Post Button
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { showPostDialog = true },
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = null)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Post",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             }
 
             // Jump In Button
@@ -239,6 +271,161 @@ fun WelcomeScreen(
                             }
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    }
+                }
+            }
+        }
+    }
+
+    if (showPostDialog) {
+        PostMessageDialog(
+            viewModel = viewModel,
+            onDismiss = { showPostDialog = false },
+            onPostSuccess = {
+                showPostDialog = false
+                scope.launch {
+                    snackbarHostState.showSnackbar("Message posted successfully")
+                }
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PostMessageDialog(
+    viewModel: WelcomeViewModel,
+    onDismiss: () -> Unit,
+    onPostSuccess: () -> Unit
+) {
+    val forums by viewModel.allForums.collectAsState(emptyList())
+    val selectedForum by viewModel.selectedForum.collectAsState()
+    val topics by viewModel.topicsForSelectedForum.collectAsState()
+    var selectedTopic by remember { mutableStateOf<Folder?>(null) }
+    var messageBody by remember { mutableStateOf("") }
+    var forumExpanded by remember { mutableStateOf(false) }
+    var topicExpanded by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    var isPosting by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "New Message",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                // Forum Selection
+                ExposedDropdownMenuBox(
+                    expanded = forumExpanded,
+                    onExpandedChange = { forumExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = selectedForum?.name ?: "Select Forum",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Forum") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = forumExpanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = forumExpanded,
+                        onDismissRequest = { forumExpanded = false }
+                    ) {
+                        forums.forEach { forum ->
+                            DropdownMenuItem(
+                                text = { Text(forum.name) },
+                                onClick = {
+                                    viewModel.selectForum(forum)
+                                    selectedTopic = null
+                                    forumExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Topic Selection
+                ExposedDropdownMenuBox(
+                    expanded = topicExpanded,
+                    onExpandedChange = { topicExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = selectedTopic?.name ?: "Select Topic",
+                        onValueChange = {},
+                        readOnly = true,
+                        enabled = selectedForum != null,
+                        label = { Text("Topic") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = topicExpanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = topicExpanded,
+                        onDismissRequest = { topicExpanded = false }
+                    ) {
+                        topics.forEach { topic ->
+                            DropdownMenuItem(
+                                text = { Text(topic.name) },
+                                onClick = {
+                                    selectedTopic = topic
+                                    topicExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = messageBody,
+                    onValueChange = { messageBody = it },
+                    label = { Text("Message") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp),
+                    maxLines = 10
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            if (selectedForum != null && selectedTopic != null && messageBody.isNotBlank()) {
+                                isPosting = true
+                                scope.launch {
+                                    val success = viewModel.postMessage(
+                                        selectedForum!!.name,
+                                        selectedTopic!!.name,
+                                        messageBody
+                                    )
+                                    isPosting = false
+                                    if (success) onPostSuccess()
+                                }
+                            }
+                        },
+                        enabled = selectedForum != null && selectedTopic != null && messageBody.isNotBlank() && !isPosting
+                    ) {
+                        if (isPosting) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                        } else {
+                            Text("Post")
+                        }
                     }
                 }
             }

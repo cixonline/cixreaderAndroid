@@ -6,8 +6,12 @@ import androidx.lifecycle.viewModelScope
 import com.cixonline.cixreader.api.CixApi
 import com.cixonline.cixreader.api.InterestingThreadApi
 import com.cixonline.cixreader.db.MessageDao
+import com.cixonline.cixreader.db.FolderDao
+import com.cixonline.cixreader.db.DirForumDao
 import com.cixonline.cixreader.models.CIXMessage
+import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.api.WhoApi
+import com.cixonline.cixreader.api.PostMessageRequest
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
 import kotlinx.coroutines.async
@@ -28,7 +32,9 @@ data class InterestingThreadUI(
 
 class WelcomeViewModel(
     private val api: CixApi,
-    private val messageDao: MessageDao
+    private val messageDao: MessageDao,
+    private val folderDao: FolderDao,
+    private val dirForumDao: DirForumDao
 ) : ViewModel() {
 
     private val _onlineUsers = MutableStateFlow<List<WhoApi>>(emptyList())
@@ -39,6 +45,22 @@ class WelcomeViewModel(
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
+
+    val allForums: Flow<List<Folder>> = folderDao.getAll().map { folders ->
+        folders.filter { it.isRootFolder }
+    }
+
+    private val _selectedForum = MutableStateFlow<Folder?>(null)
+    val selectedForum: StateFlow<Folder?> = _selectedForum
+
+    val topicsForSelectedForum: StateFlow<List<Folder>> = _selectedForum.flatMapLatest { forum ->
+        if (forum == null) flowOf(emptyList())
+        else folderDao.getChildren(forum.id)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun selectForum(forum: Folder?) {
+        _selectedForum.value = forum
+    }
 
     private fun InterestingThreadApi.toUI(isResolved: Boolean = false): InterestingThreadUI {
         return InterestingThreadUI(
@@ -152,16 +174,29 @@ class WelcomeViewModel(
     suspend fun getFirstUnreadMessage(): CIXMessage? {
         return messageDao.getFirstUnreadMessage()
     }
+
+    suspend fun postMessage(forum: String, topic: String, body: String): Boolean {
+        return try {
+            val request = PostMessageRequest(body = body, forum = forum, topic = topic)
+            api.postMessage(request)
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
 }
 
 class WelcomeViewModelFactory(
     private val api: CixApi,
-    private val messageDao: MessageDao
+    private val messageDao: MessageDao,
+    private val folderDao: FolderDao,
+    private val dirForumDao: DirForumDao
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WelcomeViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return WelcomeViewModel(api, messageDao) as T
+            return WelcomeViewModel(api, messageDao, folderDao, dirForumDao) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
