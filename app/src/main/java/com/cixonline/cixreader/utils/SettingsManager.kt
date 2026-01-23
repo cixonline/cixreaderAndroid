@@ -3,6 +3,9 @@ package com.cixonline.cixreader.utils
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class SettingsManager(context: Context) {
     private val masterKey by lazy {
@@ -20,6 +23,9 @@ class SettingsManager(context: Context) {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
     }
+
+    private val _fontSizeFlow = MutableStateFlow(getFontSize())
+    val fontSizeFlow: StateFlow<Float> = _fontSizeFlow.asStateFlow()
 
     fun saveCredentials(username: String, password: String) {
         sharedPreferences.edit()
@@ -49,6 +55,7 @@ class SettingsManager(context: Context) {
         sharedPreferences.edit()
             .putFloat("font_size_multiplier", size)
             .apply()
+        _fontSizeFlow.value = size
     }
 
     fun getFontSize(): Float {

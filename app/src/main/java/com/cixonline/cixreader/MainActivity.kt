@@ -31,7 +31,9 @@ class MainActivity : ComponentActivity() {
         val settingsManager = SettingsManager(this)
 
         setContent {
-            CIXReaderTheme {
+            val fontSizeMultiplier by settingsManager.fontSizeFlow.collectAsState(initial = settingsManager.getFontSize())
+            
+            CIXReaderTheme(fontSizeMultiplier = fontSizeMultiplier) {
                 val navController = rememberNavController()
                 
                 val (savedUser, savedPass) = settingsManager.getCredentials()
@@ -50,7 +52,7 @@ class MainActivity : ComponentActivity() {
                 }
                 
                 val onSettingsClick = {
-                    // TODO: Navigate to settings
+                    navController.navigate("settings")
                 }
 
                 NavHost(navController = navController, startDestination = startDestination) {
@@ -124,6 +126,12 @@ class MainActivity : ComponentActivity() {
                             },
                             onLogout = onLogout,
                             onSettingsClick = onSettingsClick
+                        )
+                    }
+                    composable("settings") {
+                        SettingsScreen(
+                            settingsManager = settingsManager,
+                            onBackClick = { navController.popBackStack() }
                         )
                     }
                     composable(
