@@ -6,12 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.RocketLaunch
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -311,12 +306,19 @@ fun PostMessageDialog(
     val forums by viewModel.allForums.collectAsState(emptyList())
     val selectedForum by viewModel.selectedForum.collectAsState()
     val topics by viewModel.topicsForSelectedForum.collectAsState()
+    val suggestion by viewModel.suggestedForumAndTopic.collectAsState()
     var selectedTopic by remember { mutableStateOf<Folder?>(null) }
     var messageBody by remember { mutableStateOf("") }
     var forumExpanded by remember { mutableStateOf(false) }
     var topicExpanded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var isPosting by remember { mutableStateOf(false) }
+
+    LaunchedEffect(messageBody) {
+        if (selectedForum == null && selectedTopic == null) {
+            viewModel.suggestForumAndTopic(messageBody)
+        }
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -335,6 +337,44 @@ fun PostMessageDialog(
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
+
+                OutlinedTextField(
+                    value = messageBody,
+                    onValueChange = { messageBody = it },
+                    label = { Text("Message") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp),
+                    maxLines = 10
+                )
+
+                suggestion?.let { (sForum, sTopic) ->
+                    if (selectedForum == null || selectedTopic == null) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            shape = MaterialTheme.shapes.small,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.selectForum(sForum)
+                                    selectedTopic = sTopic
+                                    viewModel.clearSuggestion()
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Suggested: ${sForum.name} / ${sTopic.name}",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                }
 
                 // Forum Selection
                 ExposedDropdownMenuBox(
@@ -395,16 +435,6 @@ fun PostMessageDialog(
                         }
                     }
                 }
-
-                OutlinedTextField(
-                    value = messageBody,
-                    onValueChange = { messageBody = it },
-                    label = { Text("Message") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp),
-                    maxLines = 10
-                )
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),

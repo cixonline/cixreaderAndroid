@@ -58,8 +58,63 @@ class WelcomeViewModel(
         else folderDao.getChildren(forum.id)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val _suggestedForumAndTopic = MutableStateFlow<Pair<Folder, Folder>?>(null)
+    val suggestedForumAndTopic: StateFlow<Pair<Folder, Folder>?> = _suggestedForumAndTopic
+
     fun selectForum(forum: Folder?) {
         _selectedForum.value = forum
+    }
+
+    fun suggestForumAndTopic(body: String) {
+        if (body.isBlank()) {
+            _suggestedForumAndTopic.value = null
+            return
+        }
+        viewModelScope.launch {
+            val allFolders = folderDao.getAll().first()
+            val forums = allFolders.filter { it.isRootFolder }
+            val topics = allFolders.filter { !it.isRootFolder }
+            val dirForums = dirForumDao.getAll().first()
+
+            val words = body.lowercase()
+                .split(Regex("[^a-zA-Z0-9]"))
+                .filter { it.length > 3 }
+                .toSet()
+
+            if (words.isEmpty()) {
+                _suggestedForumAndTopic.value = null
+                return@launch
+            }
+
+            var bestMatch: Pair<Folder, Folder>? = null
+            var maxScore = 0
+
+            for (topic in topics) {
+                val forum = forums.find { it.id == topic.parentId } ?: continue
+                val dirForum = dirForums.find { it.name.equals(forum.name, ignoreCase = true) }
+
+                var score = 0
+                val topicWords = topic.name.lowercase().split(Regex("[^a-zA-Z0-9]")).toSet()
+                val forumWords = forum.name.lowercase().split(Regex("[^a-zA-Z0-9]")).toSet()
+                val descWords = dirForum?.description?.lowercase()?.split(Regex("[^a-zA-Z0-9]"))?.toSet() ?: emptySet()
+
+                for (word in words) {
+                    if (topicWords.contains(word)) score += 10
+                    if (forumWords.contains(word)) score += 5
+                    if (descWords.contains(word)) score += 2
+                }
+
+                if (score > maxScore) {
+                    maxScore = score
+                    bestMatch = Pair(forum, topic)
+                }
+            }
+            _suggestedForumAndTopic.value = if (maxScore > 10) bestMatch else null
+        }
+    }
+
+    fun clearSuggestion() {
+        _suggestedForumAndTopic.value = null
     }
 
     fun refresh() {
