@@ -9,12 +9,18 @@ import androidx.lifecycle.viewModelScope
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.repository.ForumRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class ForumViewModel(private val repository: ForumRepository) : ViewModel() {
 
     val allFolders: Flow<List<Folder>> = repository.allFolders
     
+    private val _expandedForums = MutableStateFlow<Set<Int>>(emptySet())
+    val expandedForums: StateFlow<Set<Int>> = _expandedForums.asStateFlow()
+
     var isLoading by mutableStateOf(false)
         private set
 
@@ -36,6 +42,20 @@ class ForumViewModel(private val repository: ForumRepository) : ViewModel() {
                 errorMessage = "Failed to load forums: ${e.message}"
             } finally {
                 isLoading = false
+            }
+        }
+    }
+
+    fun toggleForum(forum: Folder) {
+        val forumId = forum.id
+        val current = _expandedForums.value
+        if (current.contains(forumId)) {
+            _expandedForums.value = current - forumId
+        } else {
+            _expandedForums.value = current + forumId
+            // Refresh topics for this forum when expanded
+            viewModelScope.launch {
+                repository.refreshTopics(forum.name, forum.id)
             }
         }
     }

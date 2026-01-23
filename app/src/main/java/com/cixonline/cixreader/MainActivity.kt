@@ -112,8 +112,8 @@ class MainActivity : ComponentActivity() {
                         ForumListScreen(
                             viewModel = forumViewModel,
                             onBackClick = { navController.popBackStack() },
-                            onForumClick = { forumName, forumId ->
-                                navController.navigate("topics/$forumName/$forumId")
+                            onTopicClick = { forumName, topicName, topicId ->
+                                navController.navigate("thread/$forumName/$topicName/$topicId")
                             },
                             onLogout = onLogout,
                             onSettingsClick = onSettingsClick
@@ -144,29 +144,6 @@ class MainActivity : ComponentActivity() {
                         SettingsScreen(
                             settingsManager = settingsManager,
                             onBackClick = { navController.popBackStack() }
-                        )
-                    }
-                    composable(
-                        route = "topics/{forumName}/{forumId}",
-                        arguments = listOf(
-                            navArgument("forumName") { type = NavType.StringType },
-                            navArgument("forumId") { type = NavType.IntType }
-                        )
-                    ) { backStackEntry ->
-                        val forumName = backStackEntry.arguments?.getString("forumName") ?: ""
-                        val forumId = backStackEntry.arguments?.getInt("forumId") ?: 0
-                        val viewModel: TopicListViewModel = viewModel(
-                            factory = TopicListViewModelFactory(forumRepository, forumName, forumId)
-                        )
-                        TopicListScreen(
-                            viewModel = viewModel,
-                            forumName = forumName,
-                            onBackClick = { navController.popBackStack() },
-                            onTopicClick = { topicName, topicId ->
-                                navController.navigate("thread/$forumName/$topicName/$topicId")
-                            },
-                            onLogout = onLogout,
-                            onSettingsClick = onSettingsClick
                         )
                     }
                     composable(
