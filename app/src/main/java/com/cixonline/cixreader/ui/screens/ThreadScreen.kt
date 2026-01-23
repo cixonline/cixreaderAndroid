@@ -620,47 +620,45 @@ fun ThreadItem(
     fontSizeMultiplier: Float,
     onClick: () -> Unit
 ) {
-    val dateFormat = remember { SimpleDateFormat("dd MMM yyyy HH:mm", Locale.getDefault()) }
-    val dateString = remember(message.date) { dateFormat.format(Date(message.date)) }
-
-    ListItem(
-        headlineContent = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(start = 4.dp, top = 4.dp, bottom = 4.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onClick,
+                modifier = Modifier.size(24.dp)
             ) {
-                Text(
-                    text = message.author,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = if (message.unread || unreadChildren > 0) FontWeight.ExtraBold else FontWeight.Normal
-                )
-                Text(
-                    text = dateString,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline
+                Icon(
+                    Icons.Default.ExpandMore,
+                    contentDescription = "Expand",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
                 )
             }
-        },
-        supportingContent = {
-            Column {
-                Text(
-                    text = message.body.take(100).replace("\n", " "),
-                    maxLines = 2,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (message.unread || unreadChildren > 0) FontWeight.Bold else FontWeight.Normal
-                )
-                Text(
-                    text = "Replies: $childCount" + if (unreadChildren > 0) " ($unreadChildren unread)" else "",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (unreadChildren > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                    fontWeight = if (unreadChildren > 0) FontWeight.Bold else FontWeight.Normal
-                )
-            }
-        },
-        trailingContent = {
-            Icon(Icons.Default.ChevronRight, contentDescription = "Expand", tint = MaterialTheme.colorScheme.outline)
-        },
-        modifier = Modifier.clickable(onClick = onClick)
-    )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = message.body.take(100).replace("\n", " "),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = if (message.unread || unreadChildren > 0) FontWeight.ExtraBold else FontWeight.Normal,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = message.author,
+                maxLines = 1,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = if (message.unread || unreadChildren > 0) FontWeight.ExtraBold else FontWeight.Normal,
+                color = MaterialTheme.colorScheme.secondary,
+                textAlign = TextAlign.End
+            )
+        }
+    }
 }
