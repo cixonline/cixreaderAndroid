@@ -612,6 +612,9 @@ fun ThreadItem(
     fontSizeMultiplier: Float,
     onClick: () -> Unit
 ) {
+    val totalUnread = unreadChildren + if (message.unread) 1 else 0
+    val totalMessages = childCount + 1
+    
     Surface(
         color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
@@ -638,16 +641,23 @@ fun ThreadItem(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall,
-                fontWeight = if (message.unread || unreadChildren > 0) FontWeight.ExtraBold else FontWeight.Normal,
+                fontWeight = if (totalUnread > 0) FontWeight.ExtraBold else FontWeight.Normal,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "$totalUnread/$totalMessages",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (totalUnread > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                fontWeight = if (totalUnread > 0) FontWeight.Bold else FontWeight.Normal
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = message.author,
                 maxLines = 1,
                 style = MaterialTheme.typography.labelSmall,
-                fontWeight = if (message.unread || unreadChildren > 0) FontWeight.ExtraBold else FontWeight.Normal,
+                fontWeight = if (totalUnread > 0) FontWeight.ExtraBold else FontWeight.Normal,
                 color = MaterialTheme.colorScheme.secondary,
                 textAlign = TextAlign.End
             )
