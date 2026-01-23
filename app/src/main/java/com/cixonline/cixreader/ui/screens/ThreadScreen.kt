@@ -381,7 +381,8 @@ fun ReplyPane(
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.surface
-    ) {
+
+        ) {
         Column(modifier = Modifier.padding(8.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -431,7 +432,8 @@ fun MessageActionBar(
     val dateString = remember(message.date) { dateFormat.format(Date(message.date)) }
 
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        //color = MaterialTheme.colorScheme.surfaceVariant,
+        color = Color( color = 0xFFD91B5C),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -447,19 +449,21 @@ fun MessageActionBar(
                         text = "#${message.remoteId}",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        color = Color.White
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = message.author,
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color.White
+                        //color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Text(
                     text = dateString,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline
+                    color = Color.White
+                    //color = MaterialTheme.colorScheme.outline
                 )
             }
 
