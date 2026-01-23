@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -18,6 +19,7 @@ import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.ui.screens.*
 import com.cixonline.cixreader.ui.theme.CIXReaderTheme
 import com.cixonline.cixreader.utils.SettingsManager
+import com.cixonline.cixreader.utils.ThemeMode
 import com.cixonline.cixreader.viewmodel.*
 
 class MainActivity : ComponentActivity() {
@@ -32,8 +34,18 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val fontSizeMultiplier by settingsManager.fontSizeFlow.collectAsState(initial = settingsManager.getFontSize())
+            val themeMode by settingsManager.themeFlow.collectAsState(initial = settingsManager.getThemeMode())
             
-            CIXReaderTheme(fontSizeMultiplier = fontSizeMultiplier) {
+            val useDarkTheme = when (themeMode) {
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+            }
+            
+            CIXReaderTheme(
+                darkTheme = useDarkTheme,
+                fontSizeMultiplier = fontSizeMultiplier
+            ) {
                 val navController = rememberNavController()
                 
                 val (savedUser, savedPass) = settingsManager.getCredentials()

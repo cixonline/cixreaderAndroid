@@ -7,6 +7,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+enum class ThemeMode {
+    SYSTEM, LIGHT, DARK
+}
+
 class SettingsManager(context: Context) {
     private val masterKey by lazy {
         MasterKey.Builder(context)
@@ -26,6 +30,9 @@ class SettingsManager(context: Context) {
 
     private val _fontSizeFlow = MutableStateFlow(getFontSize())
     val fontSizeFlow: StateFlow<Float> = _fontSizeFlow.asStateFlow()
+
+    private val _themeFlow = MutableStateFlow(getThemeMode())
+    val themeFlow: StateFlow<ThemeMode> = _themeFlow.asStateFlow()
 
     fun saveCredentials(username: String, password: String) {
         sharedPreferences.edit()
@@ -60,5 +67,21 @@ class SettingsManager(context: Context) {
 
     fun getFontSize(): Float {
         return sharedPreferences.getFloat("font_size_multiplier", 1.0f)
+    }
+
+    fun saveThemeMode(mode: ThemeMode) {
+        sharedPreferences.edit()
+            .putString("theme_mode", mode.name)
+            .apply()
+        _themeFlow.value = mode
+    }
+
+    fun getThemeMode(): ThemeMode {
+        val name = sharedPreferences.getString("theme_mode", ThemeMode.SYSTEM.name)
+        return try {
+            ThemeMode.valueOf(name ?: ThemeMode.SYSTEM.name)
+        } catch (e: Exception) {
+            ThemeMode.SYSTEM
+        }
     }
 }

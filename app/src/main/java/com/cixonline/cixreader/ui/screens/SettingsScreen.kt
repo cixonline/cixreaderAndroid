@@ -1,5 +1,6 @@
 package com.cixonline.cixreader.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -10,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.cixonline.cixreader.utils.SettingsManager
+import com.cixonline.cixreader.utils.ThemeMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -18,6 +20,7 @@ fun SettingsScreen(
     onBackClick: () -> Unit
 ) {
     var fontSizeMultiplier by remember { mutableStateOf(settingsManager.getFontSize()) }
+    var themeMode by remember { mutableStateOf(settingsManager.getThemeMode()) }
 
     Scaffold(
         topBar = {
@@ -57,6 +60,47 @@ fun SettingsScreen(
                 )
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Theme",
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    
+                    ThemeMode.values().forEach { mode ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .selectable(
+                                    selected = themeMode == mode,
+                                    onClick = {
+                                        themeMode = mode
+                                        settingsManager.saveThemeMode(mode)
+                                    }
+                                )
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = themeMode == mode,
+                                onClick = {
+                                    themeMode = mode
+                                    settingsManager.saveThemeMode(mode)
+                                }
+                            )
+                            Text(
+                                text = when (mode) {
+                                    ThemeMode.SYSTEM -> "Follow System"
+                                    ThemeMode.LIGHT -> "Light Mode"
+                                    ThemeMode.DARK -> "Dark Mode"
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(start = 8.dp)
+                            )
+                        }
+                    }
+                    
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -96,3 +140,9 @@ fun SettingsScreen(
         }
     }
 }
+
+// Extension function for selectable to improve readability
+fun Modifier.selectable(
+    selected: Boolean,
+    onClick: () -> Unit
+): Modifier = this.clickable(onClick = onClick)
