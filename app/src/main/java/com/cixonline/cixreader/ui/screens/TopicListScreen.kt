@@ -5,14 +5,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -34,6 +37,7 @@ fun TopicListScreen(
 ) {
     val topics by viewModel.topics.collectAsState(initial = emptyList())
     var showMenu by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
 
     LaunchedEffect(Unit) {
         viewModel.refresh()
@@ -67,9 +71,6 @@ fun TopicListScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.refresh() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                    }
                     Box {
                         IconButton(onClick = { showMenu = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = "Menu")
@@ -113,13 +114,30 @@ fun TopicListScreen(
                 }
             } else {
                 val sortedTopics = remember(topics) {
-                    topics.sortedWith(
-                        compareByDescending<Folder> { it.unread > 0 }
-                            .thenBy { it.name.lowercase() }
-                    )
+                    topics.sortedBy { it.name.lowercase() }
                 }
 
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                val scrollbarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .drawWithContent {
+                            drawContent()
+                            val firstVisibleElementIndex = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.index
+                            val lastVisibleElementIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                            if (firstVisibleElementIndex != null && lastVisibleElementIndex != null) {
+                                val elementCount = listState.layoutInfo.totalItemsCount
+                                val scrollbarHeight = (size.height / elementCount) * (lastVisibleElementIndex - firstVisibleElementIndex + 1)
+                                val scrollbarOffsetY = (size.height / elementCount) * firstVisibleElementIndex
+                                drawRect(
+                                    color = scrollbarColor,
+                                    topLeft = Offset(size.width - 4.dp.toPx(), scrollbarOffsetY),
+                                    size = Size(4.dp.toPx(), scrollbarHeight)
+                                )
+                            }
+                        }
+                ) {
                     items(sortedTopics) { topic ->
                         CompactListItem(
                             title = topic.name,

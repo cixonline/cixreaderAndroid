@@ -21,6 +21,9 @@ class ForumViewModel(private val repository: ForumRepository) : ViewModel() {
     private val _expandedForums = MutableStateFlow<Set<Int>>(emptySet())
     val expandedForums: StateFlow<Set<Int>> = _expandedForums.asStateFlow()
 
+    private val _showOnlyUnread = MutableStateFlow(false)
+    val showOnlyUnread: StateFlow<Boolean> = _showOnlyUnread.asStateFlow()
+
     var isLoading by mutableStateOf(false)
         private set
 
@@ -58,6 +61,10 @@ class ForumViewModel(private val repository: ForumRepository) : ViewModel() {
                 repository.refreshTopics(forum.name, forum.id)
             }
         }
+    }
+
+    fun setShowOnlyUnread(onlyUnread: Boolean) {
+        _showOnlyUnread.value = onlyUnread
     }
 }
 
