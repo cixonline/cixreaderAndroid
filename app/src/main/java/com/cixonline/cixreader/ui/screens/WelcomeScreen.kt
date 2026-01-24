@@ -9,6 +9,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,13 +74,6 @@ fun WelcomeScreen(
                     actionIconContentColor = Color.White
                 ),
                 actions = {
-                    IconButton(onClick = { viewModel.refresh() }) {
-                        Icon(
-                            Icons.Default.Refresh, 
-                            contentDescription = "Refresh",
-                            tint = Color.White
-                        )
-                    }
                     Box {
                         IconButton(onClick = { showMenu = true }) {
                             Icon(
@@ -124,8 +118,12 @@ fun WelcomeScreen(
                 color = MaterialTheme.colorScheme.primary
             )
 
-            // Scrollable Recent Threads Section
-            Box(modifier = Modifier.weight(1f)) {
+            // Scrollable Recent Threads Section with Pull-to-Refresh
+            PullToRefreshBox(
+                isRefreshing = isLoading,
+                onRefresh = { viewModel.refresh() },
+                modifier = Modifier.weight(1f)
+            ) {
                 if (isLoading && threads.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
@@ -371,6 +369,9 @@ fun PostMessageDialog(
     val scope = rememberCoroutineScope()
     var isPosting by remember { mutableStateOf(false) }
 
+    val sortedForums = remember(forums) { forums.sortedBy { it.name.lowercase() } }
+    val sortedTopics = remember(topics) { topics.sortedBy { it.name.lowercase() } }
+
     LaunchedEffect(messageBody) {
         if (selectedForum == null && selectedTopic == null) {
             viewModel.suggestForumAndTopic(messageBody)
@@ -452,9 +453,10 @@ fun PostMessageDialog(
                     )
                     ExposedDropdownMenu(
                         expanded = forumExpanded,
-                        onDismissRequest = { forumExpanded = false }
+                        onDismissRequest = { forumExpanded = false },
+                        modifier = Modifier.heightIn(max = 300.dp)
                     ) {
-                        forums.forEach { forum ->
+                        sortedForums.forEach { forum ->
                             DropdownMenuItem(
                                 text = { Text(forum.name) },
                                 onClick = {
@@ -483,9 +485,10 @@ fun PostMessageDialog(
                     )
                     ExposedDropdownMenu(
                         expanded = topicExpanded,
-                        onDismissRequest = { topicExpanded = false }
+                        onDismissRequest = { topicExpanded = false },
+                        modifier = Modifier.heightIn(max = 300.dp)
                     ) {
-                        topics.forEach { topic ->
+                        sortedTopics.forEach { topic ->
                             DropdownMenuItem(
                                 text = { Text(topic.name) },
                                 onClick = {
