@@ -12,7 +12,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -71,9 +70,6 @@ fun ForumListScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.refresh() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                    }
                     Box {
                         IconButton(onClick = { showMenu = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = "Menu")
@@ -138,8 +134,7 @@ fun ForumListScreen(
                     val list = mutableListOf<Pair<Folder, Boolean>>() // Folder, isTopic
                     val forums = folders.filter { it.parentId == -1 }
                         .sortedWith(
-                            compareByDescending<Folder> { it.unread > 0 }
-                                .thenBy { it.name.lowercase() }
+                            compareBy { it.name.lowercase() }
                         )
                     
                     forums.forEach { forum ->
@@ -147,8 +142,7 @@ fun ForumListScreen(
                         if (expandedForums.contains(forum.id)) {
                             val topics = folders.filter { it.parentId == forum.id }
                                 .sortedWith(
-                                    compareByDescending<Folder> { it.unread > 0 }
-                                        .thenBy { it.name.lowercase() }
+                                    compareBy { it.name.lowercase() }
                                 )
                             topics.forEach { topic ->
                                 list.add(topic to true)

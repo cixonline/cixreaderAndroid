@@ -106,9 +106,6 @@ fun TopicScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.refresh() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                    }
                     Box {
                         IconButton(onClick = { showMenu = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = "Menu")
@@ -117,15 +114,6 @@ fun TopicScreen(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false }
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("Refresh") },
-                                onClick = {
-                                    showMenu = false
-                                    viewModel.refresh()
-                                },
-                                leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) }
-                            )
-                            HorizontalDivider()
                             DropdownMenuItem(
                                 text = { Text("Mark All Read") },
                                 onClick = {
