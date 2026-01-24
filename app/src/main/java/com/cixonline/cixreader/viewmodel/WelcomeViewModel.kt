@@ -19,6 +19,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import org.xmlpull.v1.XmlPullParserFactory
+import java.io.StringReader
 
 data class InterestingThreadUI(
     val forum: String,
@@ -224,11 +226,49 @@ class WelcomeViewModel(
         return messageDao.getFirstUnreadMessage()
     }
 
+    private fun extractStringFromXml(xml: String): String {
+        return try {
+            val factory = XmlPullParserFactory.newInstance()
+            val parser = factory.newPullParser()
+            parser.setInput(StringReader(xml))
+            var eventType = parser.eventType
+            while (eventType != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                if (eventType == org.xmlpull.v1.XmlPullParser.TEXT) {
+                    return parser.text
+                }
+                eventType = parser.next()
+            }
+            xml
+        } catch (e: Exception) {
+            xml
+        }
+    }
+
     suspend fun postMessage(forum: String, topic: String, body: String): Boolean {
         return try {
             val request = PostMessageRequest(body = body, forum = forum, topic = topic)
-            api.postMessage(request)
-            true
+            val response = api.postMessage(request)
+            val result = extractStringFromXml(response.string())
+            val messageId = result.toIntOrNull()
+            if (messageId != null && messageId > 0) {
+                val topicId = (forum + topic).hashCode()
+                val newMessage = CIXMessage(
+                    remoteId = messageId,
+                    author = "me",
+                    body = body,
+                    date = System.currentTimeMillis(),
+                    commentId = 0,
+                    rootId = 0,
+                    topicId = topicId,
+                    forumName = forum,
+                    topicName = topic,
+                    unread = false
+                )
+                messageDao.insert(newMessage)
+                true
+            } else {
+                result == "Success"
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             false

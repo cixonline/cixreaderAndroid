@@ -38,7 +38,8 @@ class MessageViewModel(
         viewModelScope.launch {
             isLoading = true
             try {
-                val success = repository.postMessage(forumName, topicName, body, replyTo)
+                val result = repository.postMessage(forumName, topicName, body, replyTo)
+                val success = result != 0
                 if (success) {
                     repository.refreshMessages(forumName, topicName, topicId)
                 }

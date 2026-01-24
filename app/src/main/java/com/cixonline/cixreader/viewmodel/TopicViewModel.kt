@@ -166,11 +166,12 @@ class TopicViewModel(
     suspend fun postReply(replyToId: Int, body: String): Boolean {
         _isLoading.value = true
         val result = repository.postMessage(forumName, topicName, body, replyToId)
-        if (result) {
+        val success = result != 0
+        if (success) {
             refresh()
         }
         _isLoading.value = false
-        return result
+        return success
     }
 
     fun joinForum(forum: String) {

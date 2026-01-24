@@ -78,15 +78,41 @@ class MessageRepository(
         }
     }
 
-    suspend fun postMessage(forum: String, topic: String, body: String, replyTo: Int): Boolean = withContext(Dispatchers.IO) {
+    suspend fun postMessage(forum: String, topic: String, body: String, replyTo: Int): Int = withContext(Dispatchers.IO) {
         try {
             val request = PostMessageRequest(body = body, forum = forum, topic = topic, msgId = replyTo.toString())
             val response = api.postMessage(request)
             val result = extractStringFromXml(response.string())
-            result == "Success"
+            
+            // CIX API returns the new message ID as a string if successful, or "Success" followed by ID? 
+            // Usually it just returns the ID or "Success". Let's try to parse it as an ID.
+            val messageId = result.toIntOrNull()
+            if (messageId != null && messageId > 0) {
+                // If we got an ID, we can create the local message immediately
+                val topicId = (forum + topic).hashCode()
+                val newMessage = CIXMessage(
+                    remoteId = messageId,
+                    author = "me", // Will be updated on next refresh
+                    body = body,
+                    date = System.currentTimeMillis(),
+                    commentId = replyTo,
+                    rootId = 0, // Will be updated on refresh
+                    topicId = topicId,
+                    forumName = forum,
+                    topicName = topic,
+                    unread = false
+                )
+                messageDao.insert(newMessage)
+                messageId
+            } else if (result == "Success") {
+                // Some endpoints just return "Success". We'll need a refresh to get the ID.
+                -1
+            } else {
+                0
+            }
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            0
         }
     }
 
