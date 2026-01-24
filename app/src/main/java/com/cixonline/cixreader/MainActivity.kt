@@ -164,7 +164,14 @@ class MainActivity : ComponentActivity() {
                         val rootId = backStackEntry.arguments?.getInt("rootId") ?: 0
                         
                         val viewModel: TopicViewModel = viewModel(
-                            factory = TopicViewModelFactory(messageRepository, forumName, topicName, topicId, initialRootId = rootId)
+                            factory = TopicViewModelFactory(
+                                NetworkClient.api,
+                                messageRepository, 
+                                forumName, 
+                                topicName, 
+                                topicId, 
+                                initialRootId = rootId
+                            )
                         )
                         ThreadScreen(
                             viewModel = viewModel,
