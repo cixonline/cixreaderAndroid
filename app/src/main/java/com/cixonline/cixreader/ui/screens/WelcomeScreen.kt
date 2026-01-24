@@ -18,6 +18,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.cixonline.cixreader.R
+import com.cixonline.cixreader.api.UserProfile
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.viewmodel.InterestingThreadUI
@@ -36,6 +37,7 @@ fun WelcomeScreen(
 ) {
     val threads by viewModel.interestingThreads.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val selectedProfile by viewModel.selectedProfile.collectAsState()
     var showMenu by remember { mutableStateOf(false) }
     var showPostDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -142,7 +144,8 @@ fun WelcomeScreen(
                                         (thread.forum + thread.topic).hashCode(),
                                         thread.rootId
                                     )
-                                }
+                                },
+                                onAuthorClick = { viewModel.showProfile(thread.author) }
                             )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         }
@@ -293,6 +296,58 @@ fun WelcomeScreen(
                 }
             }
         )
+    }
+
+    selectedProfile?.let { profile ->
+        ProfileDialog(profile = profile, onDismiss = { viewModel.dismissProfile() })
+    }
+}
+
+@Composable
+fun ProfileDialog(profile: UserProfile, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 6.dp,
+            modifier = Modifier.fillMaxWidth().padding(16.dp)
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    text = profile.userName ?: "Unknown",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                if (!profile.fullName.isNullOrBlank()) {
+                    Text(text = profile.fullName!!, style = MaterialTheme.typography.titleMedium)
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    profile.location?.takeIf { it.isNotBlank() }?.let {
+                        ProfileRow(label = "Location", value = it)
+                    }
+                    profile.email?.takeIf { it.isNotBlank() }?.let {
+                        ProfileRow(label = "Email", value = it)
+                    }
+                    profile.about?.takeIf { it.isNotBlank() }?.let {
+                        ProfileRow(label = "About", value = it)
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
+                    Text("Close")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ProfileRow(label: String, value: String) {
+    Column {
+        Text(text = label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
+        Text(text = value, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -474,7 +529,7 @@ fun PostMessageDialog(
 }
 
 @Composable
-fun InterestingThreadItem(thread: InterestingThreadUI, onClick: () -> Unit) {
+fun InterestingThreadItem(thread: InterestingThreadUI, onClick: () -> Unit, onAuthorClick: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -505,7 +560,8 @@ fun InterestingThreadItem(thread: InterestingThreadUI, onClick: () -> Unit) {
                 text = thread.author,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable(onClick = onAuthorClick)
             )
             if (thread.isRootResolved) {
                 Text(

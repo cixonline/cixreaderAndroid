@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.cixonline.cixreader.api.CixApi
 import com.cixonline.cixreader.api.InterestingThreadApi
+import com.cixonline.cixreader.api.UserProfile
 import com.cixonline.cixreader.db.MessageDao
 import com.cixonline.cixreader.db.FolderDao
 import com.cixonline.cixreader.db.DirForumDao
@@ -45,6 +46,9 @@ class WelcomeViewModel(
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
+
+    private val _selectedProfile = MutableStateFlow<UserProfile?>(null)
+    val selectedProfile: StateFlow<UserProfile?> = _selectedProfile
 
     val allForums: Flow<List<Folder>> = folderDao.getAll().map { folders ->
         folders.filter { it.isRootFolder }
@@ -229,6 +233,24 @@ class WelcomeViewModel(
             e.printStackTrace()
             false
         }
+    }
+
+    fun showProfile(user: String) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val profile = api.getProfile(user)
+                _selectedProfile.value = profile
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun dismissProfile() {
+        _selectedProfile.value = null
     }
 }
 

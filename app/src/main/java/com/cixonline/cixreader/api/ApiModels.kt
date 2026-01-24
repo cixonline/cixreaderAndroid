@@ -13,6 +13,34 @@ class Account {
     var type: String? = ""
 }
 
+@Root(name = "UserProfile", strict = false)
+@Namespace(reference = "http://cixonline.com")
+class UserProfile {
+    @field:Element(name = "UserName", required = false)
+    var userName: String? = ""
+
+    @field:Element(name = "FullName", required = false)
+    var fullName: String? = ""
+
+    @field:Element(name = "EMail", required = false)
+    var email: String? = ""
+
+    @field:Element(name = "Location", required = false)
+    var location: String? = ""
+
+    @field:Element(name = "Experience", required = false)
+    var experience: String? = ""
+
+    @field:Element(name = "About", required = false)
+    var about: String? = ""
+
+    @field:Element(name = "FirstPost", required = false)
+    var firstPost: String? = ""
+
+    @field:Element(name = "LastPost", required = false)
+    var lastPost: String? = ""
+}
+
 @Root(name = "ForumResultSet", strict = false)
 @Namespace(reference = "http://cixonline.com")
 class ForumResultSet {

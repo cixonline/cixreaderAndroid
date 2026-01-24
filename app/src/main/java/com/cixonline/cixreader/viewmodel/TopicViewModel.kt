@@ -3,6 +3,8 @@ package com.cixonline.cixreader.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.cixonline.cixreader.api.CixApi
+import com.cixonline.cixreader.api.UserProfile
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.repository.NotAMemberException
@@ -10,6 +12,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class TopicViewModel(
+    private val api: CixApi,
     private val repository: MessageRepository,
     val forumName: String,
     val topicName: String,
@@ -29,6 +32,9 @@ class TopicViewModel(
 
     private val _scrollToMessageId = MutableStateFlow<Int?>(if (initialMessageId != 0) initialMessageId else null)
     val scrollToMessageId: StateFlow<Int?> = _scrollToMessageId
+
+    private val _selectedProfile = MutableStateFlow<UserProfile?>(null)
+    val selectedProfile: StateFlow<UserProfile?> = _selectedProfile
 
     val messages: StateFlow<List<CIXMessage>> = combine(
         repository.getMessagesForTopic(topicId),
@@ -198,12 +204,31 @@ class TopicViewModel(
         }
     }
 
+    fun showProfile(user: String) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val profile = api.getProfile(user)
+                _selectedProfile.value = profile
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun dismissProfile() {
+        _selectedProfile.value = null
+    }
+
     fun onScrollToMessageComplete() {
         _scrollToMessageId.value = null
     }
 }
 
 class TopicViewModelFactory(
+    private val api: CixApi,
     private val repository: MessageRepository,
     private val forumName: String,
     private val topicName: String,
@@ -214,7 +239,7 @@ class TopicViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(TopicViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return TopicViewModel(repository, forumName, topicName, topicId, initialMessageId, initialRootId) as T
+            return TopicViewModel(api, repository, forumName, topicName, topicId, initialMessageId, initialRootId) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

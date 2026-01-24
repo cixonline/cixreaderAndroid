@@ -20,6 +20,9 @@ interface CixApi {
     @GET("user/{forum}/topics.xml")
     suspend fun getUserForumTopics(@Path("forum", encoded = true) forum: String): UserTopicResultSet
 
+    @GET("user/{user}/profile.xml")
+    suspend fun getProfile(@Path("user") user: String): UserProfile
+
     @GET("user/alltopics.xml")
     suspend fun getAllTopics(@Query("maxresults") maxResults: Int = 5000): UserForumTopicResultSet2
 

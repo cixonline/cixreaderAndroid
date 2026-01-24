@@ -41,6 +41,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.cixonline.cixreader.R
+import com.cixonline.cixreader.api.UserProfile
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.ui.theme.Purple80
 import com.cixonline.cixreader.viewmodel.TopicViewModel
@@ -65,6 +66,7 @@ fun ThreadScreen(
 ) {
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val selectedProfile by viewModel.selectedProfile.collectAsState()
     val fontSizeMultiplier = remember { settingsManager.getFontSize() }
 
     val getEffectiveRootId = { msg: CIXMessage -> if (msg.rootId != 0) msg.rootId else msg.remoteId }
@@ -203,7 +205,8 @@ fun ThreadScreen(
                                 selectedRootId = getEffectiveRootId(next)
                                 showReplyPane = false
                             }
-                        }
+                        },
+                        onAuthorClick = { viewModel.showProfile(selectedMessage!!.author) }
                     )
                 } else {
                     HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outlineVariant)
@@ -260,6 +263,10 @@ fun ThreadScreen(
                 }
             }
         }
+    }
+
+    selectedProfile?.let { profile ->
+        ProfileDialog(profile = profile, onDismiss = { viewModel.dismissProfile() })
     }
 }
 
@@ -442,7 +449,8 @@ fun MessageActionBar(
     message: CIXMessage,
     replyActive: Boolean,
     onReplyClick: () -> Unit,
-    onNextUnreadClick: () -> Unit
+    onNextUnreadClick: () -> Unit,
+    onAuthorClick: () -> Unit
 ) {
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy HH:mm", Locale.getDefault()) }
     val dateString = remember(message.date) { dateFormat.format(Date(message.date)) }
@@ -470,7 +478,8 @@ fun MessageActionBar(
                     Text(
                         text = message.author,
                         style = MaterialTheme.typography.labelLarge,
-                        color = Color(0xFFD0BCFF)
+                        color = Color(0xFFD0BCFF),
+                        modifier = Modifier.clickable(onClick = onAuthorClick)
                     )
                 }
                 Text(
