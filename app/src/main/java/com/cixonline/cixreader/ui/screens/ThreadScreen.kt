@@ -42,6 +42,7 @@ import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.CIXMessage
+import com.cixonline.cixreader.ui.theme.Purple80
 import com.cixonline.cixreader.viewmodel.TopicViewModel
 import com.cixonline.cixreader.utils.SettingsManager
 import kotlinx.coroutines.launch
@@ -469,7 +470,7 @@ fun MessageActionBar(
                     Text(
                         text = message.author,
                         style = MaterialTheme.typography.labelLarge,
-                        color = Color.White
+                        color = Color(0xFFD0BCFF)
                     )
                 }
                 Text(
@@ -812,7 +813,7 @@ fun linkify(text: String): AnnotatedString {
             val url = match.value
             pushStringAnnotation(tag = "URL", annotation = url)
             withStyle(style = SpanStyle(
-                color = Color(0xFF0000EE),
+                color = Color(0xFFD0BCFF),
                 textDecoration = TextDecoration.Underline
             )) {
                 append(url)
