@@ -6,7 +6,15 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface FolderDao {
-    @Query("SELECT * FROM folders ORDER BY folder_index ASC")
+    @Query("""
+        SELECT f.*, 
+        (CASE 
+            WHEN f.parentId = -1 THEN (SELECT COUNT(*) FROM messages m WHERE m.topicId IN (SELECT id FROM folders WHERE parentId = f.id) AND m.unread = 1)
+            ELSE (SELECT COUNT(*) FROM messages m WHERE m.topicId = f.id AND m.unread = 1)
+        END) as unread
+        FROM folders f 
+        ORDER BY folder_index ASC
+    """)
     fun getAll(): Flow<List<Folder>>
 
     @Query("SELECT * FROM folders WHERE id = :id")
