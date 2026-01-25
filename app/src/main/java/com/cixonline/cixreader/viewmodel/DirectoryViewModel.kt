@@ -84,6 +84,8 @@ class DirectoryViewModel(
                 val allForums = mutableListOf<DirListing>()
                 for (category in categories) {
                     val catName = category.name ?: continue
+                    if (catName.contains("Un-Categorised", ignoreCase = true)) continue
+
                     val encodedCatName = HtmlUtils.cixCategoryEncode(catName)
                     
                     try {
