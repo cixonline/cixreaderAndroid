@@ -60,7 +60,7 @@ fun ForumListScreen(
                             modifier = Modifier.size(32.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text( text = "Forums & Topics",
+                        Text( text = "My Forums",
                               color = Color.White.copy(alpha = 0.7f),
                         )
                     }

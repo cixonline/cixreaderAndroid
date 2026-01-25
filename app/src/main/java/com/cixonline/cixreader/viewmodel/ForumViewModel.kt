@@ -21,7 +21,7 @@ class ForumViewModel(private val repository: ForumRepository) : ViewModel() {
     private val _expandedForums = MutableStateFlow<Set<Int>>(emptySet())
     val expandedForums: StateFlow<Set<Int>> = _expandedForums.asStateFlow()
 
-    private val _showOnlyUnread = MutableStateFlow(false)
+    private val _showOnlyUnread = MutableStateFlow(true)
     val showOnlyUnread: StateFlow<Boolean> = _showOnlyUnread.asStateFlow()
 
     var isLoading by mutableStateOf(false)
