@@ -223,7 +223,8 @@ class WelcomeViewModel(
     }
 
     suspend fun getFirstUnreadMessage(): CIXMessage? {
-        return messageDao.getFirstUnreadMessage()
+        val cutoff = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000
+        return messageDao.getFirstUnreadMessage(cutoff)
     }
 
     private fun extractStringFromXml(xml: String): String {
