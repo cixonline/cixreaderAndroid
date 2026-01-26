@@ -223,7 +223,7 @@ class WelcomeViewModel(
     }
 
     suspend fun getFirstUnreadMessage(): CIXMessage? {
-        val cutoff = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000
+        val cutoff = 0L // No cutoff for finding the first unread message
         return messageDao.getFirstUnreadMessage(cutoff)
     }
 
