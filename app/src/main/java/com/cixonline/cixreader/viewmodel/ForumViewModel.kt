@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 
 class ForumViewModel(private val repository: ForumRepository) : ViewModel() {
 
-    private val _cutoff = MutableStateFlow(0L)
+    private val _cutoff = MutableStateFlow(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000)
     
     val allFolders: Flow<List<Folder>> = _cutoff.flatMapLatest { cutoff ->
         repository.allFoldersWithCutoff(cutoff)
@@ -39,7 +39,7 @@ class ForumViewModel(private val repository: ForumRepository) : ViewModel() {
         viewModelScope.launch {
             isLoading = true
             errorMessage = null
-            _cutoff.value = 0L
+            _cutoff.value = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000
             try {
                 repository.refreshForums()
             } catch (e: Exception) {
