@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.repository.ForumRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +22,7 @@ class ForumViewModel(private val repository: ForumRepository) : ViewModel() {
     private val _expandedForums = MutableStateFlow<Set<Int>>(emptySet())
     val expandedForums: StateFlow<Set<Int>> = _expandedForums.asStateFlow()
 
+    // Default to true to show only unread by default
     private val _showOnlyUnread = MutableStateFlow(true)
     val showOnlyUnread: StateFlow<Boolean> = _showOnlyUnread.asStateFlow()
 
@@ -35,7 +37,7 @@ class ForumViewModel(private val repository: ForumRepository) : ViewModel() {
     }
 
     fun refresh() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             isLoading = true
             errorMessage = null
             try {
@@ -57,7 +59,7 @@ class ForumViewModel(private val repository: ForumRepository) : ViewModel() {
         } else {
             _expandedForums.value = current + forumId
             // Refresh topics for this forum when expanded
-            viewModelScope.launch {
+            viewModelScope.launch(Dispatchers.IO) {
                 repository.refreshTopics(forum.name, forum.id)
             }
         }

@@ -1,9 +1,9 @@
 package com.cixonline.cixreader.ui.screens
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,15 +13,16 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -78,6 +79,9 @@ fun ForumListScreen(
                 },
                 actions = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { viewModel.refresh() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        }
                         FilterChip(
                             selected = !showOnlyUnread,
                             onClick = { viewModel.setShowOnlyUnread(false) },
@@ -239,6 +243,7 @@ fun ForumListScreen(
                                 CompactTopicItem(
                                     title = item.name,
                                     unreadCount = item.unread,
+                                    isLoading = viewModel.isLoading,
                                     onClick = { 
                                         if (forum != null) {
                                             onTopicClick(forum.name, item.name, item.id)
@@ -250,6 +255,7 @@ fun ForumListScreen(
                                     title = item.name,
                                     unreadCount = item.unread,
                                     isExpanded = expandedForums.contains(item.id),
+                                    isLoading = viewModel.isLoading,
                                     onClick = { viewModel.toggleForum(item) }
                                 )
                             }
@@ -302,6 +308,7 @@ fun CompactForumItem(
     title: String,
     unreadCount: Int,
     isExpanded: Boolean,
+    isLoading: Boolean,
     onClick: () -> Unit
 ) {
     Surface(
@@ -330,20 +337,8 @@ fun CompactForumItem(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            if (!isExpanded && unreadCount > 0) {
-                Surface(
-                    color = Color(0xFFD91B5C),
-                    shape = MaterialTheme.shapes.extraSmall,
-                ) {
-                    Text(
-                        text = unreadCount.toString(),
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
-                    )
-                }
-            }
+            
+            UnreadIndicator(count = unreadCount, isLoading = isLoading, isExpanded = isExpanded)
         }
     }
 }
@@ -352,6 +347,7 @@ fun CompactForumItem(
 fun CompactTopicItem(
     title: String,
     unreadCount: Int,
+    isLoading: Boolean,
     onClick: () -> Unit
 ) {
     Surface(
@@ -375,19 +371,32 @@ fun CompactTopicItem(
                 modifier = Modifier.weight(1f)
             )
             
-            if (unreadCount > 0) {
-                Surface(
-                    color = Color(0xFFD91B5C),
-                    shape = MaterialTheme.shapes.extraSmall,
-                ) {
-                    Text(
-                        text = unreadCount.toString(),
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
-                    )
-                }
+            UnreadIndicator(count = unreadCount, isLoading = isLoading, isExpanded = false)
+        }
+    }
+}
+
+@Composable
+fun UnreadIndicator(count: Int, isLoading: Boolean, isExpanded: Boolean) {
+    if (!isExpanded) {
+        if (isLoading && count == 0) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.primary
+            )
+        } else if (count > 0) {
+            Surface(
+                color = Color(0xFFD91B5C),
+                shape = MaterialTheme.shapes.extraSmall,
+            ) {
+                Text(
+                    text = count.toString(),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                )
             }
         }
     }
