@@ -64,7 +64,8 @@ fun ThreadScreen(
     onBackClick: () -> Unit,
     onLogout: () -> Unit,
     onSettingsClick: () -> Unit,
-    settingsManager: SettingsManager
+    settingsManager: SettingsManager,
+    onNavigateToThread: (forum: String, topic: String, topicId: Int, rootId: Int, msgId: Int) -> Unit
 ) {
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -130,6 +131,7 @@ fun ThreadScreen(
                             Text(
                                 text = viewModel.forumName + " / " + viewModel.topicName,
                                 color = Color.White.copy(alpha = 0.7f),
+                                style= MaterialTheme.typography.labelMedium
                             )
                         }
                     }
@@ -227,7 +229,8 @@ fun ThreadScreen(
                             onParentClick = { parent ->
                                 selectedMessage = parent
                                 selectedRootId = getEffectiveRootId(parent)
-                            }
+                            },
+                            onNavigateToThread = onNavigateToThread
                         )
                     } else {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -551,7 +554,7 @@ fun ThreadRow(
                 Spacer(modifier = Modifier.width(4.dp))
             }
             Text(
-                text = message.body.take(100).replace("\n", " "),
+                text = message.body.take(100).replace("\r\n", " ").replace("\r", " ").replace("\n", " "),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall.copy(
@@ -579,11 +582,15 @@ fun MessageViewer(
     message: CIXMessage,
     parentMessage: CIXMessage? = null,
     fontSizeMultiplier: Float,
-    onParentClick: (CIXMessage) -> Unit = {}
+    onParentClick: (CIXMessage) -> Unit = {},
+    onNavigateToThread: (forum: String, topic: String, topicId: Int, rootId: Int, msgId: Int) -> Unit
 ) {
     val uriHandler = LocalUriHandler.current
-    val urls = remember(message.body) { extractUrls(message.body) }
     
+    val normalizedBody = remember(message.body) {
+        message.body.replace("\r\n", "\n").replace("\r", "\n")
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -617,7 +624,7 @@ fun MessageViewer(
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = parentMessage.body.take(200).replace("\n", " ") + if (parentMessage.body.length > 200) "..." else "",
+                        text = parentMessage.body.take(200).replace("\r\n", " ").replace("\r", " ").replace("\n", " ") + if (parentMessage.body.length > 200) "..." else "",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
@@ -627,8 +634,8 @@ fun MessageViewer(
             }
         }
 
-        val annotatedString = remember(message.body) {
-            linkify(message.body)
+        val annotatedString = remember(normalizedBody, message.forumName, message.topicName) {
+            linkify(normalizedBody, message.forumName, message.topicName)
         }
 
         ClickableText(
@@ -641,9 +648,22 @@ fun MessageViewer(
                     .firstOrNull()?.let { annotation ->
                         uriHandler.openUri(annotation.item)
                     }
+                
+                annotatedString.getStringAnnotations(tag = "CIX_REF", start = offset, end = offset)
+                    .firstOrNull()?.let { annotation ->
+                        val parts = annotation.item.split(":")
+                        val f = parts[0]
+                        val t = parts[1]
+                        val mId = parts[2].toIntOrNull() ?: 0
+                        // Since we don't know the rootId easily here for cross-topic links,
+                        // we'll pass 0 or maybe the msgId as a hint if the destination is the same topic.
+                        // But for now, we'll just navigate.
+                        onNavigateToThread(f, t, (f + t).hashCode(), 0, mId)
+                    }
             }
         )
 
+        val urls = remember(normalizedBody) { extractUrls(normalizedBody) }
         if (urls.isNotEmpty()) {
             Spacer(modifier = Modifier.height(16.dp))
             urls.forEach { url ->
@@ -785,8 +805,11 @@ fun ThreadItem(
                 )
             }
             Spacer(modifier = Modifier.width(4.dp))
+            val summary = remember(message.body) {
+                message.body.take(100).replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+            }
             Text(
-                text = message.body.take(100).replace("\n", " "),
+                text = summary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall,
@@ -819,22 +842,55 @@ fun extractUrls(text: String): List<String> {
     return urlPattern.findAll(text).map { it.value }.toList()
 }
 
-fun linkify(text: String): AnnotatedString {
+fun linkify(text: String, currentForum: String = "", currentTopic: String = ""): AnnotatedString {
     return buildAnnotatedString {
         val urlPattern = Regex("https?://[\\w:#@%/;$()~_?+\\-=.&!*]+")
+        val cixRefFullPattern = Regex("cix:([\\w+]+)/([\\w+]+):(\\d+)")
+        val cixRefShortPattern = Regex("cix:(\\d+)")
+        
         var lastIndex = 0
-        urlPattern.findAll(text).forEach { match ->
-            append(text.substring(lastIndex, match.range.first))
-            val url = match.value
-            pushStringAnnotation(tag = "URL", annotation = url)
-            withStyle(style = SpanStyle(
-                color = Color(0xFFD0BCFF),
-                textDecoration = TextDecoration.Underline
-            )) {
-                append(url)
+        val allMatches = (urlPattern.findAll(text).map { it to "URL" } + 
+                          cixRefFullPattern.findAll(text).map { it to "CIX_FULL" } +
+                          cixRefShortPattern.findAll(text).map { it to "CIX_SHORT" })
+                         .sortedBy { it.first.range.first }
+        
+        allMatches.forEach { (match, type) ->
+            if (match.range.first >= lastIndex) {
+                append(text.substring(lastIndex, match.range.first))
+                val value = match.value
+                when (type) {
+                    "URL" -> {
+                        pushStringAnnotation(tag = "URL", annotation = value)
+                        withStyle(style = SpanStyle(color = Color(0xFFD0BCFF), textDecoration = TextDecoration.Underline)) {
+                            append(value)
+                        }
+                        pop()
+                    }
+                    "CIX_FULL" -> {
+                        val forum = match.groupValues[1]
+                        val topic = match.groupValues[2]
+                        val msgId = match.groupValues[3]
+                        pushStringAnnotation(tag = "CIX_REF", annotation = "$forum:$topic:$msgId")
+                        withStyle(style = SpanStyle(color = Color(0xFFD0BCFF), fontWeight = FontWeight.Bold)) {
+                            append(value)
+                        }
+                        pop()
+                    }
+                    "CIX_SHORT" -> {
+                        if (currentForum.isNotEmpty() && currentTopic.isNotEmpty()) {
+                            val msgId = match.groupValues[1]
+                            pushStringAnnotation(tag = "CIX_REF", annotation = "$currentForum:$currentTopic:$msgId")
+                            withStyle(style = SpanStyle(color = Color(0xFFD0BCFF), fontWeight = FontWeight.Bold)) {
+                                append(value)
+                            }
+                            pop()
+                        } else {
+                            append(value)
+                        }
+                    }
+                }
+                lastIndex = match.range.last + 1
             }
-            pop()
-            lastIndex = match.range.last + 1
         }
         append(text.substring(lastIndex))
     }

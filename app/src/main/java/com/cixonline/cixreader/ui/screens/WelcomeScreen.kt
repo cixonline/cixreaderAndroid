@@ -64,6 +64,7 @@ fun WelcomeScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text( text = "Reader",
                               color = Color.White.copy(alpha = 0.7f),
+                              style= MaterialTheme.typography.labelMedium
                         )
                     }
                 },

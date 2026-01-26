@@ -13,8 +13,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,6 +63,7 @@ fun ForumListScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text( text = "My Forums",
                               color = Color.White.copy(alpha = 0.7f),
+                              style= MaterialTheme.typography.labelMedium
                         )
                     }
                 },
@@ -79,13 +80,10 @@ fun ForumListScreen(
                 },
                 actions = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { viewModel.refresh() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                        }
                         FilterChip(
                             selected = !showOnlyUnread,
                             onClick = { viewModel.setShowOnlyUnread(false) },
-                            label = { Text("All") },
+                            label = { Text("All", style= MaterialTheme.typography.labelSmall) },
                             colors = FilterChipDefaults.filterChipColors(
                                 labelColor = Color.White.copy(alpha = 0.7f),
                                 selectedLabelColor = Color.White,
@@ -98,11 +96,11 @@ fun ForumListScreen(
                                 selectedBorderColor = Color.White.copy(alpha = 0.5f)
                             )
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
                         FilterChip(
                             selected = showOnlyUnread,
                             onClick = { viewModel.setShowOnlyUnread(true) },
-                            label = { Text("Unread") },
+                            label = { Text("Unread", style= MaterialTheme.typography.labelSmall) },
                             colors = FilterChipDefaults.filterChipColors(
                                 labelColor = Color.White.copy(alpha = 0.7f),
                                 selectedLabelColor = Color.White,
@@ -144,156 +142,162 @@ fun ForumListScreen(
             )
         }
     ) { padding ->
-        Box(
+        PullToRefreshBox(
+            isRefreshing = viewModel.isLoading,
+            onRefresh = { viewModel.refresh() },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (viewModel.isLoading && folders.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            } else if (viewModel.errorMessage != null && folders.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Text(
-                            text = viewModel.errorMessage!!,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.error,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = { viewModel.refresh() }) {
-                            Text("Retry")
-                        }
+            Box(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                if (viewModel.isLoading && folders.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
                     }
-                }
-            } else if (folders.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No forums found.", style = MaterialTheme.typography.bodyLarge)
-                }
-            } else {
-                val displayList = remember(folders, expandedForums, showOnlyUnread) {
-                    val list = mutableListOf<Pair<Folder, Boolean>>() // Folder, isTopic
-                    
-                    val filteredFolders = if (showOnlyUnread) {
-                        // Keep forums if they have unread messages OR if any of their topics have unread messages
-                        folders.filter { folder ->
-                            folder.unread > 0 || (folder.parentId == -1 && folders.any { it.parentId == folder.id && it.unread > 0 })
-                        }
-                    } else {
-                        folders
-                    }
-
-                    val forums = filteredFolders.filter { it.parentId == -1 }
-                        .sortedWith(
-                            compareBy { it.name.lowercase() }
-                        )
-                    
-                    forums.forEach { forum ->
-                        list.add(forum to false)
-                        if (expandedForums.contains(forum.id)) {
-                            val topics = filteredFolders.filter { it.parentId == forum.id }
-                                .sortedWith(
-                                    compareBy { it.name.lowercase() }
-                                )
-                            topics.forEach { topic ->
-                                list.add(topic to true)
+                } else if (viewModel.errorMessage != null && folders.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(16.dp)
+                        ) {
+                            Text(
+                                text = viewModel.errorMessage!!,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.error,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(onClick = { viewModel.refresh() }) {
+                                Text("Retry")
                             }
                         }
                     }
-                    list
-                }
+                } else if (folders.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("No forums found.", style = MaterialTheme.typography.bodyLarge)
+                    }
+                } else {
+                    val displayList = remember(folders, expandedForums, showOnlyUnread) {
+                        val list = mutableListOf<Pair<Folder, Boolean>>() // Folder, isTopic
+                        
+                        val filteredFolders = if (showOnlyUnread) {
+                            // Keep forums if they have unread messages OR if any of their topics have unread messages
+                            folders.filter { folder ->
+                                folder.unread > 0 || (folder.parentId == -1 && folders.any { it.parentId == folder.id && it.unread > 0 })
+                            }
+                        } else {
+                            folders
+                        }
 
-                val alphabet = remember(displayList) {
-                    displayList.mapNotNull { 
-                        val char = it.first.name.firstOrNull()?.uppercaseChar()
-                        if (char != null && char in 'A'..'Z') char else null
-                    }.distinct().sorted()
-                }
-
-                Row(modifier = Modifier.fillMaxSize()) {
-                    val scrollbarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                    LazyColumn(
-                        state = listState, 
-                        modifier = Modifier
-                            .weight(1f)
-                            .drawWithContent {
-                                drawContent()
-                                val firstVisibleElementIndex = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.index
-                                val lastVisibleElementIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
-                                if (firstVisibleElementIndex != null && lastVisibleElementIndex != null) {
-                                    val elementCount = listState.layoutInfo.totalItemsCount
-                                    val scrollbarHeight = (size.height / elementCount) * (lastVisibleElementIndex - firstVisibleElementIndex + 1)
-                                    val scrollbarOffsetY = (size.height / elementCount) * firstVisibleElementIndex
-                                    drawRect(
-                                        color = scrollbarColor,
-                                        topLeft = Offset(size.width - 2.dp.toPx(), scrollbarOffsetY),
-                                        size = Size(2.dp.toPx(), scrollbarHeight)
+                        val forums = filteredFolders.filter { it.parentId == -1 }
+                            .sortedWith(
+                                compareBy { it.name.lowercase() }
+                            )
+                        
+                        forums.forEach { forum ->
+                            list.add(forum to false)
+                            if (expandedForums.contains(forum.id)) {
+                                val topics = filteredFolders.filter { it.parentId == forum.id }
+                                    .sortedWith(
+                                        compareBy { it.name.lowercase() }
                                     )
+                                topics.forEach { topic ->
+                                    list.add(topic to true)
                                 }
                             }
-                    ) {
-                        items(displayList) { (item, isTopic) ->
-                            if (isTopic) {
-                                val forum = folders.find { it.id == item.parentId }
-                                CompactTopicItem(
-                                    title = item.name,
-                                    unreadCount = item.unread,
-                                    isLoading = viewModel.isLoading,
-                                    onClick = { 
-                                        if (forum != null) {
-                                            onTopicClick(forum.name, item.name, item.id)
-                                        }
-                                    }
-                                )
-                            } else {
-                                CompactForumItem(
-                                    title = item.name,
-                                    unreadCount = item.unread,
-                                    isExpanded = expandedForums.contains(item.id),
-                                    isLoading = viewModel.isLoading,
-                                    onClick = { viewModel.toggleForum(item) }
-                                )
-                            }
-                            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         }
+                        list
                     }
 
-                    // Alphabet Index
-                    if (alphabet.isNotEmpty()) {
-                        Column(
+                    val alphabet = remember(displayList) {
+                        displayList.mapNotNull { 
+                            val char = it.first.name.firstOrNull()?.uppercaseChar()
+                            if (char != null && char in 'A'..'Z') char else null
+                        }.distinct().sorted()
+                    }
+
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        val scrollbarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                        LazyColumn(
+                            state = listState, 
                             modifier = Modifier
-                                .width(24.dp)
-                                .fillMaxHeight()
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                                .padding(vertical = 4.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.SpaceEvenly
+                                .weight(1f)
+                                .drawWithContent {
+                                    drawContent()
+                                    val firstVisibleElementIndex = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.index
+                                    val lastVisibleElementIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                                    if (firstVisibleElementIndex != null && lastVisibleElementIndex != null) {
+                                        val elementCount = listState.layoutInfo.totalItemsCount
+                                        val scrollbarHeight = (size.height / elementCount) * (lastVisibleElementIndex - firstVisibleElementIndex + 1)
+                                        val scrollbarOffsetY = (size.height / elementCount) * firstVisibleElementIndex
+                                        drawRect(
+                                            color = scrollbarColor,
+                                            topLeft = Offset(size.width - 2.dp.toPx(), scrollbarOffsetY),
+                                            size = Size(2.dp.toPx(), scrollbarHeight)
+                                        )
+                                    }
+                                }
                         ) {
-                            alphabet.forEach { char ->
-                                Text(
-                                    text = char.toString(),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            val index = displayList.indexOfFirst { 
-                                                it.first.name.startsWith(char, ignoreCase = true) 
+                            items(displayList) { (item, isTopic) ->
+                                if (isTopic) {
+                                    val forum = folders.find { it.id == item.parentId }
+                                    CompactTopicItem(
+                                        title = item.name,
+                                        unreadCount = item.unread,
+                                        isLoading = viewModel.isLoading,
+                                        onClick = { 
+                                            if (forum != null) {
+                                                onTopicClick(forum.name, item.name, item.id)
                                             }
-                                            if (index != -1) {
-                                                scope.launch {
-                                                    listState.scrollToItem(index)
+                                        }
+                                    )
+                                } else {
+                                    CompactForumItem(
+                                        title = item.name,
+                                        unreadCount = item.unread,
+                                        isExpanded = expandedForums.contains(item.id),
+                                        isLoading = viewModel.isLoading,
+                                        onClick = { viewModel.toggleForum(item) }
+                                    )
+                                }
+                                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            }
+                        }
+
+                        // Alphabet Index
+                        if (alphabet.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier
+                                    .width(24.dp)
+                                    .fillMaxHeight()
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                                    .padding(vertical = 4.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                alphabet.forEach { char ->
+                                    Text(
+                                        text = char.toString(),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                val index = displayList.indexOfFirst { 
+                                                    it.first.name.startsWith(char, ignoreCase = true) 
                                                 }
-                                            }
-                                        },
-                                    textAlign = TextAlign.Center
-                                )
+                                                if (index != -1) {
+                                                    scope.launch {
+                                                        listState.scrollToItem(index)
+                                                    }
+                                                }
+                                            },
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
                             }
                         }
                     }

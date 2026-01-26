@@ -147,12 +147,39 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable(
-                        route = "thread/{forumName}/{topicName}/{topicId}?rootId={rootId}",
+                        route = "topics/{forumName}/{forumId}",
+                        arguments = listOf(
+                            navArgument("forumName") { type = NavType.StringType },
+                            navArgument("forumId") { type = NavType.IntType }
+                        )
+                    ) { backStackEntry ->
+                        val forumName = backStackEntry.arguments?.getString("forumName") ?: ""
+                        val forumId = backStackEntry.arguments?.getInt("forumId") ?: 0
+                        val viewModel: TopicListViewModel = viewModel(
+                            factory = TopicListViewModelFactory(forumRepository, forumName, forumId)
+                        )
+                        TopicListScreen(
+                            viewModel = viewModel,
+                            forumName = forumName,
+                            onBackClick = { navController.popBackStack() },
+                            onTopicClick = { topicName, topicId ->
+                                navController.navigate("thread/$forumName/$topicName/$topicId")
+                            },
+                            onLogout = onLogout,
+                            onSettingsClick = onSettingsClick
+                        )
+                    }
+                    composable(
+                        route = "thread/{forumName}/{topicName}/{topicId}?rootId={rootId}&msgId={msgId}",
                         arguments = listOf(
                             navArgument("forumName") { type = NavType.StringType },
                             navArgument("topicName") { type = NavType.StringType },
                             navArgument("topicId") { type = NavType.IntType },
                             navArgument("rootId") { 
+                                type = NavType.IntType
+                                defaultValue = 0
+                            },
+                            navArgument("msgId") { 
                                 type = NavType.IntType
                                 defaultValue = 0
                             }
@@ -162,6 +189,7 @@ class MainActivity : ComponentActivity() {
                         val topicName = backStackEntry.arguments?.getString("topicName") ?: ""
                         val topicId = backStackEntry.arguments?.getInt("topicId") ?: 0
                         val rootId = backStackEntry.arguments?.getInt("rootId") ?: 0
+                        val msgId = backStackEntry.arguments?.getInt("msgId") ?: 0
                         
                         val viewModel: TopicViewModel = viewModel(
                             factory = TopicViewModelFactory(
@@ -170,7 +198,8 @@ class MainActivity : ComponentActivity() {
                                 forumName, 
                                 topicName, 
                                 topicId, 
-                                initialRootId = rootId
+                                initialRootId = rootId,
+                                initialMessageId = msgId
                             )
                         )
                         ThreadScreen(
@@ -178,7 +207,10 @@ class MainActivity : ComponentActivity() {
                             onBackClick = { navController.popBackStack() },
                             onLogout = onLogout,
                             onSettingsClick = onSettingsClick,
-                            settingsManager = settingsManager
+                            settingsManager = settingsManager,
+                            onNavigateToThread = { f, t, tId, rId, mId ->
+                                navController.navigate("thread/$f/$t/$tId?rootId=$rId&msgId=$mId")
+                            }
                         )
                     }
                 }

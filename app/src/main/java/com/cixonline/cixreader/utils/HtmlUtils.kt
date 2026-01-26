@@ -5,11 +5,24 @@ import androidx.core.text.HtmlCompat
 
 object HtmlUtils {
     /**
-     * Decodes HTML entities in the given string.
+     * Decodes HTML entities in the given string while preserving newlines.
      */
     fun decodeHtml(text: String?): String {
         if (text.isNullOrEmpty()) return ""
-        return HtmlCompat.fromHtml(text, HtmlCompat.FROM_HTML_MODE_LEGACY).toString()
+        
+        // CIX messages are often plain text with HTML entities.
+        // HtmlCompat.fromHtml parses the input as HTML source, which collapses 
+        // whitespace (including newlines) into single spaces.
+        // To preserve them, we replace them with a temporary marker before decoding.
+        val marker = "___NEWLINE_MARKER___"
+        val withMarkers = text.replace("\r\n", marker)
+            .replace("\r", marker)
+            .replace("\n", marker)
+            
+        val decoded = HtmlCompat.fromHtml(withMarkers, HtmlCompat.FROM_HTML_MODE_LEGACY).toString()
+        
+        // Restore newlines
+        return decoded.replace(marker, "\n")
     }
 
     /**
