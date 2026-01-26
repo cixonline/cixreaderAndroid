@@ -7,12 +7,9 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface FolderDao {
     @Query("""
-        SELECT f.id, f.name, f.parentId, f.flags, f.folder_index, f.unreadPriority, f.deletePending, f.resignPending, f.markReadRangePending,
-        (CASE 
-            WHEN f.parentId = -1 THEN (SELECT COUNT(*) FROM messages m WHERE m.topicId IN (SELECT id FROM folders WHERE parentId = f.id) AND m.unread = 1 AND m.date > :cutoff)
-            ELSE (SELECT COUNT(*) FROM messages m WHERE m.topicId = f.id AND m.unread = 1 AND m.date > :cutoff)
-        END) as unread
-        FROM folders f 
+        SELECT id, name, parentId, flags, folder_index, unreadPriority, deletePending, resignPending, markReadRangePending,
+        (SELECT COUNT(*) FROM messages WHERE (topicId = folders.id OR topicId IN (SELECT id FROM folders f2 WHERE f2.parentId = folders.id)) AND unread = 1 AND date > :cutoff) as unread
+        FROM folders
         ORDER BY folder_index ASC
     """)
     fun getAllWithDynamicUnread(cutoff: Long): Flow<List<Folder>>
