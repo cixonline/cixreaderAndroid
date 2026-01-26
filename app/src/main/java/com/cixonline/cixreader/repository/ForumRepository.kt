@@ -13,6 +13,10 @@ class ForumRepository(
 ) {
     val allFolders: Flow<List<Folder>> = folderDao.getAll()
 
+    fun allFoldersWithCutoff(cutoff: Long): Flow<List<Folder>> {
+        return folderDao.getAllWithDynamicUnread(cutoff)
+    }
+
     suspend fun refreshForums() {
         try {
             val resultSet = api.getForums()
@@ -48,12 +52,8 @@ class ForumRepository(
             }
             folderDao.insertAll(topics)
             
-            // Calculate total unread count for the forum from its topics
-            val totalUnread = topics.sumOf { it.unread }
-            val forum = folderDao.getById(forumId)
-            if (forum != null && forum.unread != totalUnread) {
-                folderDao.update(forum.copy(unread = totalUnread))
-            }
+            // Note: Forum-level unread sync removed here as FolderDao.getAllWithDynamicUnread 
+            // calculates it on the fly from message table with cutoff.
         } catch (e: Exception) {
             e.printStackTrace()
         }

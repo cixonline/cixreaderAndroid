@@ -24,8 +24,8 @@ interface MessageDao {
     @Query("SELECT * FROM messages ORDER BY date DESC LIMIT :count")
     fun getRecentMessages(count: Int): Flow<List<CIXMessage>>
 
-    @Query("SELECT * FROM messages WHERE unread = 1 ORDER BY date ASC LIMIT 1")
-    suspend fun getFirstUnreadMessage(): CIXMessage?
+    @Query("SELECT * FROM messages WHERE unread = 1 AND date > :cutoffDate ORDER BY date ASC LIMIT 1")
+    suspend fun getFirstUnreadMessage(cutoffDate: Long): CIXMessage?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(message: CIXMessage)
@@ -39,6 +39,6 @@ interface MessageDao {
     @Delete
     suspend fun delete(message: CIXMessage)
 
-    @Query("SELECT COUNT(*) FROM messages WHERE topicId = :topicId AND unread = 1")
-    suspend fun getUnreadCount(topicId: Int): Int
+    @Query("SELECT COUNT(*) FROM messages WHERE topicId = :topicId AND unread = 1 AND date > :cutoffDate")
+    suspend fun getUnreadCount(topicId: Int, cutoffDate: Long): Int
 }
