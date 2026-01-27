@@ -21,7 +21,7 @@ object NetworkClient {
         password = pass
     }
 
-    private val okHttpClient by lazy {
+    val okHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(60, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)

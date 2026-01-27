@@ -70,6 +70,7 @@ fun ThreadScreen(
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val selectedProfile by viewModel.selectedProfile.collectAsState()
+    val selectedResume by viewModel.selectedResume.collectAsState()
     val fontSizeMultiplier = remember { settingsManager.getFontSize() }
 
     val getEffectiveRootId = { msg: CIXMessage -> if (msg.rootId != 0) msg.rootId else msg.remoteId }
@@ -271,7 +272,11 @@ fun ThreadScreen(
     }
 
     selectedProfile?.let { profile ->
-        ProfileDialog(profile = profile, onDismiss = { viewModel.dismissProfile() })
+        ProfileDialog(
+            profile = profile, 
+            resume = selectedResume,
+            onDismiss = { viewModel.dismissProfile() }
+        )
     }
 }
 

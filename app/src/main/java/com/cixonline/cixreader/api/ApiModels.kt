@@ -41,6 +41,13 @@ class UserProfile {
     var lastPost: String? = ""
 }
 
+@Root(name = "Resume", strict = false)
+@Namespace(reference = "http://cixonline.com")
+class Resume {
+    @field:Element(name = "Body", required = false)
+    var body: String? = ""
+}
+
 @Root(name = "ForumResultSet", strict = false)
 @Namespace(reference = "http://cixonline.com")
 class ForumResultSet {

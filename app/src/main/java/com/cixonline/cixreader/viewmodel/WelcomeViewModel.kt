@@ -52,6 +52,7 @@ class WelcomeViewModel(
     val isLoading: StateFlow<Boolean> = _isLoading
 
     override val selectedProfile: StateFlow<UserProfile?> = profileDelegate.selectedProfile
+    override val selectedResume: StateFlow<String?> = profileDelegate.selectedResume
     override val isProfileLoading: StateFlow<Boolean> = profileDelegate.isLoading
 
     val allForums: Flow<List<Folder>> = folderDao.getAll().map { folders ->

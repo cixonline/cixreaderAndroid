@@ -36,6 +36,7 @@ class TopicViewModel(
     val scrollToMessageId: StateFlow<Int?> = _scrollToMessageId
 
     override val selectedProfile: StateFlow<UserProfile?> = profileDelegate.selectedProfile
+    override val selectedResume: StateFlow<String?> = profileDelegate.selectedResume
     override val isProfileLoading: StateFlow<Boolean> = profileDelegate.isLoading
 
     val messages: StateFlow<List<CIXMessage>> = combine(
