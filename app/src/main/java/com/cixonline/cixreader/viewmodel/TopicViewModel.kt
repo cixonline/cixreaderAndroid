@@ -80,8 +80,7 @@ class TopicViewModel(
         return if (msg.rootId != 0) msg.rootId else msg.remoteId
     }
 
-    private fun getThreadInOrder(allMessages: List<CIXMessage>, rootId: Int): List<CIXMessage> {
-        val children = allMessages.groupBy { it.commentId }
+    private fun getThreadInOrder(allMessages: List<CIXMessage>, children: Map<Int, List<CIXMessage>>, rootId: Int): List<CIXMessage> {
         val result = mutableListOf<CIXMessage>()
         
         fun walk(m: CIXMessage) {
@@ -118,12 +117,13 @@ class TopicViewModel(
         val allMessages = messages.value
         if (allMessages.isEmpty()) return null
 
+        val children = allMessages.groupBy { it.commentId }
         val roots = allMessages.filter { it.isRoot }.sortedByDescending { it.date }
         
         if (currentMessageId == null) {
             // Find first unread following thread order
             for (root in roots) {
-                val thread = getThreadInOrder(allMessages, root.remoteId)
+                val thread = getThreadInOrder(allMessages, children, root.remoteId)
                 val unread = thread.find { it.unread }
                 if (unread != null) return unread
             }
@@ -134,7 +134,7 @@ class TopicViewModel(
         val currentRootId = getEffectiveRootId(currentMsg)
         
         // 1. Search in the current thread after the current message
-        val currentThread = getThreadInOrder(allMessages, currentRootId)
+        val currentThread = getThreadInOrder(allMessages, children, currentRootId)
         val currentIndex = currentThread.indexOfFirst { it.remoteId == currentMessageId }
         if (currentIndex != -1) {
             for (i in (currentIndex + 1) until currentThread.size) {
@@ -146,7 +146,7 @@ class TopicViewModel(
         val currentRootIndex = roots.indexOfFirst { getEffectiveRootId(it) == currentRootId }
         if (currentRootIndex != -1) {
             for (i in (currentRootIndex + 1) until roots.size) {
-                val nextThread = getThreadInOrder(allMessages, getEffectiveRootId(roots[i]))
+                val nextThread = getThreadInOrder(allMessages, children, getEffectiveRootId(roots[i]))
                 val unread = nextThread.find { it.unread }
                 if (unread != null) return unread
             }
@@ -155,7 +155,7 @@ class TopicViewModel(
         // 3. Wrap around to earlier threads
         val limit = if (currentRootIndex != -1) currentRootIndex else roots.size
         for (i in 0 until limit) {
-            val nextThread = getThreadInOrder(allMessages, getEffectiveRootId(roots[i]))
+            val nextThread = getThreadInOrder(allMessages, children, getEffectiveRootId(roots[i]))
             val unread = nextThread.find { it.unread }
             if (unread != null) return unread
         }
