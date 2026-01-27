@@ -8,7 +8,10 @@ import java.util.Date
 
 @Entity(
     tableName = "messages",
-    indices = [Index(value = ["remoteId", "topicId"], unique = true)]
+    indices = [
+        Index(value = ["remoteId", "topicId"], unique = true),
+        Index(value = ["topicId", "unread", "date"])
+    ]
 )
 data class CIXMessage(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,

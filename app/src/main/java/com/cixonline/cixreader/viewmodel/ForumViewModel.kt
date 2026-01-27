@@ -30,6 +30,9 @@ class ForumViewModel(private val repository: ForumRepository) : ViewModel() {
     private val _showOnlyUnread = MutableStateFlow(true)
     val showOnlyUnread: StateFlow<Boolean> = _showOnlyUnread.asStateFlow()
 
+    private val _loadingForums = MutableStateFlow<Set<Int>>(emptySet())
+    val loadingForums: StateFlow<Set<Int>> = _loadingForums.asStateFlow()
+
     var isLoading by mutableStateOf(false)
         private set
 
@@ -69,7 +72,16 @@ class ForumViewModel(private val repository: ForumRepository) : ViewModel() {
             _expandedForums.value = current + forumId
             // Refresh topics for this forum when expanded
             viewModelScope.launch {
-                repository.refreshTopics(forum.name, forum.id)
+                _loadingForums.value += forumId
+                isLoading = true
+                try {
+                    repository.refreshTopics(forum.name, forum.id)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    _loadingForums.value -= forumId
+                    isLoading = false
+                }
             }
         }
     }
