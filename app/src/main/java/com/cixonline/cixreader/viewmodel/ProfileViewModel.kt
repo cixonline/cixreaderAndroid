@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import com.cixonline.cixreader.api.NetworkClient
 
 interface ProfileHost {
     val selectedProfile: StateFlow<UserProfile?>
@@ -57,6 +58,7 @@ class ProfileDelegate(private val api: CixApi) {
     companion object {
         fun getMugshotUrl(userName: String?): String? {
             if (userName.isNullOrBlank()) return null
+            // Use the base URL from NetworkClient to ensure consistency
             return "https://api.cixonline.com/v2.0/cix.svc/user/$userName/mugshot"
         }
     }

@@ -10,12 +10,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.cixonline.cixreader.R
+import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.api.UserProfile
 import com.cixonline.cixreader.viewmodel.ProfileDelegate
 
@@ -58,6 +60,7 @@ fun ProfileDialog(
                     ProfileDelegate.getMugshotUrl(profile.userName)?.let { mugshotUrl ->
                         AsyncImage(
                             model = mugshotUrl,
+                            imageLoader = NetworkClient.getImageLoader(LocalContext.current),
                             contentDescription = "Mugshot",
                             modifier = Modifier
                                 .size(80.dp)
