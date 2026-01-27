@@ -19,7 +19,9 @@ class TopicViewModel(
     val topicId: Int,
     val initialMessageId: Int = 0,
     val initialRootId: Int = 0
-) : ViewModel() {
+) : ViewModel(), ProfileHost {
+
+    private val profileDelegate = ProfileDelegate(api)
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
@@ -33,8 +35,8 @@ class TopicViewModel(
     private val _scrollToMessageId = MutableStateFlow<Int?>(if (initialMessageId != 0) initialMessageId else null)
     val scrollToMessageId: StateFlow<Int?> = _scrollToMessageId
 
-    private val _selectedProfile = MutableStateFlow<UserProfile?>(null)
-    val selectedProfile: StateFlow<UserProfile?> = _selectedProfile
+    override val selectedProfile: StateFlow<UserProfile?> = profileDelegate.selectedProfile
+    override val isProfileLoading: StateFlow<Boolean> = profileDelegate.isLoading
 
     val messages: StateFlow<List<CIXMessage>> = combine(
         repository.getMessagesForTopic(topicId),
@@ -205,22 +207,12 @@ class TopicViewModel(
         }
     }
 
-    fun showProfile(user: String) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                val profile = api.getProfile(user)
-                _selectedProfile.value = profile
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                _isLoading.value = false
-            }
-        }
+    override fun showProfile(user: String) {
+        profileDelegate.showProfile(viewModelScope, user)
     }
 
-    fun dismissProfile() {
-        _selectedProfile.value = null
+    override fun dismissProfile() {
+        profileDelegate.dismissProfile()
     }
 
     fun onScrollToMessageComplete() {

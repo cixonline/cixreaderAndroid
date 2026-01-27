@@ -38,7 +38,9 @@ class WelcomeViewModel(
     private val messageDao: MessageDao,
     private val folderDao: FolderDao,
     private val dirForumDao: DirForumDao
-) : ViewModel() {
+) : ViewModel(), ProfileHost {
+
+    private val profileDelegate = ProfileDelegate(api)
 
     private val _onlineUsers = MutableStateFlow<List<WhoApi>>(emptyList())
     val onlineUsers: StateFlow<List<WhoApi>> = _onlineUsers
@@ -49,8 +51,8 @@ class WelcomeViewModel(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
-    private val _selectedProfile = MutableStateFlow<UserProfile?>(null)
-    val selectedProfile: StateFlow<UserProfile?> = _selectedProfile
+    override val selectedProfile: StateFlow<UserProfile?> = profileDelegate.selectedProfile
+    override val isProfileLoading: StateFlow<Boolean> = profileDelegate.isLoading
 
     val allForums: Flow<List<Folder>> = folderDao.getAll().map { folders ->
         folders.filter { it.isRootFolder }
@@ -276,22 +278,12 @@ class WelcomeViewModel(
         }
     }
 
-    fun showProfile(user: String) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                val profile = api.getProfile(user)
-                _selectedProfile.value = profile
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                _isLoading.value = false
-            }
-        }
+    override fun showProfile(user: String) {
+        profileDelegate.showProfile(viewModelScope, user)
     }
 
-    fun dismissProfile() {
-        _selectedProfile.value = null
+    override fun dismissProfile() {
+        profileDelegate.dismissProfile()
     }
 }
 
