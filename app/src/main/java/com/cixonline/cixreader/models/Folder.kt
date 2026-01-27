@@ -14,6 +14,7 @@ data class Folder(
     @ColumnInfo(name = "folder_index") val index: Int = 0,
     val unread: Int = 0,
     val unreadPriority: Int = 0,
+    val lastMessageDate: Long = 0,
     val deletePending: Boolean = false,
     val resignPending: Boolean = false,
     val markReadRangePending: Boolean = false

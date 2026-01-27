@@ -190,7 +190,8 @@ fun WelcomeScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFD91B5C)
+                        containerColor = Color(0xFFD91B5C),
+                        contentColor = Color( color = 0xFFFFFFFF)
                     )
                 ) {
                     Icon(Icons.Default.RocketLaunch, contentDescription = null)
