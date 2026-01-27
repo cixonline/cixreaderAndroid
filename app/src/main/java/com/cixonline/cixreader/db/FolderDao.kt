@@ -10,6 +10,12 @@ interface FolderDao {
         SELECT id, name, parentId, flags, folder_index, unreadPriority, lastMessageDate, deletePending, resignPending, markReadRangePending,
         (SELECT COUNT(*) FROM messages WHERE topicId = folders.id AND unread = 1 AND date > :cutoff) as unread
         FROM folders
+        WHERE parentId != -1
+        UNION ALL
+        SELECT id, name, parentId, flags, folder_index, unreadPriority, lastMessageDate, deletePending, resignPending, markReadRangePending,
+        unread
+        FROM folders
+        WHERE parentId = -1
         ORDER BY folder_index ASC
     """)
     fun getAllWithDynamicUnread(cutoff: Long): Flow<List<Folder>>
