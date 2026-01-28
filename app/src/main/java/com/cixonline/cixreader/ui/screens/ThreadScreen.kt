@@ -71,6 +71,7 @@ fun ThreadScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val selectedProfile by viewModel.selectedProfile.collectAsState()
     val selectedResume by viewModel.selectedResume.collectAsState()
+    val selectedMugshotUrl by viewModel.selectedMugshotUrl.collectAsState()
     val fontSizeMultiplier = remember { settingsManager.getFontSize() }
 
     val getEffectiveRootId = { msg: CIXMessage -> if (msg.rootId != 0) msg.rootId else msg.remoteId }
@@ -275,6 +276,7 @@ fun ThreadScreen(
         ProfileDialog(
             profile = profile, 
             resume = selectedResume,
+            mugshotUrl = selectedMugshotUrl,
             onDismiss = { viewModel.dismissProfile() }
         )
     }

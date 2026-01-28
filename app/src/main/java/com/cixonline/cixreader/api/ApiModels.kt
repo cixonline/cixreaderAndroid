@@ -5,57 +5,74 @@ import org.simpleframework.xml.Element
 import org.simpleframework.xml.ElementList
 import org.simpleframework.xml.Namespace
 import org.simpleframework.xml.Root
+import org.simpleframework.xml.Text
 
 @Root(name = "Account", strict = false)
 @Namespace(reference = "http://cixonline.com")
 class Account {
     @field:Element(name = "Type", required = false)
-    var type: String? = ""
+    var type: String? = null
 }
 
 @Root(name = "UserProfile", strict = false)
 @Namespace(reference = "http://cixonline.com")
 class UserProfile {
     @field:Element(name = "UserName", required = false)
-    var userName: String? = ""
+    var userName: String? = null
 
     @field:Element(name = "FullName", required = false)
-    var fullName: String? = ""
+    var fullName: String? = null
 
     @field:Element(name = "EMail", required = false)
-    var email: String? = ""
+    var email: String? = null
 
     @field:Element(name = "Location", required = false)
-    var location: String? = ""
+    var location: String? = null
 
     @field:Element(name = "Experience", required = false)
-    var experience: String? = ""
+    var experience: String? = null
 
     @field:Element(name = "About", required = false)
-    var about: String? = ""
+    var about: String? = null
 
     @field:Element(name = "FirstPost", required = false)
-    var firstPost: String? = ""
+    var firstPost: String? = null
 
     @field:Element(name = "LastPost", required = false)
-    var lastPost: String? = ""
+    var lastPost: String? = null
+
+    @field:Element(name = "FirstOn", required = false)
+    var firstOn: String? = null
+
+    @field:Element(name = "LastOn", required = false)
+    var lastOn: String? = null
+}
+
+@Root(name = "Mugshot", strict = false)
+@Namespace(reference = "http://cixonline.com")
+class Mugshot {
+    @field:Element(name = "Image", required = false)
+    var image: String? = null
 }
 
 @Root(name = "Resume", strict = false)
 @Namespace(reference = "http://cixonline.com")
 class Resume {
     @field:Element(name = "Body", required = false)
-    var body: String? = ""
+    var body: String? = null
+
+    @field:Text(required = false)
+    var text: String? = null
 }
 
 @Root(name = "ForumResultSet", strict = false)
 @Namespace(reference = "http://cixonline.com")
 class ForumResultSet {
     @field:Attribute(name = "Count", required = false)
-    var count: String? = ""
+    var count: String? = null
 
     @field:Attribute(name = "Start", required = false)
-    var start: String? = ""
+    var start: String? = null
 
     @field:ElementList(name = "Forums", entry = "ForumRow", inline = false, required = false)
     var forums: List<ForumResultSetRow> = mutableListOf()
@@ -65,26 +82,26 @@ class ForumResultSet {
 @Namespace(reference = "http://cixonline.com")
 class ForumResultSetRow {
     @field:Element(name = "Flags", required = false)
-    var flags: String? = ""
+    var flags: String? = null
 
     @field:Element(name = "Name", required = false)
-    var name: String? = ""
+    var name: String? = null
 
     @field:Element(name = "Priority", required = false)
-    var priority: String? = ""
+    var priority: String? = null
 
     @field:Element(name = "Unread", required = false)
-    var unread: String? = ""
+    var unread: String? = null
 }
 
 @Root(name = "TopicResultSet", strict = false)
 @Namespace(reference = "http://cixonline.com")
 class TopicResultSet {
     @field:Element(name = "Count", required = false)
-    var count: String? = ""
+    var count: String? = null
 
     @field:Element(name = "Start", required = false)
-    var start: String? = ""
+    var start: String? = null
 
     @field:ElementList(name = "Topics", entry = "Topic", required = false)
     var topics: List<TopicResult> = mutableListOf()
@@ -94,26 +111,26 @@ class TopicResultSet {
 @Namespace(reference = "http://cixonline.com")
 class TopicResult {
     @field:Element(name = "Name", required = false)
-    var name: String? = ""
+    var name: String? = null
 
     @field:Element(name = "Desc", required = false)
-    var desc: String? = ""
+    var desc: String? = null
 
     @field:Element(name = "Files", required = false)
-    var files: String? = ""
+    var files: String? = null
 
     @field:Element(name = "Flag", required = false)
-    var flag: String? = ""
+    var flag: String? = null
 }
 
 @Root(name = "UserTopicResultSet", strict = false)
 @Namespace(reference = "http://cixonline.com")
 class UserTopicResultSet {
     @field:Element(name = "Count", required = false)
-    var count: String? = ""
+    var count: String? = null
 
     @field:Element(name = "Start", required = false)
-    var start: String? = ""
+    var start: String? = null
 
     @field:ElementList(name = "UserTopics", entry = "UserTopic", inline = false, required = false)
     var userTopics: List<UserTopicApi> = mutableListOf()
@@ -123,29 +140,29 @@ class UserTopicResultSet {
 @Namespace(reference = "http://cixonline.com")
 class UserTopicApi {
     @field:Element(name = "Flag", required = false)
-    var flag: String? = ""
+    var flag: String? = null
 
     @field:Element(name = "Msgs", required = false)
-    var msgs: String? = ""
+    var msgs: String? = null
 
     @field:Element(name = "Name", required = false)
-    var name: String? = ""
+    var name: String? = null
 
     @field:Element(name = "Status", required = false)
-    var status: String? = ""
+    var status: String? = null
 
     @field:Element(name = "UnRead", required = false)
-    var unread: String? = ""
+    var unread: String? = null
 }
 
 @Root(name = "UserForumTopicResultSet2", strict = false)
 @Namespace(reference = "http://cixonline.com")
 class UserForumTopicResultSet2 {
     @field:Element(name = "Count", required = false)
-    var count: String? = ""
+    var count: String? = null
 
     @field:Element(name = "Start", required = false)
-    var start: String? = ""
+    var start: String? = null
 
     @field:ElementList(name = "UserTopics", entry = "UserForumTopic2", inline = false, required = false)
     var userTopics: List<UserForumTopic2> = mutableListOf()
@@ -158,28 +175,28 @@ class UserForumTopic2 {
     var flags: Int = 0
 
     @field:Element(name = "Forum", required = false)
-    var forum: String? = ""
+    var forum: String? = null
 
     @field:Element(name = "Msgs", required = false)
-    var msgs: String? = ""
+    var msgs: String? = null
 
     @field:Element(name = "Priority", required = false)
-    var priority: String? = ""
+    var priority: String? = null
 
     @field:Element(name = "Topic", required = false)
-    var topic: String? = ""
+    var topic: String? = null
 
     @field:Element(name = "UnRead", required = false)
     var unread: Int = 0
 
     @field:Element(name = "Recent", required = false)
-    var recent: String? = ""
+    var recent: String? = null
 
     @field:Element(name = "Name", required = false)
-    var name: String? = ""
+    var name: String? = null
 
     @field:Element(name = "Latest", required = false)
-    var latest: String? = ""
+    var latest: String? = null
 }
 
 @Root(name = "MessageResultSet", strict = false)
@@ -196,13 +213,13 @@ class MessageApi {
     var id: Int = 0
 
     @field:Element(name = "Author", required = false)
-    var author: String? = ""
+    var author: String? = null
 
     @field:Element(name = "Body", required = false)
-    var body: String? = ""
+    var body: String? = null
 
     @field:Element(name = "DateTime", required = false)
-    var dateTime: String? = ""
+    var dateTime: String? = null
 
     @field:Element(name = "ReplyTo", required = false)
     var replyTo: Int = 0
@@ -229,22 +246,22 @@ data class PostMessageRequest(
 @Namespace(reference = "http://cixonline.com")
 class ForumApi {
     @field:Element(name = "Name", required = false)
-    var name: String? = ""
+    var name: String? = null
 
     @field:Element(name = "Title", required = false)
-    var title: String? = ""
+    var title: String? = null
 
     @field:Element(name = "Description", required = false)
-    var description: String? = ""
+    var description: String? = null
 
     @field:Element(name = "Category", required = false)
-    var category: String? = ""
+    var category: String? = null
 
     @field:Element(name = "SubCategory", required = false)
-    var subCategory: String? = ""
+    var subCategory: String? = null
 
     @field:Element(name = "Type", required = false)
-    var type: String? = ""
+    var type: String? = null
 }
 
 @Root(name = "Whos", strict = false)
@@ -258,13 +275,13 @@ class WhosApi {
 @Namespace(reference = "http://cixonline.com")
 class WhoApi {
     @field:Element(name = "Name", required = false)
-    var name: String? = ""
+    var name: String? = null
 
     @field:Element(name = "Forum", required = false)
-    var forum: String? = ""
+    var forum: String? = null
 
     @field:Element(name = "Topic", required = false)
-    var topic: String? = ""
+    var topic: String? = null
 }
 
 @Root(name = "CategoryResultSet", strict = false)
@@ -278,10 +295,10 @@ class CategoryResultSet {
 @Namespace(reference = "http://cixonline.com")
 class CategoryResult {
     @field:Element(name = "Name", required = false)
-    var name: String? = ""
+    var name: String? = null
 
     @field:Element(name = "Sub", required = false)
-    var sub: String? = ""
+    var sub: String? = null
 }
 
 @Root(name = "DirListings", strict = false)
@@ -295,23 +312,23 @@ class DirListings {
 @Namespace(reference = "http://cixonline.com")
 data class DirListing(
     @field:Element(name = "Forum", required = false)
-    var forum: String? = "",
+    var forum: String? = null,
 
     @field:Element(name = "Title", required = false)
-    var title: String? = "",
+    var title: String? = null,
 
     @field:Element(name = "Recent", required = false)
     var recent: Int = 0,
 
     @field:Element(name = "Cat", required = false)
-    var cat: String? = "",
+    var cat: String? = null,
 
     @field:Element(name = "Sub", required = false)
-    var sub: String? = "",
+    var sub: String? = null,
 
     @field:Element(name = "Type", required = false)
-    var type: String? = ""
+    var type: String? = null
 ) {
     // Required by SimpleXML for deserialization
-    constructor() : this("", "", 0, "", "", "")
+    constructor() : this(null, null, 0, null, null, null)
 }

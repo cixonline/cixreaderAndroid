@@ -37,6 +37,7 @@ class TopicViewModel(
 
     override val selectedProfile: StateFlow<UserProfile?> = profileDelegate.selectedProfile
     override val selectedResume: StateFlow<String?> = profileDelegate.selectedResume
+    override val selectedMugshotUrl: StateFlow<String?> = profileDelegate.selectedMugshotUrl
     override val isProfileLoading: StateFlow<Boolean> = profileDelegate.isLoading
 
     val messages: StateFlow<List<CIXMessage>> = combine(

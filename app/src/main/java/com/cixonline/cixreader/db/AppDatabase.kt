@@ -8,13 +8,15 @@ import androidx.room.TypeConverters
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.models.DirForum
+import com.cixonline.cixreader.models.CachedProfile
 
-@Database(entities = [Folder::class, CIXMessage::class, DirForum::class], version = 3, exportSchema = false)
+@Database(entities = [Folder::class, CIXMessage::class, DirForum::class, CachedProfile::class], version = 4, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun folderDao(): FolderDao
     abstract fun messageDao(): MessageDao
     abstract fun dirForumDao(): DirForumDao
+    abstract fun cachedProfileDao(): CachedProfileDao
 
     companion object {
         @Volatile

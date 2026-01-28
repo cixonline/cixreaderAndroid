@@ -41,6 +41,7 @@ fun WelcomeScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val selectedProfile by viewModel.selectedProfile.collectAsState()
     val selectedResume by viewModel.selectedResume.collectAsState()
+    val selectedMugshotUrl by viewModel.selectedMugshotUrl.collectAsState()
     var showMenu by remember { mutableStateOf(false) }
     var showPostDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -304,6 +305,7 @@ fun WelcomeScreen(
         ProfileDialog(
             profile = profile, 
             resume = selectedResume,
+            mugshotUrl = selectedMugshotUrl,
             onDismiss = { viewModel.dismissProfile() }
         )
     }
