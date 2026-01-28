@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.cixonline.cixreader.api.CixApi
 import com.cixonline.cixreader.api.UserProfile
+import com.cixonline.cixreader.db.CachedProfileDao
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.repository.NotAMemberException
@@ -14,6 +15,7 @@ import kotlinx.coroutines.launch
 class TopicViewModel(
     private val api: CixApi,
     private val repository: MessageRepository,
+    private val cachedProfileDao: CachedProfileDao,
     val forumName: String,
     val topicName: String,
     val topicId: Int,
@@ -21,7 +23,7 @@ class TopicViewModel(
     val initialRootId: Int = 0
 ) : ViewModel(), ProfileHost {
 
-    private val profileDelegate = ProfileDelegate(api)
+    private val profileDelegate = ProfileDelegate(api, cachedProfileDao)
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
@@ -225,6 +227,7 @@ class TopicViewModel(
 class TopicViewModelFactory(
     private val api: CixApi,
     private val repository: MessageRepository,
+    private val cachedProfileDao: CachedProfileDao,
     private val forumName: String,
     private val topicName: String,
     private val topicId: Int,
@@ -234,7 +237,7 @@ class TopicViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(TopicViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return TopicViewModel(api, repository, forumName, topicName, topicId, initialMessageId, initialRootId) as T
+            return TopicViewModel(api, repository, cachedProfileDao, forumName, topicName, topicId, initialMessageId, initialRootId) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

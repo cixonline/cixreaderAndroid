@@ -14,6 +14,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.db.AppDatabase
+import com.cixonline.cixreader.db.CachedProfileDao
 import com.cixonline.cixreader.repository.ForumRepository
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.ui.screens.*
@@ -84,10 +85,11 @@ class MainActivity : ComponentActivity() {
                     composable("welcome") {
                         val welcomeViewModel: WelcomeViewModel = viewModel(
                             factory = WelcomeViewModelFactory(
-                                NetworkClient.api, 
-                                database.messageDao(), 
-                                database.folderDao(),
-                                database.dirForumDao()
+                                api = NetworkClient.api, 
+                                messageDao = database.messageDao(), 
+                                folderDao = database.folderDao(),
+                                dirForumDao = database.dirForumDao(),
+                                cachedProfileDao = database.cachedProfileDao()
                             )
                         )
                         WelcomeScreen(
@@ -130,7 +132,7 @@ class MainActivity : ComponentActivity() {
                         DirectoryScreen(
                             viewModel = directoryViewModel,
                             onBackClick = { navController.popBackStack() },
-                            onForumJoined = { forumName ->
+                            onForumJoined = { _ ->
                                 // Refresh forums list after joining
                                 navController.navigate("forums") {
                                     popUpTo("welcome")
@@ -193,13 +195,14 @@ class MainActivity : ComponentActivity() {
                         
                         val viewModel: TopicViewModel = viewModel(
                             factory = TopicViewModelFactory(
-                                NetworkClient.api,
-                                messageRepository, 
-                                forumName, 
-                                topicName, 
-                                topicId, 
-                                initialRootId = rootId,
-                                initialMessageId = msgId
+                                api = NetworkClient.api,
+                                repository = messageRepository, 
+                                cachedProfileDao = database.cachedProfileDao(),
+                                forumName = forumName, 
+                                topicName = topicName, 
+                                topicId = topicId, 
+                                initialMessageId = msgId,
+                                initialRootId = rootId
                             )
                         )
                         ThreadScreen(
