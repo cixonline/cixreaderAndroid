@@ -9,6 +9,7 @@ import com.cixonline.cixreader.api.UserProfile
 import com.cixonline.cixreader.db.MessageDao
 import com.cixonline.cixreader.db.FolderDao
 import com.cixonline.cixreader.db.DirForumDao
+import com.cixonline.cixreader.db.CachedProfileDao
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.api.WhoApi
@@ -37,10 +38,11 @@ class WelcomeViewModel(
     private val api: CixApi,
     private val messageDao: MessageDao,
     private val folderDao: FolderDao,
-    private val dirForumDao: DirForumDao
+    private val dirForumDao: DirForumDao,
+    private val cachedProfileDao: CachedProfileDao
 ) : ViewModel(), ProfileHost {
 
-    private val profileDelegate = ProfileDelegate(api)
+    private val profileDelegate = ProfileDelegate(api, cachedProfileDao)
 
     private val _onlineUsers = MutableStateFlow<List<WhoApi>>(emptyList())
     val onlineUsers: StateFlow<List<WhoApi>> = _onlineUsers
@@ -293,12 +295,13 @@ class WelcomeViewModelFactory(
     private val api: CixApi,
     private val messageDao: MessageDao,
     private val folderDao: FolderDao,
-    private val dirForumDao: DirForumDao
+    private val dirForumDao: DirForumDao,
+    private val cachedProfileDao: CachedProfileDao
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WelcomeViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return WelcomeViewModel(api, messageDao, folderDao, dirForumDao) as T
+            return WelcomeViewModel(api, messageDao, folderDao, dirForumDao, cachedProfileDao) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
