@@ -29,10 +29,12 @@ import kotlinx.coroutines.launch
 @Composable
 fun DirectoryScreen(
     viewModel: DirectoryViewModel,
+    currentUsername: String?,
     onBackClick: () -> Unit,
     onForumJoined: (String) -> Unit,
     onLogout: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onProfileClick: (String) -> Unit
 ) {
     val forums by viewModel.forums.collectAsState()
     val joinedForumNames by viewModel.joinedForumNames.collectAsState()
@@ -115,6 +117,13 @@ fun DirectoryScreen(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false }
                         ) {
+                            DropdownMenuItem(
+                                text = { Text("Profile") },
+                                onClick = {
+                                    showMenu = false
+                                    currentUsername?.let { onProfileClick(it) }
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Settings") },
                                 onClick = {

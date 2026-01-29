@@ -30,10 +30,12 @@ import com.cixonline.cixreader.viewmodel.TopicListViewModel
 fun TopicListScreen(
     viewModel: TopicListViewModel,
     forumName: String,
+    currentUsername: String?,
     onBackClick: () -> Unit,
     onTopicClick: (topicName: String, topicId: Int) -> Unit,
     onLogout: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onProfileClick: (String) -> Unit
 ) {
     val topics by viewModel.topics.collectAsState(initial = emptyList())
     var showMenu by remember { mutableStateOf(false) }
@@ -79,6 +81,13 @@ fun TopicListScreen(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false }
                         ) {
+                            DropdownMenuItem(
+                                text = { Text("Profile") },
+                                onClick = {
+                                    showMenu = false
+                                    currentUsername?.let { onProfileClick(it) }
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Settings") },
                                 onClick = {

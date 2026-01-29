@@ -61,6 +61,7 @@ sealed class ThreadDisplayItem {
 @Composable
 fun ThreadScreen(
     viewModel: TopicViewModel,
+    currentUsername: String?,
     onBackClick: () -> Unit,
     onLogout: () -> Unit,
     onSettingsClick: () -> Unit,
@@ -165,6 +166,13 @@ fun ThreadScreen(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false }
                         ) {
+                            DropdownMenuItem(
+                                text = { Text("Profile") },
+                                onClick = {
+                                    showMenu = false
+                                    currentUsername?.let { viewModel.showProfile(it) }
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Settings") },
                                 onClick = {

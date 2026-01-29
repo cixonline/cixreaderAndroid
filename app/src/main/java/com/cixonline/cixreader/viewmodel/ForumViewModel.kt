@@ -6,13 +6,22 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.cixonline.cixreader.api.CixApi
+import com.cixonline.cixreader.api.UserProfile
+import com.cixonline.cixreader.db.CachedProfileDao
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.repository.ForumRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
-class ForumViewModel(private val repository: ForumRepository) : ViewModel() {
+class ForumViewModel(
+    private val api: CixApi,
+    private val repository: ForumRepository,
+    private val cachedProfileDao: CachedProfileDao
+) : ViewModel(), ProfileHost {
+
+    private val profileDelegate = ProfileDelegate(api, cachedProfileDao)
 
     private val _cutoff = MutableStateFlow(
         Calendar.getInstance().apply {
@@ -38,6 +47,11 @@ class ForumViewModel(private val repository: ForumRepository) : ViewModel() {
 
     var errorMessage by mutableStateOf<String?>(null)
         private set
+
+    override val selectedProfile: StateFlow<UserProfile?> = profileDelegate.selectedProfile
+    override val selectedResume: StateFlow<String?> = profileDelegate.selectedResume
+    override val selectedMugshotUrl: StateFlow<String?> = profileDelegate.selectedMugshotUrl
+    override val isProfileLoading: StateFlow<Boolean> = profileDelegate.isLoading
 
     init {
         refresh()
@@ -89,13 +103,25 @@ class ForumViewModel(private val repository: ForumRepository) : ViewModel() {
     fun setShowOnlyUnread(onlyUnread: Boolean) {
         _showOnlyUnread.value = onlyUnread
     }
+
+    override fun showProfile(user: String) {
+        profileDelegate.showProfile(viewModelScope, user)
+    }
+
+    override fun dismissProfile() {
+        profileDelegate.dismissProfile()
+    }
 }
 
-class ForumViewModelFactory(private val repository: ForumRepository) : ViewModelProvider.Factory {
+class ForumViewModelFactory(
+    private val api: CixApi,
+    private val repository: ForumRepository,
+    private val cachedProfileDao: CachedProfileDao
+) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(ForumViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return ForumViewModel(repository) as T
+            return ForumViewModel(api, repository, cachedProfileDao) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

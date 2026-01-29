@@ -38,10 +38,12 @@ import kotlinx.coroutines.launch
 @Composable
 fun ForumListScreen(
     viewModel: ForumViewModel,
+    currentUsername: String?,
     onBackClick: () -> Unit,
     onTopicClick: (forumName: String, topicName: String, topicId: Int) -> Unit,
     onLogout: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onProfileClick: (String) -> Unit
 ) {
     val folders by viewModel.allFolders.collectAsState(initial = emptyList())
     val expandedForums by viewModel.expandedForums.collectAsState()
@@ -121,6 +123,13 @@ fun ForumListScreen(
                                 expanded = showMenu,
                                 onDismissRequest = { showMenu = false }
                             ) {
+                                DropdownMenuItem(
+                                    text = { Text("Profile") },
+                                    onClick = {
+                                        showMenu = false
+                                        currentUsername?.let { onProfileClick(it) }
+                                    }
+                                )
                                 DropdownMenuItem(
                                     text = { Text("Settings") },
                                     onClick = {

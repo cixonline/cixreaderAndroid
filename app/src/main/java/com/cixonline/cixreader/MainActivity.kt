@@ -110,16 +110,24 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("forums") {
                         val forumViewModel: ForumViewModel = viewModel(
-                            factory = ForumViewModelFactory(forumRepository)
+                            factory = ForumViewModelFactory(
+                                api = NetworkClient.api,
+                                repository = forumRepository,
+                                cachedProfileDao = database.cachedProfileDao()
+                            )
                         )
                         ForumListScreen(
                             viewModel = forumViewModel,
+                            currentUsername = savedUser,
                             onBackClick = { navController.popBackStack() },
                             onTopicClick = { forumName, topicName, topicId ->
                                 navController.navigate("thread/$forumName/$topicName/$topicId")
                             },
                             onLogout = onLogout,
-                            onSettingsClick = onSettingsClick
+                            onSettingsClick = onSettingsClick,
+                            onProfileClick = { user ->
+                                forumViewModel.showProfile(user)
+                            }
                         )
                     }
                     composable("directory") {
@@ -132,6 +140,7 @@ class MainActivity : ComponentActivity() {
                         )
                         DirectoryScreen(
                             viewModel = directoryViewModel,
+                            currentUsername = savedUser,
                             onBackClick = { navController.popBackStack() },
                             onForumJoined = { _ ->
                                 // Refresh forums list after joining
@@ -140,7 +149,8 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onLogout = onLogout,
-                            onSettingsClick = onSettingsClick
+                            onSettingsClick = onSettingsClick,
+                            onProfileClick = { /* Profile display not implemented for Directory yet */ }
                         )
                     }
                     composable("settings") {
@@ -164,12 +174,14 @@ class MainActivity : ComponentActivity() {
                         TopicListScreen(
                             viewModel = viewModel,
                             forumName = forumName,
+                            currentUsername = savedUser,
                             onBackClick = { navController.popBackStack() },
                             onTopicClick = { topicName, topicId ->
                                 navController.navigate("thread/$forumName/$topicName/$topicId")
                             },
                             onLogout = onLogout,
-                            onSettingsClick = onSettingsClick
+                            onSettingsClick = onSettingsClick,
+                            onProfileClick = { /* Profile display not implemented for TopicList yet */ }
                         )
                     }
                     composable(
@@ -209,6 +221,7 @@ class MainActivity : ComponentActivity() {
                         )
                         ThreadScreen(
                             viewModel = viewModel,
+                            currentUsername = savedUser,
                             onBackClick = { navController.popBackStack() },
                             onLogout = onLogout,
                             onSettingsClick = onSettingsClick,
