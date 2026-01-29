@@ -9,14 +9,16 @@ import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.models.DirForum
 import com.cixonline.cixreader.models.CachedProfile
+import com.cixonline.cixreader.models.Draft
 
-@Database(entities = [Folder::class, CIXMessage::class, DirForum::class, CachedProfile::class], version = 4, exportSchema = false)
+@Database(entities = [Folder::class, CIXMessage::class, DirForum::class, CachedProfile::class, Draft::class], version = 5, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun folderDao(): FolderDao
     abstract fun messageDao(): MessageDao
     abstract fun dirForumDao(): DirForumDao
     abstract fun cachedProfileDao(): CachedProfileDao
+    abstract fun draftDao(): DraftDao
 
     companion object {
         @Volatile

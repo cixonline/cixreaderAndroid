@@ -10,8 +10,10 @@ import com.cixonline.cixreader.db.MessageDao
 import com.cixonline.cixreader.db.FolderDao
 import com.cixonline.cixreader.db.DirForumDao
 import com.cixonline.cixreader.db.CachedProfileDao
+import com.cixonline.cixreader.db.DraftDao
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.Folder
+import com.cixonline.cixreader.models.Draft
 import com.cixonline.cixreader.api.WhoApi
 import com.cixonline.cixreader.api.PostMessageRequest
 import com.cixonline.cixreader.utils.DateUtils
@@ -39,7 +41,8 @@ class WelcomeViewModel(
     private val messageDao: MessageDao,
     private val folderDao: FolderDao,
     private val dirForumDao: DirForumDao,
-    private val cachedProfileDao: CachedProfileDao
+    private val cachedProfileDao: CachedProfileDao,
+    private val draftDao: DraftDao
 ) : ViewModel(), ProfileHost {
 
     private val profileDelegate = ProfileDelegate(api, cachedProfileDao)
@@ -272,6 +275,8 @@ class WelcomeViewModel(
                     unread = false
                 )
                 messageDao.insert(newMessage)
+                // Delete draft if exists
+                draftDao.deleteDraftForContext(forum, topic, 0)
                 true
             } else {
                 result == "Success"
@@ -280,6 +285,24 @@ class WelcomeViewModel(
             e.printStackTrace()
             false
         }
+    }
+
+    fun saveDraft(body: String) {
+        val forum = _selectedForum.value?.name ?: return
+        val topic = topicsForSelectedForum.value.find { it.name == suggestedForumAndTopic.value?.second?.name }?.name ?: return
+        viewModelScope.launch {
+            val draft = Draft(
+                forumName = forum,
+                topicName = topic,
+                replyToId = 0,
+                body = body
+            )
+            draftDao.insertDraft(draft)
+        }
+    }
+
+    suspend fun getDraftForContext(forum: String, topic: String): Draft? {
+        return draftDao.getDraft(forum, topic, 0)
     }
 
     override fun showProfile(user: String) {
@@ -296,12 +319,13 @@ class WelcomeViewModelFactory(
     private val messageDao: MessageDao,
     private val folderDao: FolderDao,
     private val dirForumDao: DirForumDao,
-    private val cachedProfileDao: CachedProfileDao
+    private val cachedProfileDao: CachedProfileDao,
+    private val draftDao: DraftDao
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WelcomeViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return WelcomeViewModel(api, messageDao, folderDao, dirForumDao, cachedProfileDao) as T
+            return WelcomeViewModel(api, messageDao, folderDao, dirForumDao, cachedProfileDao, draftDao) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

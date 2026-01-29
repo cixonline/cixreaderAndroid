@@ -6,7 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.cixonline.cixreader.api.CixApi
 import com.cixonline.cixreader.api.UserProfile
 import com.cixonline.cixreader.db.CachedProfileDao
+import com.cixonline.cixreader.db.DraftDao
 import com.cixonline.cixreader.models.CIXMessage
+import com.cixonline.cixreader.models.Draft
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.repository.NotAMemberException
 import kotlinx.coroutines.flow.*
@@ -16,6 +18,7 @@ class TopicViewModel(
     private val api: CixApi,
     private val repository: MessageRepository,
     private val cachedProfileDao: CachedProfileDao,
+    private val draftDao: DraftDao,
     val forumName: String,
     val topicName: String,
     val topicId: Int,
@@ -174,10 +177,28 @@ class TopicViewModel(
         val result = repository.postMessage(forumName, topicName, body, replyToId)
         val success = result != 0
         if (success) {
+            // Delete draft if it exists for this context
+            draftDao.deleteDraftForContext(forumName, topicName, replyToId)
             refresh()
         }
         _isLoading.value = false
         return success
+    }
+
+    fun saveDraft(replyToId: Int, body: String) {
+        viewModelScope.launch {
+            val draft = Draft(
+                forumName = forumName,
+                topicName = topicName,
+                replyToId = replyToId,
+                body = body
+            )
+            draftDao.insertDraft(draft)
+        }
+    }
+
+    suspend fun getDraft(replyToId: Int): Draft? {
+        return draftDao.getDraft(forumName, topicName, replyToId)
     }
 
     fun joinForum(forum: String) {
@@ -228,6 +249,7 @@ class TopicViewModelFactory(
     private val api: CixApi,
     private val repository: MessageRepository,
     private val cachedProfileDao: CachedProfileDao,
+    private val draftDao: DraftDao,
     private val forumName: String,
     private val topicName: String,
     private val topicId: Int,
@@ -237,7 +259,7 @@ class TopicViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(TopicViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return TopicViewModel(api, repository, cachedProfileDao, forumName, topicName, topicId, initialMessageId, initialRootId) as T
+            return TopicViewModel(api, repository, cachedProfileDao, draftDao, forumName, topicName, topicId, initialMessageId, initialRootId) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

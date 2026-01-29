@@ -338,6 +338,15 @@ fun PostMessageDialog(
         }
     }
 
+    LaunchedEffect(selectedForum, selectedTopic) {
+        if (selectedForum != null && selectedTopic != null) {
+            val draft = viewModel.getDraftForContext(selectedForum!!.name, selectedTopic!!.name)
+            if (draft != null && messageBody.isBlank()) {
+                messageBody = draft.body
+            }
+        }
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
@@ -466,6 +475,17 @@ fun PostMessageDialog(
                     verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = onDismiss) {
                         Text("Cancel")
+                    }
+                    TextButton(
+                        onClick = { 
+                            if (selectedForum != null && selectedTopic != null) {
+                                viewModel.saveDraft(messageBody)
+                                onDismiss()
+                            }
+                        },
+                        enabled = selectedForum != null && selectedTopic != null && messageBody.isNotBlank()
+                    ) {
+                        Text("Draft")
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(

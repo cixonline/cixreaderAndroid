@@ -82,6 +82,7 @@ fun ThreadScreen(
     var selectedMessage by remember { mutableStateOf<CIXMessage?>(null) }
     var showMenu by remember { mutableStateOf(false) }
     var showReplyPane by remember { mutableStateOf(false) }
+    var replyInitialText by remember { mutableStateOf("") }
 
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -115,6 +116,12 @@ fun ThreadScreen(
                     selectedRootId = getEffectiveRootId(firstRoot)
                 }
             }
+        }
+    }
+
+    LaunchedEffect(showReplyPane, selectedMessage) {
+        if (showReplyPane && selectedMessage != null) {
+            replyInitialText = viewModel.getDraft(selectedMessage!!.remoteId)?.body ?: ""
         }
     }
 
@@ -251,6 +258,7 @@ fun ThreadScreen(
                     Box(modifier = Modifier.height(200.dp)) {
                         ReplyPane(
                             replyTo = selectedMessage!!,
+                            initialText = replyInitialText,
                             onCancel = { showReplyPane = false },
                             onPost = { body ->
                                 coroutineScope.launch {
@@ -258,6 +266,10 @@ fun ThreadScreen(
                                         showReplyPane = false
                                     }
                                 }
+                            },
+                            onSaveDraft = { body ->
+                                viewModel.saveDraft(selectedMessage!!.remoteId, body)
+                                showReplyPane = false
                             }
                         )
                     }
@@ -409,10 +421,12 @@ fun buildThreadTree(messages: List<CIXMessage>, rootId: Int): List<Pair<CIXMessa
 @Composable
 fun ReplyPane(
     replyTo: CIXMessage,
+    initialText: String = "",
     onCancel: () -> Unit,
-    onPost: (String) -> Unit
+    onPost: (String) -> Unit,
+    onSaveDraft: (String) -> Unit
 ) {
-    var text by remember { mutableStateOf("") }
+    var text by remember(initialText) { mutableStateOf(initialText) }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -427,11 +441,15 @@ fun ReplyPane(
                 Text(
                     text = "Reply to ${replyTo.author} (#${replyTo.remoteId})",
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
                 )
                 Row {
                     TextButton(onClick = onCancel) {
                         Text("Cancel", style = MaterialTheme.typography.labelLarge)
+                    }
+                    TextButton(onClick = { onSaveDraft(text) }, enabled = text.isNotBlank()) {
+                        Text("Draft", style = MaterialTheme.typography.labelLarge)
                     }
                     Button(
                         onClick = { onPost(text) },

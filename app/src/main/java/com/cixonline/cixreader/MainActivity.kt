@@ -13,8 +13,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.cixonline.cixreader.api.NetworkClient
-import com.cixonline.cixreader.db.AppDatabase
-import com.cixonline.cixreader.db.CachedProfileDao
+import com.cixonline.cixreader.db.*
 import com.cixonline.cixreader.repository.ForumRepository
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.ui.screens.*
@@ -89,7 +88,8 @@ class MainActivity : ComponentActivity() {
                                 messageDao = database.messageDao(), 
                                 folderDao = database.folderDao(),
                                 dirForumDao = database.dirForumDao(),
-                                cachedProfileDao = database.cachedProfileDao()
+                                cachedProfileDao = database.cachedProfileDao(),
+                                draftDao = database.draftDao()
                             )
                         )
                         WelcomeScreen(
@@ -198,6 +198,7 @@ class MainActivity : ComponentActivity() {
                                 api = NetworkClient.api,
                                 repository = messageRepository, 
                                 cachedProfileDao = database.cachedProfileDao(),
+                                draftDao = database.draftDao(),
                                 forumName = forumName, 
                                 topicName = topicName, 
                                 topicId = topicId, 
