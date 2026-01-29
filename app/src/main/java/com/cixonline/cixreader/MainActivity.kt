@@ -94,6 +94,7 @@ class MainActivity : ComponentActivity() {
                         )
                         WelcomeScreen(
                             viewModel = welcomeViewModel,
+                            currentUsername = savedUser,
                             onExploreForums = {
                                 navController.navigate("forums")
                             },

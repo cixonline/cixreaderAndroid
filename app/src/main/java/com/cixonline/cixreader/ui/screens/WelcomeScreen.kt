@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun WelcomeScreen(
     viewModel: WelcomeViewModel,
+    currentUsername: String?,
     onExploreForums: () -> Unit,
     onDirectoryClick: () -> Unit,
     onThreadClick: (forum: String, topic: String, topicId: Int, rootId: Int) -> Unit,
@@ -88,6 +89,13 @@ fun WelcomeScreen(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false }
                         ) {
+                            DropdownMenuItem(
+                                text = { Text("Profile") },
+                                onClick = {
+                                    showMenu = false
+                                    currentUsername?.let { viewModel.showProfile(it) }
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Settings") },
                                 onClick = {
@@ -394,8 +402,7 @@ fun PostMessageDialog(
                         ) {
                             Row(
                                 modifier = Modifier.padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                                verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
