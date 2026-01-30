@@ -8,6 +8,7 @@ import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.StringReader
@@ -40,21 +41,25 @@ class MessageRepository(
         }
     }
 
+    /**
+     * Refreshes all messages for a topic.
+     * Always calls allmessages.xml without a 'since' parameter to ensure the local cache is complete.
+     */
     suspend fun refreshMessages(forum: String, topic: String, topicId: Int, force: Boolean = false) = withContext(Dispatchers.IO) {
         try {
-            val latestMessage = messageDao.getLatestMessage(topicId)
-            
-            // Fetch messages since the last one we have in the database
-            // The CIX API expects a date string for 'since' in allmessages.xml
-            val since = if (force || latestMessage == null) null else DateUtils.formatApiDate(latestMessage.date)
-            
             val encodedForum = HtmlUtils.cixEncode(forum)
             val encodedTopic = HtmlUtils.cixEncode(topic)
             
-            val resultSet = api.getMessages(encodedForum, encodedTopic, since = since)
+            // Always fetch all messages for the topic to ensure local cache is complete and fix 400 errors
+            val resultSet = api.getMessages(encodedForum, encodedTopic, since = null)
+            
+            // Lookup existing messages to preserve their local state (unread, starred, etc.)
+            val existingMessages = messageDao.getByTopic(topicId).first().associateBy { it.remoteId }
             
             val messages = resultSet.messages.map { apiMsg ->
+                val existing = existingMessages[apiMsg.id]
                 CIXMessage(
+                    id = existing?.id ?: 0,
                     remoteId = apiMsg.id,
                     author = HtmlUtils.decodeHtml(apiMsg.author ?: ""),
                     body = HtmlUtils.decodeHtml(apiMsg.body ?: ""),
@@ -65,9 +70,18 @@ class MessageRepository(
                     forumName = forum,
                     topicName = topic,
                     subject = HtmlUtils.decodeHtml(apiMsg.subject),
-                    unread = true
+                    unread = existing?.unread ?: true,
+                    priority = existing?.priority ?: false,
+                    starred = existing?.starred ?: false,
+                    readLocked = existing?.readLocked ?: false,
+                    ignored = existing?.ignored ?: false,
+                    readPending = existing?.readPending ?: false,
+                    postPending = existing?.postPending ?: false,
+                    starPending = existing?.starPending ?: false,
+                    withdrawPending = existing?.withdrawPending ?: false
                 )
             }
+
             if (messages.isNotEmpty()) {
                 messageDao.insertAll(messages)
             }

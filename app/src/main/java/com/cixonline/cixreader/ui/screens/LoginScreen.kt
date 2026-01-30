@@ -136,7 +136,7 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Build: ${BuildConfig.BUILD_TIME}",
+                text = "Version: ${BuildConfig.VERSION_NAME} - ${BuildConfig.BUILD_TIME}",
                 color = Color.White.copy(alpha = 0.7f),
                 style = MaterialTheme.typography.bodySmall,
                 fontSize = 10.sp

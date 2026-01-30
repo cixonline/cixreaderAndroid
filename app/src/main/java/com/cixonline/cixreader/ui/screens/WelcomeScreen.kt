@@ -20,6 +20,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.cixonline.cixreader.BuildConfig
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.utils.DateUtils
@@ -46,6 +47,7 @@ fun WelcomeScreen(
     val selectedMugshotUrl by viewModel.selectedMugshotUrl.collectAsState()
     var showMenu by remember { mutableStateOf(false) }
     var showPostDialog by remember { mutableStateOf(false) }
+    var showVersionDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -102,6 +104,13 @@ fun WelcomeScreen(
                                 onClick = {
                                     showMenu = false
                                     onSettingsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Version") },
+                                onClick = {
+                                    showMenu = false
+                                    showVersionDialog = true
                                 }
                             )
                             DropdownMenuItem(
@@ -305,6 +314,24 @@ fun WelcomeScreen(
                 showPostDialog = false
                 scope.launch {
                     snackbarHostState.showSnackbar("Message posted successfully")
+                }
+            }
+        )
+    }
+
+    if (showVersionDialog) {
+        AlertDialog(
+            onDismissRequest = { showVersionDialog = false },
+            title = { Text("App Information") },
+            text = {
+                Column {
+                    Text("Version: ${BuildConfig.VERSION_NAME}")
+                    Text("Build Date: ${BuildConfig.BUILD_TIME}")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showVersionDialog = false }) {
+                    Text("OK")
                 }
             }
         )

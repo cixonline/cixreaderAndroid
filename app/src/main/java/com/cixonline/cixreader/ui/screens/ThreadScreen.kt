@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,7 +53,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 sealed class ThreadDisplayItem {
-    data class Collapsed(val message: CIXMessage, val childCount: Int, val unreadChildren: Int) : ThreadDisplayItem()
+    data class Collapsed(val message: CIXMessage, val totalCount: Int, val unreadCount: Int) : ThreadDisplayItem()
     data class Expanded(val message: CIXMessage, val depth: Int) : ThreadDisplayItem()
 }
 
@@ -74,12 +75,8 @@ fun ThreadScreen(
     val selectedMugshotUrl by viewModel.selectedMugshotUrl.collectAsState()
     val fontSizeMultiplier = remember { settingsManager.getFontSize() }
 
-    val getEffectiveRootId = { msg: CIXMessage -> if (msg.rootId != 0) msg.rootId else msg.remoteId }
-
-    // Track which roots are expanded. Using a set of root IDs.
-    var expandedRootIds by remember { 
-        mutableStateOf(if (viewModel.initialRootId != 0) setOf(viewModel.initialRootId) else emptySet<Int>()) 
-    }
+    // State for expanded roots (by remoteId)
+    var expandedRootIds by remember { mutableStateOf(setOf<Int>()) }
     
     var selectedMessage by remember { mutableStateOf<CIXMessage?>(null) }
     var showMenu by remember { mutableStateOf(false) }
@@ -89,41 +86,28 @@ fun ThreadScreen(
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
-    // Automatically select message and expand thread
+    // Function to find which root a message belongs to
+    fun findRootForMessage(msg: CIXMessage, allMsgs: List<CIXMessage>): Int {
+        val msgMap = allMsgs.associateBy { it.remoteId }
+        var current = msg
+        while (current.commentId != 0 && msgMap.containsKey(current.commentId)) {
+            current = msgMap[current.commentId]!!
+        }
+        return current.remoteId
+    }
+
     LaunchedEffect(messages) {
         if (messages.isNotEmpty() && selectedMessage == null) {
-            // Priority 1: If we have an initial message or root, try to select/expand it
-            if (viewModel.initialMessageId != 0) {
-                val targetMsg = messages.find { it.remoteId == viewModel.initialMessageId }
-                if (targetMsg != null) {
-                    selectedMessage = targetMsg
-                    expandedRootIds = expandedRootIds + getEffectiveRootId(targetMsg)
-                }
-            } else if (viewModel.initialRootId != 0) {
-                val threadMessages = messages.filter { getEffectiveRootId(it) == viewModel.initialRootId }
-                if (threadMessages.isNotEmpty()) {
-                    val nextUnreadInThread = threadMessages.find { it.unread }
-                    selectedMessage = nextUnreadInThread ?: threadMessages.first()
-                    expandedRootIds = expandedRootIds + viewModel.initialRootId
-                }
-            }
-            
-            // Priority 2: Find first unread message in the entire topic
-            if (selectedMessage == null) {
-                val nextUnread = viewModel.findNextUnread(null)
-                if (nextUnread != null) {
-                    selectedMessage = nextUnread
-                    expandedRootIds = expandedRootIds + getEffectiveRootId(nextUnread)
-                }
+            val targetMsg = if (viewModel.initialMessageId != 0) {
+                messages.find { it.remoteId == viewModel.initialMessageId }
+            } else {
+                viewModel.findNextUnread(null) ?: messages.filter { it.commentId == 0 }.maxByOrNull { it.date }
             }
 
-            // Priority 3: Fallback to the very latest root thread
-            if (selectedMessage == null) {
-                val firstRoot = messages.filter { it.commentId == 0 }.maxByOrNull { it.date }
-                if (firstRoot != null) {
-                    selectedMessage = firstRoot
-                    expandedRootIds = expandedRootIds + getEffectiveRootId(firstRoot)
-                }
+            if (targetMsg != null) {
+                selectedMessage = targetMsg
+                val rootId = findRootForMessage(targetMsg, messages)
+                expandedRootIds = expandedRootIds + rootId
             }
         }
     }
@@ -201,110 +185,112 @@ fun ThreadScreen(
             )
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding).imePadding()) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Top Pane: Thread Overview List
-                Box(modifier = Modifier.weight(if (showReplyPane) 0.5f else 1f)) {
-                    CombinedThreadList(
-                        messages = messages,
-                        expandedRootIds = expandedRootIds,
-                        selectedMessageId = selectedMessage?.remoteId,
-                        fontSizeMultiplier = fontSizeMultiplier,
-                        onMessageClick = { msg ->
-                            selectedMessage = msg
-                            expandedRootIds = expandedRootIds + getEffectiveRootId(msg)
-                        },
-                        onToggleExpand = { rootId ->
-                            expandedRootIds = if (expandedRootIds.contains(rootId)) {
-                                expandedRootIds - rootId
-                            } else {
-                                expandedRootIds + rootId
-                            }
-                        },
-                        listState = listState
-                    )
-                }
-
-                if (selectedMessage != null) {
-                    MessageActionBar(
-                        message = selectedMessage!!,
-                        replyActive = showReplyPane,
-                        onReplyClick = { showReplyPane = !showReplyPane },
-                        onNextUnreadClick = {
-                            val next = viewModel.findNextUnread(selectedMessage?.remoteId)
-                            if (next != null) {
-                                if (selectedMessage!!.unread) {
-                                    viewModel.markAsRead(selectedMessage!!)
-                                }
-                                selectedMessage = next
-                                expandedRootIds = expandedRootIds + getEffectiveRootId(next)
-                                showReplyPane = false
-                            }
-                        },
-                        onAuthorClick = { viewModel.showProfile(selectedMessage!!.author) }
-                    )
-                } else {
-                    HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                }
-
-                // Middle Pane: Message Content Viewer
-                Box(modifier = Modifier.weight(if (showReplyPane) 0.5f else 1f)) {
-                    if (isLoading && messages.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator()
-                        }
-                    } else if (selectedMessage != null) {
-                        val parentMessage = remember(selectedMessage, messages) {
-                            messages.find { it.remoteId == selectedMessage?.commentId }
-                        }
-                        MessageViewer(
-                            message = selectedMessage!!,
-                            parentMessage = parentMessage,
-                            fontSizeMultiplier = fontSizeMultiplier,
-                            onParentClick = { parent ->
-                                selectedMessage = parent
-                                expandedRootIds = expandedRootIds + getEffectiveRootId(parent)
+        PullToRefreshBox(
+            isRefreshing = isLoading,
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier.fillMaxSize().padding(padding)
+        ) {
+            Box(modifier = Modifier.fillMaxSize().imePadding()) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.weight(if (showReplyPane) 0.5f else 1f)) {
+                        CombinedThreadList(
+                            messages = messages,
+                            expandedRootIds = expandedRootIds,
+                            selectedMessageId = selectedMessage?.remoteId,
+                            onMessageClick = { msg ->
+                                selectedMessage = msg
                             },
-                            onNavigateToThread = onNavigateToThread
+                            onToggleExpand = { rootId ->
+                                expandedRootIds = if (expandedRootIds.contains(rootId)) {
+                                    expandedRootIds - rootId
+                                } else {
+                                    expandedRootIds + rootId
+                                }
+                            },
+                            listState = listState
+                        )
+                    }
+
+                    if (selectedMessage != null) {
+                        MessageActionBar(
+                            message = selectedMessage!!,
+                            replyActive = showReplyPane,
+                            onReplyClick = { showReplyPane = !showReplyPane },
+                            onNextUnreadClick = {
+                                val next = viewModel.findNextUnread(selectedMessage?.remoteId)
+                                if (next != null) {
+                                    if (selectedMessage!!.unread) {
+                                        viewModel.markAsRead(selectedMessage!!)
+                                    }
+                                    selectedMessage = next
+                                    val rootId = findRootForMessage(next, messages)
+                                    expandedRootIds = expandedRootIds + rootId
+                                    showReplyPane = false
+                                }
+                            },
+                            onAuthorClick = { viewModel.showProfile(selectedMessage!!.author) }
                         )
                     } else {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(
-                                text = "Select a thread to start reading",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.outline
+                        HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+
+                    Box(modifier = Modifier.weight(if (showReplyPane) 0.5f else 1f)) {
+                        if (isLoading && messages.isEmpty()) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
+                            }
+                        } else if (selectedMessage != null) {
+                            val parentMessage = remember(selectedMessage, messages) {
+                                messages.find { it.remoteId == selectedMessage?.commentId }
+                            }
+                            MessageViewer(
+                                message = selectedMessage!!,
+                                parentMessage = parentMessage,
+                                onParentClick = { parent ->
+                                    selectedMessage = parent
+                                    val rootId = findRootForMessage(parent, messages)
+                                    expandedRootIds = expandedRootIds + rootId
+                                },
+                                onNavigateToThread = onNavigateToThread
+                            )
+                        } else {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "Select a thread to start reading",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
+                        }
+                    }
+
+                    if (showReplyPane && selectedMessage != null) {
+                        HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                        Box(modifier = Modifier.height(200.dp)) {
+                            ReplyPane(
+                                replyTo = selectedMessage!!,
+                                initialText = replyInitialText,
+                                onCancel = { showReplyPane = false },
+                                onPost = { body ->
+                                    coroutineScope.launch {
+                                        if (viewModel.postReply(selectedMessage!!.remoteId, body)) {
+                                            showReplyPane = false
+                                        }
+                                    }
+                                },
+                                onSaveDraft = { body ->
+                                    viewModel.saveDraft(selectedMessage!!.remoteId, body)
+                                    showReplyPane = false
+                                }
                             )
                         }
                     }
                 }
-
-                // Bottom Pane: Reply Composer
-                if (showReplyPane && selectedMessage != null) {
-                    HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
-                    Box(modifier = Modifier.height(200.dp)) {
-                        ReplyPane(
-                            replyTo = selectedMessage!!,
-                            initialText = replyInitialText,
-                            onCancel = { showReplyPane = false },
-                            onPost = { body ->
-                                coroutineScope.launch {
-                                    if (viewModel.postReply(selectedMessage!!.remoteId, body)) {
-                                        showReplyPane = false
-                                    }
-                                }
-                            },
-                            onSaveDraft = { body ->
-                                viewModel.saveDraft(selectedMessage!!.remoteId, body)
-                                showReplyPane = false
-                            }
-                        )
+                
+                if (isLoading && messages.isNotEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
                     }
-                }
-            }
-            
-            if (isLoading && messages.isNotEmpty()) {
-                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
                 }
             }
         }
@@ -326,43 +312,35 @@ fun CombinedThreadList(
     messages: List<CIXMessage>,
     expandedRootIds: Set<Int>,
     selectedMessageId: Int?,
-    fontSizeMultiplier: Float,
     onMessageClick: (CIXMessage) -> Unit,
     onToggleExpand: (Int) -> Unit,
     listState: LazyListState
 ) {
     val displayItems = remember(messages, expandedRootIds) {
+        if (messages.isEmpty()) return@remember emptyList<ThreadDisplayItem>()
         val result = mutableListOf<ThreadDisplayItem>()
-        if (messages.isEmpty()) return@remember emptyList()
-
+        
         val messageIds = messages.map { it.remoteId }.toSet()
         
-        // Root identification: Messages with commentId 0, or those whose parent is missing from our set.
+        // Roots: commentId 0 OR parent missing
         val roots = messages.filter { it.commentId == 0 || !messageIds.contains(it.commentId) }
             .sortedByDescending { it.date }
 
         roots.forEach { root ->
-            val rootId = if (root.rootId != 0) root.rootId else root.remoteId
-            
-            // All messages in this thread (using rootId as the grouping key)
-            val threadMessages = messages.filter { (if (it.rootId != 0) it.rootId else it.remoteId) == rootId }
-            val unreadCount = threadMessages.count { it.unread }
+            val tree = buildThreadTree(messages, root.remoteId)
+            val unreadCount = tree.count { it.first.unread }
 
-            if (expandedRootIds.contains(rootId)) {
-                // Show fully expanded tree for this root
-                val tree = buildThreadTree(messages, root.remoteId)
+            if (expandedRootIds.contains(root.remoteId)) {
                 tree.forEach { (msg, depth) ->
                     result.add(ThreadDisplayItem.Expanded(msg, depth))
                 }
             } else {
-                // Show collapsed summary for this root
-                result.add(ThreadDisplayItem.Collapsed(root, threadMessages.size, unreadCount))
+                result.add(ThreadDisplayItem.Collapsed(root, tree.size, unreadCount))
             }
         }
         result
     }
 
-    // Scroll selection into view
     LaunchedEffect(selectedMessageId, displayItems) {
         if (selectedMessageId != null) {
             val index = displayItems.indexOfFirst {
@@ -397,10 +375,9 @@ fun CombinedThreadList(
                 is ThreadDisplayItem.Collapsed -> {
                     ThreadItem(
                         message = item.message,
-                        totalMessages = item.childCount,
-                        unreadChildren = item.unreadChildren,
-                        fontSizeMultiplier = fontSizeMultiplier,
-                        onClick = { onToggleExpand(if (item.message.rootId != 0) item.message.rootId else item.message.remoteId) }
+                        totalMessages = item.totalCount,
+                        unreadCount = item.unreadCount,
+                        onClick = { onToggleExpand(item.message.remoteId) }
                     )
                     HorizontalDivider()
                 }
@@ -409,11 +386,8 @@ fun CombinedThreadList(
                         message = item.message,
                         level = item.depth,
                         isSelected = item.message.remoteId == selectedMessageId,
-                        fontSizeMultiplier = fontSizeMultiplier,
                         onClick = { onMessageClick(item.message) },
-                        onToggleExpand = if (item.depth == 0) { 
-                            { onToggleExpand(if (item.message.rootId != 0) item.message.rootId else item.message.remoteId) } 
-                        } else null
+                        onToggleExpand = if (item.depth == 0) { { onToggleExpand(item.message.remoteId) } } else null
                     )
                     HorizontalDivider(modifier = Modifier.padding(start = (item.depth * 12 + 32).dp))
                 }
@@ -442,8 +416,7 @@ fun buildThreadTree(messages: List<CIXMessage>, startId: Int): List<Pair<CIXMess
 fun ThreadItem(
     message: CIXMessage,
     totalMessages: Int,
-    unreadChildren: Int,
-    fontSizeMultiplier: Float,
+    unreadCount: Int,
     onClick: () -> Unit
 ) {
     Surface(
@@ -472,23 +445,23 @@ fun ThreadItem(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall,
-                fontWeight = if (unreadChildren > 0) FontWeight.ExtraBold else FontWeight.Normal,
+                fontWeight = if (unreadCount > 0) FontWeight.ExtraBold else FontWeight.Normal,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "$unreadChildren/$totalMessages",
+                text = "$unreadCount/$totalMessages",
                 style = MaterialTheme.typography.labelSmall,
-                color = if (unreadChildren > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                fontWeight = if (unreadChildren > 0) FontWeight.Bold else FontWeight.Normal
+                color = if (unreadCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = message.author,
                 maxLines = 1,
                 style = MaterialTheme.typography.labelSmall,
-                fontWeight = if (unreadChildren > 0) FontWeight.ExtraBold else FontWeight.Normal,
+                fontWeight = if (unreadCount > 0) FontWeight.ExtraBold else FontWeight.Normal,
                 color = MaterialTheme.colorScheme.secondary,
                 textAlign = TextAlign.End
             )
@@ -501,7 +474,6 @@ fun ThreadRow(
     message: CIXMessage, 
     level: Int, 
     isSelected: Boolean, 
-    fontSizeMultiplier: Float, 
     onClick: () -> Unit,
     onToggleExpand: (() -> Unit)? = null
 ) {
@@ -616,7 +588,6 @@ fun MessageActionBar(
 fun MessageViewer(
     message: CIXMessage,
     parentMessage: CIXMessage? = null,
-    fontSizeMultiplier: Float,
     onParentClick: (CIXMessage) -> Unit = {},
     onNavigateToThread: (forum: String, topic: String, topicId: Int, rootId: Int, msgId: Int) -> Unit
 ) {

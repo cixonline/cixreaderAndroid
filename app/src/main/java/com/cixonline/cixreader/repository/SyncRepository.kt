@@ -70,7 +70,9 @@ class SyncRepository(
     private suspend fun refreshMessages(forumName: String, topicName: String, topicId: Int) {
         try {
             val latestMessage = messageDao.getLatestMessage(topicId)
-            val since = latestMessage?.remoteId?.toString()
+            
+            // The CIX API expects a date string for 'since' in allmessages.xml, not a message ID.
+            val since = if (latestMessage == null) null else DateUtils.formatApiDate(latestMessage.date)
             
             val encodedForum = HtmlUtils.cixEncode(forumName)
             val encodedTopic = HtmlUtils.cixEncode(topicName)
