@@ -16,6 +16,7 @@ import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.db.*
 import com.cixonline.cixreader.repository.ForumRepository
 import com.cixonline.cixreader.repository.MessageRepository
+import com.cixonline.cixreader.repository.SyncRepository
 import com.cixonline.cixreader.ui.screens.*
 import com.cixonline.cixreader.ui.theme.CIXReaderTheme
 import com.cixonline.cixreader.utils.SettingsManager
@@ -30,6 +31,7 @@ class MainActivity : ComponentActivity() {
         val database = AppDatabase.getDatabase(this)
         val forumRepository = ForumRepository(NetworkClient.api, database.folderDao())
         val messageRepository = MessageRepository(NetworkClient.api, database.messageDao())
+        val syncRepository = SyncRepository(NetworkClient.api, database.folderDao(), database.messageDao())
         val settingsManager = SettingsManager(this)
 
         setContent {
@@ -48,15 +50,24 @@ class MainActivity : ComponentActivity() {
             ) {
                 val navController = rememberNavController()
                 
+                // Initialize and start periodic sync
+                val syncViewModel: SyncViewModel = viewModel(
+                    factory = SyncViewModelFactory(syncRepository)
+                )
+                
                 val (savedUser, savedPass) = settingsManager.getCredentials()
                 val startDestination = if (savedUser != null && savedPass != null) {
                     NetworkClient.setCredentials(savedUser, savedPass)
+                    LaunchedEffect(Unit) {
+                        syncViewModel.startPeriodicSync()
+                    }
                     "welcome"
                 } else {
                     "login"
                 }
 
                 val onLogout = {
+                    syncViewModel.stopPeriodicSync()
                     settingsManager.clearCredentials()
                     navController.navigate("login") {
                         popUpTo(0) { inclusive = true }
@@ -75,6 +86,7 @@ class MainActivity : ComponentActivity() {
                         LoginScreen(
                             viewModel = loginViewModel,
                             onLoginSuccess = {
+                                syncViewModel.startPeriodicSync()
                                 navController.navigate("welcome") {
                                     popUpTo("login") { inclusive = true }
                                 }

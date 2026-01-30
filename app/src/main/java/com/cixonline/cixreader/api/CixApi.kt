@@ -46,6 +46,12 @@ interface CixApi {
         @Query("since") since: String? = null
     ): MessageResultSet
 
+    @GET("forums/sync.xml")
+    suspend fun sync(
+        @Query("count") count: Int = 100,
+        @Query("start") start: Int = 0
+    ): MessageResultSet
+
     @GET("forums/{forum}/join.xml")
     suspend fun joinForum(
         @Path("forum", encoded = true) forum: String,

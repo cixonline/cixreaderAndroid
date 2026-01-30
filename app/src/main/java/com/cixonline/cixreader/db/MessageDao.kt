@@ -41,4 +41,7 @@ interface MessageDao {
 
     @Query("SELECT COUNT(*) FROM messages WHERE topicId = :topicId AND unread = 1 AND date > :cutoffDate")
     suspend fun getUnreadCount(topicId: Int, cutoffDate: Long): Int
+
+    @Query("UPDATE messages SET unread = 0 WHERE topicId = :topicId AND unread = 1")
+    suspend fun markTopicAsRead(topicId: Int)
 }

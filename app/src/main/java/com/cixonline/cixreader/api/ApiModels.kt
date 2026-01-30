@@ -202,6 +202,12 @@ class UserForumTopic2 {
 @Root(name = "MessageResultSet", strict = false)
 @Namespace(reference = "http://cixonline.com")
 class MessageResultSet {
+    @field:Attribute(name = "Count", required = false)
+    var count: String? = null
+
+    @field:Attribute(name = "Start", required = false)
+    var start: String? = null
+
     @field:ElementList(name = "Messages", entry = "Message", inline = false, required = false)
     var messages: List<MessageApi> = mutableListOf()
 }
@@ -229,6 +235,12 @@ class MessageApi {
 
     @field:Element(name = "Depth", required = false)
     var depth: String? = "0"
+
+    @field:Element(name = "Forum", required = false)
+    var forum: String? = null
+
+    @field:Element(name = "Topic", required = false)
+    var topic: String? = null
 }
 
 @Root(name = "PostMessage", strict = false)
