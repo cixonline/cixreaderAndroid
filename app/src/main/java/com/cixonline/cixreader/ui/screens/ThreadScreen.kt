@@ -249,7 +249,11 @@ fun ThreadScreen(
 
                 // Middle Pane: Message Content Viewer
                 Box(modifier = Modifier.weight(if (showReplyPane) 0.5f else 1f)) {
-                    if (selectedMessage != null) {
+                    if (isLoading && messages.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    } else if (selectedMessage != null) {
                         val parentMessage = remember(selectedMessage, messages) {
                             messages.find { it.remoteId == selectedMessage?.commentId }
                         }
@@ -298,7 +302,7 @@ fun ThreadScreen(
                 }
             }
             
-            if (isLoading && messages.isEmpty()) {
+            if (isLoading && messages.isNotEmpty()) {
                 Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
