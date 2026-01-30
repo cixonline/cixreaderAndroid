@@ -18,6 +18,8 @@ import com.cixonline.cixreader.api.WhoApi
 import com.cixonline.cixreader.api.PostMessageRequest
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.xmlpull.v1.XmlPullParserFactory
@@ -139,30 +141,95 @@ class WelcomeViewModel(
                 val threads = response.messages ?: emptyList()
                 
                 // Group by thread to avoid duplicates, preserving latest activity order.
-                val uniqueThreads = threads.distinctBy { "${it.forum}/${it.topic}/${it.effectiveRootId}" }
+                val uniqueThreads = threads.distinctBy { 
+                    val f = HtmlUtils.decodeHtml(it.forum).trim()
+                    val t = HtmlUtils.decodeHtml(it.topic).trim()
+                    "$f/$t/${it.effectiveRootId}" 
+                }
 
                 val resolvedThreads = uniqueThreads.map { thread ->
-                    val forum = thread.forum ?: ""
-                    val topic = thread.topic ?: ""
-                    
-                    val displayDateTime = thread.dateTime ?: ""
-                    val formattedDateTime = if (displayDateTime.contains("T") || displayDateTime.contains("-")) {
-                        DateUtils.formatCixDate(displayDateTime)
-                    } else {
-                        displayDateTime
-                    }
+                    async {
+                        val forum = HtmlUtils.decodeHtml(thread.forum ?: "").trim()
+                        val topic = HtmlUtils.decodeHtml(thread.topic ?: "").trim()
+                        val rootId = thread.effectiveRootId
+                        val topicId = (forum + topic).hashCode()
+                        
+                        if (rootId == 0) {
+                            return@async InterestingThreadUI(
+                                forum = forum,
+                                topic = topic,
+                                rootId = 0,
+                                author = HtmlUtils.decodeHtml(thread.author ?: ""),
+                                dateTime = DateUtils.formatCixDate(thread.dateTime),
+                                body = HtmlUtils.decodeHtml(thread.body ?: ""),
+                                subject = if (!thread.subject.isNullOrBlank()) HtmlUtils.decodeHtml(thread.subject!!) else null,
+                                isRootResolved = false
+                            )
+                        }
 
-                    InterestingThreadUI(
-                        forum = forum,
-                        topic = topic,
-                        rootId = thread.effectiveRootId,
-                        author = HtmlUtils.decodeHtml(thread.author ?: ""),
-                        dateTime = formattedDateTime,
-                        body = HtmlUtils.decodeHtml(thread.body ?: ""),
-                        subject = if (!thread.subject.isNullOrBlank()) HtmlUtils.decodeHtml(thread.subject!!) else null,
-                        isRootResolved = !thread.subject.isNullOrBlank()
-                    )
-                }
+                        // 1. Try to get from cache
+                        var cachedRoot = messageDao.getByRemoteId(rootId, topicId)
+                        
+                        if (cachedRoot == null) {
+                            // 2. Not in cache, fetch using message.xml API
+                            try {
+                                val encodedForum = HtmlUtils.cixEncode(forum)
+                                val encodedTopic = HtmlUtils.cixEncode(topic)
+                                val messageApi = api.getMessage(encodedForum, encodedTopic, rootId)
+                                
+                                val newMessage = CIXMessage(
+                                    remoteId = messageApi.id,
+                                    author = HtmlUtils.decodeHtml(messageApi.author ?: ""),
+                                    body = HtmlUtils.decodeHtml(messageApi.body ?: ""),
+                                    date = DateUtils.parseCixDate(messageApi.dateTime),
+                                    commentId = messageApi.replyTo,
+                                    rootId = messageApi.rootId,
+                                    topicId = topicId,
+                                    forumName = forum,
+                                    topicName = topic,
+                                    unread = true
+                                )
+                                messageDao.insert(newMessage)
+                                cachedRoot = newMessage
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+
+                        if (cachedRoot != null) {
+                            InterestingThreadUI(
+                                forum = forum,
+                                topic = topic,
+                                rootId = rootId,
+                                author = cachedRoot.author,
+                                dateTime = DateUtils.formatDateTime(cachedRoot.date),
+                                body = cachedRoot.body,
+                                // Use subject from thread set if available, as message.xml doesn't return it
+                                subject = if (!thread.subject.isNullOrBlank()) HtmlUtils.decodeHtml(thread.subject!!) else null,
+                                isRootResolved = true
+                            )
+                        } else {
+                            // Fallback to original thread data if resolution fails
+                            val displayDateTime = thread.dateTime ?: ""
+                            val formattedDateTime = if (displayDateTime.contains("T") || displayDateTime.contains("-")) {
+                                DateUtils.formatCixDate(displayDateTime)
+                            } else {
+                                displayDateTime
+                            }
+
+                            InterestingThreadUI(
+                                forum = forum,
+                                topic = topic,
+                                rootId = rootId,
+                                author = HtmlUtils.decodeHtml(thread.author ?: ""),
+                                dateTime = formattedDateTime,
+                                body = HtmlUtils.decodeHtml(thread.body ?: ""),
+                                subject = if (!thread.subject.isNullOrBlank()) HtmlUtils.decodeHtml(thread.subject!!) else null,
+                                isRootResolved = false
+                            )
+                        }
+                    }
+                }.awaitAll()
                 
                 _interestingThreads.value = resolvedThreads
             } catch (e: Exception) {

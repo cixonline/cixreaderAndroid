@@ -28,15 +28,21 @@ class InterestingThreadApi {
     @field:Element(name = "Topic", required = false)
     var topic: String? = null
 
+    @field:Element(name = "ID", required = false)
+    var id: Int = 0
+
     @field:Element(name = "RootID", required = false)
     var rootId: Int = 0
 
-    // Adding variant just in case
     @field:Element(name = "RootId", required = false)
     var rootIdVariant: Int = 0
 
     val effectiveRootId: Int
-        get() = if (rootId != 0) rootId else rootIdVariant
+        get() = when {
+            rootId != 0 -> rootId
+            rootIdVariant != 0 -> rootIdVariant
+            else -> id
+        }
 
     @field:Element(name = "Author", required = false)
     var author: String? = null

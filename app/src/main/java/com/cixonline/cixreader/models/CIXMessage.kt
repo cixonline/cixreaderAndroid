@@ -24,6 +24,7 @@ data class CIXMessage(
     val topicId: Int,
     val forumName: String = "",
     val topicName: String = "",
+    val subject: String? = null,
     val unread: Boolean = true,
     val priority: Boolean = false,
     val starred: Boolean = false,
