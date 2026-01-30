@@ -1,6 +1,8 @@
-# CIXReaderAndroid Source Code
+# CIXReaderAndroid
 
-This is the source code for the port of the CIXReader CIX offline reader to Android. It is being released under the Apache license. See the LICENSE file for more details.
+This is the development area for the version of CIXReader CIX offline reader on Android. It is being released under the Apache license. See the LICENSE file for more details.
+
+There is an APK in releases which can be side loaded, please ensure you are using the latest one.
 
 ## Building CIXReader
 
