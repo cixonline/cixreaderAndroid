@@ -45,7 +45,6 @@ import coil.compose.AsyncImage
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.api.UserProfile
 import com.cixonline.cixreader.models.CIXMessage
-import com.cixonline.cixreader.ui.theme.Purple80
 import com.cixonline.cixreader.viewmodel.TopicViewModel
 import com.cixonline.cixreader.utils.SettingsManager
 import kotlinx.coroutines.launch
@@ -77,9 +76,11 @@ fun ThreadScreen(
 
     val getEffectiveRootId = { msg: CIXMessage -> if (msg.rootId != 0) msg.rootId else msg.remoteId }
 
-    var selectedRootId by remember { 
-        mutableStateOf<Int?>(if (viewModel.initialRootId != 0) viewModel.initialRootId else null) 
+    // Track which roots are expanded. Using a set of root IDs.
+    var expandedRootIds by remember { 
+        mutableStateOf(if (viewModel.initialRootId != 0) setOf(viewModel.initialRootId) else emptySet<Int>()) 
     }
+    
     var selectedMessage by remember { mutableStateOf<CIXMessage?>(null) }
     var showMenu by remember { mutableStateOf(false) }
     var showReplyPane by remember { mutableStateOf(false) }
@@ -91,30 +92,37 @@ fun ThreadScreen(
     // Automatically select message and expand thread
     LaunchedEffect(messages) {
         if (messages.isNotEmpty() && selectedMessage == null) {
-            // Priority 1: If we have an initial rootId, try to find a message within that thread
-            if (selectedRootId != null && selectedRootId != 0) {
-                val threadMessages = messages.filter { getEffectiveRootId(it) == selectedRootId }
+            // Priority 1: If we have an initial message or root, try to select/expand it
+            if (viewModel.initialMessageId != 0) {
+                val targetMsg = messages.find { it.remoteId == viewModel.initialMessageId }
+                if (targetMsg != null) {
+                    selectedMessage = targetMsg
+                    expandedRootIds = expandedRootIds + getEffectiveRootId(targetMsg)
+                }
+            } else if (viewModel.initialRootId != 0) {
+                val threadMessages = messages.filter { getEffectiveRootId(it) == viewModel.initialRootId }
                 if (threadMessages.isNotEmpty()) {
                     val nextUnreadInThread = threadMessages.find { it.unread }
                     selectedMessage = nextUnreadInThread ?: threadMessages.first()
+                    expandedRootIds = expandedRootIds + viewModel.initialRootId
                 }
             }
             
-            // Priority 2: Find any unread message in the topic
+            // Priority 2: Find first unread message in the entire topic
             if (selectedMessage == null) {
                 val nextUnread = viewModel.findNextUnread(null)
                 if (nextUnread != null) {
                     selectedMessage = nextUnread
-                    selectedRootId = getEffectiveRootId(nextUnread)
+                    expandedRootIds = expandedRootIds + getEffectiveRootId(nextUnread)
                 }
             }
 
-            // Priority 3: Select the newest root message
+            // Priority 3: Fallback to the very latest root thread
             if (selectedMessage == null) {
-                val firstRoot = messages.filter { it.isRoot }.sortedByDescending { it.date } .firstOrNull()
+                val firstRoot = messages.filter { it.commentId == 0 }.maxByOrNull { it.date }
                 if (firstRoot != null) {
                     selectedMessage = firstRoot
-                    selectedRootId = getEffectiveRootId(firstRoot)
+                    expandedRootIds = expandedRootIds + getEffectiveRootId(firstRoot)
                 }
             }
         }
@@ -139,9 +147,9 @@ fun ThreadScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
-                                text = viewModel.forumName + " / " + viewModel.topicName,
+                                text = "${viewModel.forumName} / ${viewModel.topicName}",
                                 color = Color.White.copy(alpha = 0.7f),
-                                style= MaterialTheme.typography.labelMedium
+                                style = MaterialTheme.typography.labelMedium
                             )
                         }
                     }
@@ -195,18 +203,24 @@ fun ThreadScreen(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).imePadding()) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Top Pane (Combined Thread List)
+                // Top Pane: Thread Overview List
                 Box(modifier = Modifier.weight(if (showReplyPane) 0.5f else 1f)) {
                     CombinedThreadList(
                         messages = messages,
-                        selectedRootId = selectedRootId,
+                        expandedRootIds = expandedRootIds,
                         selectedMessageId = selectedMessage?.remoteId,
                         fontSizeMultiplier = fontSizeMultiplier,
                         onMessageClick = { msg ->
                             selectedMessage = msg
-                            selectedRootId = getEffectiveRootId(msg)
+                            expandedRootIds = expandedRootIds + getEffectiveRootId(msg)
                         },
-                        onCollapse = { selectedRootId = null },
+                        onToggleExpand = { rootId ->
+                            expandedRootIds = if (expandedRootIds.contains(rootId)) {
+                                expandedRootIds - rootId
+                            } else {
+                                expandedRootIds + rootId
+                            }
+                        },
                         listState = listState
                     )
                 }
@@ -223,7 +237,7 @@ fun ThreadScreen(
                                     viewModel.markAsRead(selectedMessage!!)
                                 }
                                 selectedMessage = next
-                                selectedRootId = getEffectiveRootId(next)
+                                expandedRootIds = expandedRootIds + getEffectiveRootId(next)
                                 showReplyPane = false
                             }
                         },
@@ -233,7 +247,7 @@ fun ThreadScreen(
                     HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outlineVariant)
                 }
 
-                // Middle Pane (Message Viewer)
+                // Middle Pane: Message Content Viewer
                 Box(modifier = Modifier.weight(if (showReplyPane) 0.5f else 1f)) {
                     if (selectedMessage != null) {
                         val parentMessage = remember(selectedMessage, messages) {
@@ -245,7 +259,7 @@ fun ThreadScreen(
                             fontSizeMultiplier = fontSizeMultiplier,
                             onParentClick = { parent ->
                                 selectedMessage = parent
-                                selectedRootId = getEffectiveRootId(parent)
+                                expandedRootIds = expandedRootIds + getEffectiveRootId(parent)
                             },
                             onNavigateToThread = onNavigateToThread
                         )
@@ -260,7 +274,7 @@ fun ThreadScreen(
                     }
                 }
 
-                // Bottom Pane (Reply Pane)
+                // Bottom Pane: Reply Composer
                 if (showReplyPane && selectedMessage != null) {
                     HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
                     Box(modifier = Modifier.height(200.dp)) {
@@ -306,45 +320,45 @@ fun ThreadScreen(
 @Composable
 fun CombinedThreadList(
     messages: List<CIXMessage>,
-    selectedRootId: Int?,
+    expandedRootIds: Set<Int>,
     selectedMessageId: Int?,
     fontSizeMultiplier: Float,
     onMessageClick: (CIXMessage) -> Unit,
-    onCollapse: () -> Unit,
+    onToggleExpand: (Int) -> Unit,
     listState: LazyListState
 ) {
-    val displayItems = remember(messages, selectedRootId) {
+    val displayItems = remember(messages, expandedRootIds) {
         val result = mutableListOf<ThreadDisplayItem>()
-        val roots = messages.filter { it.isRoot }.sortedByDescending { it.date }
-        
-        // 1. If a thread is expanded, show its messages (including root) at the top
-        if (selectedRootId != null) {
-            val rootMsg = messages.find { (if (it.rootId != 0) it.rootId else it.remoteId) == selectedRootId && it.isRoot }
-            if (rootMsg != null) {
-                result.add(ThreadDisplayItem.Expanded(rootMsg, 0))
-            }
-            val tree = buildThreadTree(messages, selectedRootId)
-            tree.forEach { (msg, depth) ->
-                // Only add children here, root is added above with depth 0
-                if (depth > 0) {
-                    result.add(ThreadDisplayItem.Expanded(msg, depth))
-                }
-            }
-        }
+        if (messages.isEmpty()) return@remember emptyList()
 
-        // 2. Show all other threads as collapsed roots
+        val messageIds = messages.map { it.remoteId }.toSet()
+        
+        // Root identification: Messages with commentId 0, or those whose parent is missing from our set.
+        val roots = messages.filter { it.commentId == 0 || !messageIds.contains(it.commentId) }
+            .sortedByDescending { it.date }
+
         roots.forEach { root ->
             val rootId = if (root.rootId != 0) root.rootId else root.remoteId
-            if (rootId != selectedRootId) {
-                val childCount = messages.count { it.rootId == rootId && !it.isRoot }
-                val unreadChildren = messages.count { it.rootId == rootId && !it.isRoot && it.unread }
-                result.add(ThreadDisplayItem.Collapsed(root, childCount + 1, unreadChildren))
+            
+            // All messages in this thread (using rootId as the grouping key)
+            val threadMessages = messages.filter { (if (it.rootId != 0) it.rootId else it.remoteId) == rootId }
+            val unreadCount = threadMessages.count { it.unread }
+
+            if (expandedRootIds.contains(rootId)) {
+                // Show fully expanded tree for this root
+                val tree = buildThreadTree(messages, root.remoteId)
+                tree.forEach { (msg, depth) ->
+                    result.add(ThreadDisplayItem.Expanded(msg, depth))
+                }
+            } else {
+                // Show collapsed summary for this root
+                result.add(ThreadDisplayItem.Collapsed(root, threadMessages.size, unreadCount))
             }
         }
         result
     }
 
-    // Centering scroll logic
+    // Scroll selection into view
     LaunchedEffect(selectedMessageId, displayItems) {
         if (selectedMessageId != null) {
             val index = displayItems.indexOfFirst {
@@ -358,7 +372,7 @@ fun CombinedThreadList(
                 val viewportHeight = layoutInfo.viewportSize.height
                 if (viewportHeight > 0) {
                     val visibleItem = layoutInfo.visibleItemsInfo.find { it.index == index }
-                    val itemSize = visibleItem?.size ?: 40 // Default size for a single line
+                    val itemSize = visibleItem?.size ?: 40 
                     val offset = (viewportHeight - itemSize) / 2
                     listState.animateScrollToItem(index, -offset)
                 } else {
@@ -382,7 +396,7 @@ fun CombinedThreadList(
                         totalMessages = item.childCount,
                         unreadChildren = item.unreadChildren,
                         fontSizeMultiplier = fontSizeMultiplier,
-                        onClick = { onMessageClick(item.message) }
+                        onClick = { onToggleExpand(if (item.message.rootId != 0) item.message.rootId else item.message.remoteId) }
                     )
                     HorizontalDivider()
                 }
@@ -393,7 +407,9 @@ fun CombinedThreadList(
                         isSelected = item.message.remoteId == selectedMessageId,
                         fontSizeMultiplier = fontSizeMultiplier,
                         onClick = { onMessageClick(item.message) },
-                        onCollapse = if (item.depth == 0) onCollapse else null
+                        onToggleExpand = if (item.depth == 0) { 
+                            { onToggleExpand(if (item.message.rootId != 0) item.message.rootId else item.message.remoteId) } 
+                        } else null
                     )
                     HorizontalDivider(modifier = Modifier.padding(start = (item.depth * 12 + 32).dp))
                 }
@@ -402,7 +418,7 @@ fun CombinedThreadList(
     }
 }
 
-fun buildThreadTree(messages: List<CIXMessage>, rootId: Int): List<Pair<CIXMessage, Int>> {
+fun buildThreadTree(messages: List<CIXMessage>, startId: Int): List<Pair<CIXMessage, Int>> {
     val children = messages.groupBy { it.commentId }
     val result = mutableListOf<Pair<CIXMessage, Int>>()
     
@@ -411,76 +427,121 @@ fun buildThreadTree(messages: List<CIXMessage>, rootId: Int): List<Pair<CIXMessa
         children[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it, depth + 1) }
     }
     
-    val root = messages.find { it.remoteId == rootId }
-    if (root != null) {
-        walk(root, 0)
-    } else {
-        val threadNodes = messages.filter { (it.rootId != 0 && it.rootId == rootId) || (it.rootId == 0 && it.remoteId == rootId) }
-            .sortedBy { it.date }
-        threadNodes.forEach { node ->
-            if (messages.none { it.remoteId == node.commentId }) {
-                walk(node, 0)
-            }
-        }
+    val startMsg = messages.find { it.remoteId == startId }
+    if (startMsg != null) {
+        walk(startMsg, 0)
     }
     return result
 }
 
 @Composable
-fun ReplyPane(
-    replyTo: CIXMessage,
-    initialText: String = "",
-    onCancel: () -> Unit,
-    onPost: (String) -> Unit,
-    onSaveDraft: (String) -> Unit
+fun ThreadItem(
+    message: CIXMessage,
+    totalMessages: Int,
+    unreadChildren: Int,
+    fontSizeMultiplier: Float,
+    onClick: () -> Unit
 ) {
-    var text by remember(initialText) { mutableStateOf(initialText) }
-
     Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.surface
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
     ) {
-        Column(modifier = Modifier.padding(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Reply to ${replyTo.author} (#${replyTo.remoteId})",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.weight(1f)
+        Row(
+            modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onClick, modifier = Modifier.size(24.dp)) {
+                Icon(
+                    Icons.Default.ExpandMore,
+                    contentDescription = "Expand",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
                 )
-                Row {
-                    TextButton(onClick = onCancel) {
-                        Text("Cancel", style = MaterialTheme.typography.labelLarge)
-                    }
-                    TextButton(onClick = { onSaveDraft(text) }, enabled = text.isNotBlank()) {
-                        Text("Draft", style = MaterialTheme.typography.labelLarge)
-                    }
-                    Button(
-                        onClick = { onPost(text) },
-                        enabled = text.isNotBlank(),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
-                    ) {
-                        Text("Post")
-                    }
-                }
             }
-            
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                placeholder = { Text("Type your message here...", style = MaterialTheme.typography.bodySmall) },
-                textStyle = MaterialTheme.typography.bodySmall,
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Sentences,
-                    autoCorrectEnabled = true
-                )
+            Spacer(modifier = Modifier.width(4.dp))
+            val summary = remember(message) {
+                val text = if (!message.subject.isNullOrBlank()) message.subject else message.body
+                text.take(100).replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+            }
+            Text(
+                text = summary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = if (unreadChildren > 0) FontWeight.ExtraBold else FontWeight.Normal,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "$unreadChildren/$totalMessages",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (unreadChildren > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                fontWeight = if (unreadChildren > 0) FontWeight.Bold else FontWeight.Normal
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = message.author,
+                maxLines = 1,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = if (unreadChildren > 0) FontWeight.ExtraBold else FontWeight.Normal,
+                color = MaterialTheme.colorScheme.secondary,
+                textAlign = TextAlign.End
+            )
+        }
+    }
+}
+
+@Composable
+fun ThreadRow(
+    message: CIXMessage, 
+    level: Int, 
+    isSelected: Boolean, 
+    fontSizeMultiplier: Float, 
+    onClick: () -> Unit,
+    onToggleExpand: (() -> Unit)? = null
+) {
+    Surface(
+        color = if (isSelected) Color(0xFFD91B5C) else MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(
+                start = if (onToggleExpand != null) 4.dp else (level * 12 + 32).dp, 
+                top = 4.dp, bottom = 4.dp, end = 8.dp
+            ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (onToggleExpand != null) {
+                IconButton(onClick = onToggleExpand, modifier = Modifier.size(24.dp)) {
+                    Icon(
+                        Icons.Default.ExpandLess,
+                        contentDescription = "Collapse",
+                        tint = if (isSelected) Color.White else MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+            Text(
+                text = message.body.take(100).replace("\r\n", " ").replace("\r", " ").replace("\n", " "),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    textAlign = if (isSelected) TextAlign.Center else TextAlign.Start
+                ),
+                fontWeight = if (message.unread) FontWeight.ExtraBold else FontWeight.Normal,
+                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = message.author,
+                maxLines = 1,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = if (message.unread) FontWeight.ExtraBold else FontWeight.Normal,
+                color = if (isSelected) Color.White else MaterialTheme.colorScheme.secondary,
+                textAlign = TextAlign.End
             )
         }
     }
@@ -502,9 +563,7 @@ fun MessageActionBar(
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier
-                .padding(horizontal = 12.dp, vertical = 4.dp)
-                .fillMaxWidth(),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -550,67 +609,6 @@ fun MessageActionBar(
 }
 
 @Composable
-fun ThreadRow(
-    message: CIXMessage, 
-    level: Int, 
-    isSelected: Boolean, 
-    fontSizeMultiplier: Float, 
-    onClick: () -> Unit,
-    onCollapse: (() -> Unit)? = null
-) {
-    Surface(
-        color = if (isSelected) Color(0xFFD91B5C) else MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(
-                    start = if (onCollapse != null) 4.dp else (level * 12 + 32).dp, 
-                    top = 4.dp, 
-                    bottom = 4.dp, 
-                    end = 8.dp
-                ),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (onCollapse != null) {
-                IconButton(
-                    onClick = onCollapse,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        Icons.Default.ExpandLess,
-                        contentDescription = "Collapse",
-                        tint = if (isSelected) Color.White else MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(4.dp))
-            }
-            Text(
-                text = message.body.take(100).replace("\r\n", " ").replace("\r", " ").replace("\n", " "),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    textAlign = if (isSelected) TextAlign.Center else TextAlign.Start
-                ),
-                fontWeight = if (message.unread) FontWeight.ExtraBold else FontWeight.Normal,
-                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = message.author,
-                maxLines = 1,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = if (message.unread) FontWeight.ExtraBold else FontWeight.Normal,
-                color = if (isSelected) Color.White else MaterialTheme.colorScheme.secondary,
-                textAlign = TextAlign.End
-            )
-        }
-    }
-}
-
-@Composable
 fun MessageViewer(
     message: CIXMessage,
     parentMessage: CIXMessage? = null,
@@ -619,7 +617,6 @@ fun MessageViewer(
     onNavigateToThread: (forum: String, topic: String, topicId: Int, rootId: Int, msgId: Int) -> Unit
 ) {
     val uriHandler = LocalUriHandler.current
-    
     val normalizedBody = remember(message.body) {
         message.body.replace("\r\n", "\n").replace("\r", "\n")
     }
@@ -634,10 +631,7 @@ fun MessageViewer(
             Surface(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                 shape = MaterialTheme.shapes.small,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp)
-                    .clickable { onParentClick(parentMessage) }
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp).clickable { onParentClick(parentMessage) }
             ) {
                 Column(modifier = Modifier.padding(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -673,36 +667,23 @@ fun MessageViewer(
 
         ClickableText(
             text = annotatedString,
-            style = MaterialTheme.typography.bodyMedium.copy(
-                color = MaterialTheme.colorScheme.onSurface
-            ),
+            style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
             onClick = { offset ->
                 annotatedString.getStringAnnotations(tag = "URL", start = offset, end = offset)
-                    .firstOrNull()?.let { annotation ->
-                        uriHandler.openUri(annotation.item)
-                    }
+                    .firstOrNull()?.let { uriHandler.openUri(it.item) }
                 
                 annotatedString.getStringAnnotations(tag = "CIX_REF", start = offset, end = offset)
                     .firstOrNull()?.let { annotation ->
                         val parts = annotation.item.split(":")
-                        val f = parts[0]
-                        val t = parts[1]
-                        val mId = parts[2].toIntOrNull() ?: 0
-                        // Since we don't know the rootId easily here for cross-topic links,
-                        // we'll pass 0 or maybe the msgId as a hint if the destination is the same topic.
-                        // But for now, we'll just navigate.
-                        onNavigateToThread(f, t, (f + t).hashCode(), 0, mId)
+                        onNavigateToThread(parts[0], parts[1], (parts[0] + parts[1]).hashCode(), 0, parts[2].toIntOrNull() ?: 0)
                     }
             }
         )
 
         val urls = remember(normalizedBody) { extractUrls(normalizedBody) }
-        if (urls.isNotEmpty()) {
+        urls.forEach { url ->
             Spacer(modifier = Modifier.height(16.dp))
-            urls.forEach { url ->
-                MediaPreview(url = url)
-                Spacer(modifier = Modifier.height(8.dp))
-            }
+            MediaPreview(url = url)
         }
     }
 }
@@ -715,157 +696,68 @@ fun MediaPreview(url: String) {
     val isAudio = remember(extension) { listOf("mp3", "wav", "m4a").contains(extension) }
 
     when {
-        isImage -> {
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                shape = MaterialTheme.shapes.medium
-            ) {
-                AsyncImage(
-                    model = url,
-                    contentDescription = "Image preview",
-                    modifier = Modifier.fillMaxWidth().wrapContentHeight(),
-                    contentScale = ContentScale.FillWidth,
-                    placeholder = painterResource(R.drawable.cix_logo),
-                    error = painterResource(android.R.drawable.stat_notify_error)
-                )
-            }
+        isImage -> Card(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            shape = MaterialTheme.shapes.medium
+        ) {
+            AsyncImage(
+                model = url, contentDescription = "Image preview",
+                modifier = Modifier.fillMaxWidth().wrapContentHeight(),
+                contentScale = ContentScale.FillWidth,
+                placeholder = painterResource(R.drawable.cix_logo),
+                error = painterResource(android.R.drawable.stat_notify_error)
+            )
         }
-        isVideo -> {
-            VideoPlayer(url = url)
-        }
-        isAudio -> {
-            AudioPlayer(url = url)
-        }
+        isVideo -> VideoPlayer(url = url)
+        isAudio -> AudioPlayer(url = url)
     }
 }
 
 @Composable
 fun VideoPlayer(url: String) {
     val context = LocalContext.current
-    val exoPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(url))
-            prepare()
-        }
-    }
-
-    DisposableEffect(exoPlayer) {
-        onDispose {
-            exoPlayer.release()
-        }
-    }
-
+    val exoPlayer = remember { ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(url)); prepare() } }
+    DisposableEffect(exoPlayer) { onDispose { exoPlayer.release() } }
     Card(
         modifier = Modifier.fillMaxWidth().aspectRatio(16/9f).padding(vertical = 4.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         shape = MaterialTheme.shapes.medium
-    ) {
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    player = exoPlayer
-                }
-            },
-            modifier = Modifier.fillMaxSize()
-        )
-    }
+    ) { AndroidView(factory = { ctx -> PlayerView(ctx).apply { player = exoPlayer } }, modifier = Modifier.fillMaxSize()) }
 }
 
 @Composable
 fun AudioPlayer(url: String) {
     val context = LocalContext.current
-    val exoPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(url))
-            prepare()
-        }
-    }
-
-    DisposableEffect(exoPlayer) {
-        onDispose {
-            exoPlayer.release()
-        }
-    }
-
+    val exoPlayer = remember { ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(url)); prepare() } }
+    DisposableEffect(exoPlayer) { onDispose { exoPlayer.release() } }
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         shape = MaterialTheme.shapes.medium
-    ) {
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    player = exoPlayer
-                    useController = true
-                    showController()
-                    controllerHideOnTouch = false
-                }
-            },
-            modifier = Modifier.fillMaxWidth().height(100.dp)
-        )
-    }
+    ) { AndroidView(factory = { ctx -> PlayerView(ctx).apply { player = exoPlayer; useController = true; showController(); controllerHideOnTouch = false } }, modifier = Modifier.fillMaxWidth().height(100.dp)) }
 }
 
 @Composable
-fun ThreadItem(
-    message: CIXMessage,
-    totalMessages: Int,
-    unreadChildren: Int,
-    fontSizeMultiplier: Float,
-    onClick: () -> Unit
+fun ReplyPane(
+    replyTo: CIXMessage,
+    initialText: String = "",
+    onCancel: () -> Unit,
+    onPost: (String) -> Unit,
+    onSaveDraft: (String) -> Unit
 ) {
-    val totalUnread = unreadChildren + if (message.unread) 1 else 0
-    
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(start = 4.dp, top = 4.dp, bottom = 4.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = onClick,
-                modifier = Modifier.size(24.dp)
-            ) {
-                Icon(
-                    Icons.Default.ExpandMore,
-                    contentDescription = "Expand",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
-                )
+    var text by remember(initialText) { mutableStateOf(initialText) }
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+        Column(modifier = Modifier.padding(8.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "Reply to ${replyTo.author} (#${replyTo.remoteId})", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                Row {
+                    TextButton(onClick = onCancel) { Text("Cancel") }
+                    TextButton(onClick = { onSaveDraft(text) }, enabled = text.isNotBlank()) { Text("Draft") }
+                    Button(onClick = { onPost(text) }, enabled = text.isNotBlank()) { Text("Post") }
+                }
             }
-            Spacer(modifier = Modifier.width(4.dp))
-            val summary = remember(message.body) {
-                message.body.take(100).replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
-            }
-            Text(
-                text = summary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = if (totalUnread > 0) FontWeight.ExtraBold else FontWeight.Normal,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "$totalUnread/$totalMessages",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (totalUnread > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                fontWeight = if (totalUnread > 0) FontWeight.Bold else FontWeight.Normal
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = message.author,
-                maxLines = 1,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = if (totalUnread > 0) FontWeight.ExtraBold else FontWeight.Normal,
-                color = MaterialTheme.colorScheme.secondary,
-                textAlign = TextAlign.End
-            )
+            OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth().weight(1f), placeholder = { Text("Type your message here...") }, textStyle = MaterialTheme.typography.bodySmall, keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrectEnabled = true))
         }
     }
 }
@@ -880,47 +772,16 @@ fun linkify(text: String, currentForum: String = "", currentTopic: String = ""):
         val urlPattern = Regex("https?://[\\w:#@%/;$()~_?+\\-=.&!*]+")
         val cixRefFullPattern = Regex("cix:([\\w+]+)/([\\w+]+):(\\d+)")
         val cixRefShortPattern = Regex("cix:(\\d+)")
-        
         var lastIndex = 0
-        val allMatches = (urlPattern.findAll(text).map { it to "URL" } + 
-                          cixRefFullPattern.findAll(text).map { it to "CIX_FULL" } +
-                          cixRefShortPattern.findAll(text).map { it to "CIX_SHORT" })
-                         .sortedBy { it.first.range.first }
-        
+        val allMatches = (urlPattern.findAll(text).map { it to "URL" } + cixRefFullPattern.findAll(text).map { it to "CIX_FULL" } + cixRefShortPattern.findAll(text).map { it to "CIX_SHORT" }).sortedBy { it.first.range.first }
         allMatches.forEach { (match, type) ->
             if (match.range.first >= lastIndex) {
                 append(text.substring(lastIndex, match.range.first))
                 val value = match.value
                 when (type) {
-                    "URL" -> {
-                        pushStringAnnotation(tag = "URL", annotation = value)
-                        withStyle(style = SpanStyle(color = Color(0xFFD0BCFF), textDecoration = TextDecoration.Underline)) {
-                            append(value)
-                        }
-                        pop()
-                    }
-                    "CIX_FULL" -> {
-                        val forum = match.groupValues[1]
-                        val topic = match.groupValues[2]
-                        val msgId = match.groupValues[3]
-                        pushStringAnnotation(tag = "CIX_REF", annotation = "$forum:$topic:$msgId")
-                        withStyle(style = SpanStyle(color = Color(0xFFD0BCFF), fontWeight = FontWeight.Bold)) {
-                            append(value)
-                        }
-                        pop()
-                    }
-                    "CIX_SHORT" -> {
-                        if (currentForum.isNotEmpty() && currentTopic.isNotEmpty()) {
-                            val msgId = match.groupValues[1]
-                            pushStringAnnotation(tag = "CIX_REF", annotation = "$currentForum:$currentTopic:$msgId")
-                            withStyle(style = SpanStyle(color = Color(0xFFD0BCFF), fontWeight = FontWeight.Bold)) {
-                                append(value)
-                            }
-                            pop()
-                        } else {
-                            append(value)
-                        }
-                    }
+                    "URL" -> { pushStringAnnotation(tag = "URL", annotation = value); withStyle(style = SpanStyle(color = Color(0xFFD0BCFF), textDecoration = TextDecoration.Underline)) { append(value) }; pop() }
+                    "CIX_FULL" -> { pushStringAnnotation(tag = "CIX_REF", annotation = "${match.groupValues[1]}:${match.groupValues[2]}:${match.groupValues[3]}"); withStyle(style = SpanStyle(color = Color(0xFFD0BCFF), fontWeight = FontWeight.Bold)) { append(value) }; pop() }
+                    "CIX_SHORT" -> { if (currentForum.isNotEmpty() && currentTopic.isNotEmpty()) { pushStringAnnotation(tag = "CIX_REF", annotation = "$currentForum:$currentTopic:${match.groupValues[1]}"); withStyle(style = SpanStyle(color = Color(0xFFD0BCFF), fontWeight = FontWeight.Bold)) { append(value) }; pop() } else { append(value) } }
                 }
                 lastIndex = match.range.last + 1
             }

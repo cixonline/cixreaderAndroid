@@ -13,19 +13,15 @@ class ForumRepository(
 ) {
     val allFolders: Flow<List<Folder>> = folderDao.getAll()
 
-    fun allFoldersWithCutoff(cutoff: Long): Flow<List<Folder>> {
-        return folderDao.getAllWithDynamicUnread(cutoff)
-    }
-
     suspend fun refreshForums() {
         try {
             val resultSet = api.getForums()
             val folders = resultSet.forums.mapNotNull { row ->
                 val name = row.name ?: return@mapNotNull null
-                val decodedName = HtmlUtils.decodeHtml(name)
+                val normalizedName = HtmlUtils.normalizeName(name)
                 Folder(
-                    id = decodedName.hashCode(),
-                    name = decodedName,
+                    id = HtmlUtils.calculateForumId(normalizedName),
+                    name = normalizedName,
                     parentId = -1,
                     unread = row.unread?.toIntOrNull() ?: 0,
                     unreadPriority = row.priority?.toIntOrNull() ?: 0
@@ -39,15 +35,14 @@ class ForumRepository(
 
     suspend fun refreshTopics(forumName: String, forumId: Int) {
         try {
-            // forumName is already decoded when passed from ViewModel
-            val encodedForumName = HtmlUtils.urlEncode(forumName)
+            val encodedForumName = HtmlUtils.cixEncode(forumName)
             val resultSet = api.getUserForumTopics(encodedForumName)
             val topics = resultSet.userTopics.mapNotNull { result ->
                 val name = result.name ?: return@mapNotNull null
-                val decodedTopicName = HtmlUtils.decodeHtml(name)
+                val normalizedTopicName = HtmlUtils.normalizeName(name)
                 Folder(
-                    id = (forumName + decodedTopicName).hashCode(),
-                    name = decodedTopicName,
+                    id = HtmlUtils.calculateTopicId(forumName, normalizedTopicName),
+                    name = normalizedTopicName,
                     parentId = forumId,
                     unread = result.unread?.toIntOrNull() ?: 0
                 )

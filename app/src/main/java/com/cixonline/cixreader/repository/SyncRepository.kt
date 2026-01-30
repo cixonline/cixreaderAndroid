@@ -35,9 +35,9 @@ class SyncRepository(
                 if (messages.isEmpty()) break
                 
                 val cixMessages = messages.map { apiMsg ->
-                    val forum = HtmlUtils.decodeHtml(apiMsg.forum ?: "").trim()
-                    val topic = HtmlUtils.decodeHtml(apiMsg.topic ?: "").trim()
-                    val topicId = (forum + topic).hashCode()
+                    val forum = HtmlUtils.normalizeName(apiMsg.forum)
+                    val topic = HtmlUtils.normalizeName(apiMsg.topic)
+                    val topicId = HtmlUtils.calculateTopicId(forum, topic)
                     
                     CIXMessage(
                         remoteId = apiMsg.id,
@@ -49,7 +49,8 @@ class SyncRepository(
                         topicId = topicId,
                         forumName = forum,
                         topicName = topic,
-                        unread = true // Sync usually returns new/unread messages
+                        subject = HtmlUtils.decodeHtml(apiMsg.subject),
+                        unread = true
                     )
                 }
                 
@@ -87,7 +88,8 @@ class SyncRepository(
                     topicId = topicId,
                     forumName = forumName,
                     topicName = topicName,
-                    unread = true
+                    subject = HtmlUtils.decodeHtml(apiMsg.subject),
+                    unread = true 
                 )
             }
             
@@ -107,10 +109,10 @@ class SyncRepository(
             val forumResultSet = api.getForums()
             val forums = forumResultSet.forums.mapNotNull { row ->
                 val folderName = row.name ?: return@mapNotNull null
-                val decodedName = HtmlUtils.decodeHtml(folderName)
+                val normalizedName = HtmlUtils.normalizeName(folderName)
                 Folder(
-                    id = decodedName.hashCode(),
-                    name = decodedName,
+                    id = HtmlUtils.calculateForumId(normalizedName),
+                    name = normalizedName,
                     parentId = -1,
                     unread = row.unread?.toIntOrNull() ?: 0,
                     unreadPriority = row.priority?.toIntOrNull() ?: 0
@@ -120,14 +122,14 @@ class SyncRepository(
 
             // 2. Refresh Topics and Messages
             for (forum in forums) {
-                val encodedForumName = HtmlUtils.urlEncode(forum.name)
+                val encodedForumName = HtmlUtils.cixEncode(forum.name)
                 val topicResultSet = api.getUserForumTopics(encodedForumName)
                 val topics = topicResultSet.userTopics.mapNotNull { result ->
                     val topicName = result.name ?: return@mapNotNull null
-                    val decodedTopicName = HtmlUtils.decodeHtml(topicName)
+                    val normalizedTopicName = HtmlUtils.normalizeName(topicName)
                     Folder(
-                        id = (forum.name + decodedTopicName).hashCode(),
-                        name = decodedTopicName,
+                        id = HtmlUtils.calculateTopicId(forum.name, normalizedTopicName),
+                        name = normalizedTopicName,
                         parentId = forum.id,
                         unread = result.unread?.toIntOrNull() ?: 0
                     )

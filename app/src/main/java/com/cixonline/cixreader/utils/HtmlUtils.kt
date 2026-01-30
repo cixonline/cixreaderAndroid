@@ -26,6 +26,29 @@ object HtmlUtils {
     }
 
     /**
+     * Decodes HTML entities and trims whitespace for use in names (Forums, Topics, etc).
+     */
+    fun normalizeName(text: String?): String {
+        return decodeHtml(text).trim()
+    }
+
+    /**
+     * Calculates a consistent forum ID regardless of casing or HTML encoding.
+     */
+    fun calculateForumId(forumName: String?): Int {
+        return normalizeName(forumName).lowercase().hashCode()
+    }
+
+    /**
+     * Calculates a consistent topic ID regardless of casing or HTML encoding.
+     */
+    fun calculateTopicId(forumName: String?, topicName: String?): Int {
+        val f = normalizeName(forumName).lowercase()
+        val t = normalizeName(topicName).lowercase()
+        return (f + t).hashCode()
+    }
+
+    /**
      * URL encodes a string for use in a path segment.
      */
     fun urlEncode(text: String?): String {

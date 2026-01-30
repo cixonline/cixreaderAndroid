@@ -45,7 +45,8 @@ class MessageRepository(
             val latestMessage = messageDao.getLatestMessage(topicId)
             
             // Fetch messages since the last one we have in the database
-            val since = if (force) null else latestMessage?.remoteId?.toString()
+            // The CIX API expects a date string for 'since' in allmessages.xml
+            val since = if (force || latestMessage == null) null else DateUtils.formatApiDate(latestMessage.date)
             
             val encodedForum = HtmlUtils.cixEncode(forum)
             val encodedTopic = HtmlUtils.cixEncode(topic)
@@ -63,6 +64,7 @@ class MessageRepository(
                     topicId = topicId,
                     forumName = forum,
                     topicName = topic,
+                    subject = HtmlUtils.decodeHtml(apiMsg.subject),
                     unread = true
                 )
             }
@@ -84,19 +86,16 @@ class MessageRepository(
             val response = api.postMessage(request)
             val result = extractStringFromXml(response.string())
             
-            // CIX API returns the new message ID as a string if successful, or "Success" followed by ID? 
-            // Usually it just returns the ID or "Success". Let's try to parse it as an ID.
             val messageId = result.toIntOrNull()
             if (messageId != null && messageId > 0) {
-                // If we got an ID, we can create the local message immediately
-                val topicId = (forum + topic).hashCode()
+                val topicId = HtmlUtils.calculateTopicId(forum, topic)
                 val newMessage = CIXMessage(
                     remoteId = messageId,
-                    author = "me", // Will be updated on next refresh
+                    author = "me",
                     body = body,
                     date = System.currentTimeMillis(),
                     commentId = replyTo,
-                    rootId = 0, // Will be updated on refresh
+                    rootId = 0,
                     topicId = topicId,
                     forumName = forum,
                     topicName = topic,
@@ -105,7 +104,6 @@ class MessageRepository(
                 messageDao.insert(newMessage)
                 messageId
             } else if (result == "Success") {
-                // Some endpoints just return "Success". We'll need a refresh to get the ID.
                 -1
             } else {
                 0

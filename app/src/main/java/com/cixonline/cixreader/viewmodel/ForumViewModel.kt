@@ -13,7 +13,6 @@ import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.repository.ForumRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.util.Calendar
 
 class ForumViewModel(
     private val api: CixApi,
@@ -23,15 +22,7 @@ class ForumViewModel(
 
     private val profileDelegate = ProfileDelegate(api, cachedProfileDao)
 
-    private val _cutoff = MutableStateFlow(
-        Calendar.getInstance().apply {
-            add(Calendar.DAY_OF_YEAR, -30)
-        }.timeInMillis
-    )
-    
-    val allFolders: Flow<List<Folder>> = _cutoff.flatMapLatest { cutoff ->
-        repository.allFoldersWithCutoff(cutoff)
-    }
+    val allFolders: Flow<List<Folder>> = repository.allFolders
     
     private val _expandedForums = MutableStateFlow<Set<Int>>(emptySet())
     val expandedForums: StateFlow<Set<Int>> = _expandedForums.asStateFlow()
@@ -61,11 +52,6 @@ class ForumViewModel(
         viewModelScope.launch {
             isLoading = true
             errorMessage = null
-            // Reset cutoff to 30 days ago on refresh
-            _cutoff.value = Calendar.getInstance().apply {
-                add(Calendar.DAY_OF_YEAR, -30)
-            }.timeInMillis
-
             try {
                 repository.refreshForums()
             } catch (e: Exception) {

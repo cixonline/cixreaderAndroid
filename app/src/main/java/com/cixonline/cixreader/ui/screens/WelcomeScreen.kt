@@ -23,6 +23,7 @@ import androidx.compose.ui.window.Dialog
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.utils.DateUtils
+import com.cixonline.cixreader.utils.HtmlUtils
 import com.cixonline.cixreader.viewmodel.InterestingThreadUI
 import com.cixonline.cixreader.viewmodel.WelcomeViewModel
 import kotlinx.coroutines.launch
@@ -151,7 +152,7 @@ fun WelcomeScreen(
                                     onThreadClick(
                                         thread.forum,
                                         thread.topic,
-                                        (thread.forum + thread.topic).hashCode(),
+                                        HtmlUtils.calculateTopicId(thread.forum, thread.topic),
                                         thread.rootId
                                     )
                                 },
@@ -187,7 +188,7 @@ fun WelcomeScreen(
                                 onThreadClick(
                                     firstThread.forum,
                                     firstThread.topic,
-                                    (firstThread.forum + firstThread.topic).hashCode(),
+                                    HtmlUtils.calculateTopicId(firstThread.forum, firstThread.topic),
                                     firstThread.rootId
                                 )
                             } else {

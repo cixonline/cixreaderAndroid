@@ -63,4 +63,15 @@ object DateUtils {
         }
         return formatDateTime(timestamp)
     }
+
+    /**
+     * Formats a timestamp for the CIX API 'since' parameter.
+     * CIX usually expects dates in yyyy-MM-dd HH:mm:ss format for this.
+     */
+    fun formatApiDate(timestamp: Long): String {
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+        // CIX API dates are typically in UTC/GMT
+        sdf.timeZone = TimeZone.getTimeZone("UTC")
+        return sdf.format(Date(timestamp))
+    }
 }

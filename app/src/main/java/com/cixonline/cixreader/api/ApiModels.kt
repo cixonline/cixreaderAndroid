@@ -221,6 +221,9 @@ class MessageApi {
     @field:Element(name = "Author", required = false)
     var author: String? = null
 
+    @field:Element(name = "Subject", required = false)
+    var subject: String? = null
+
     @field:Element(name = "Body", required = false)
     var body: String? = null
 

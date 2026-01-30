@@ -141,18 +141,19 @@ class WelcomeViewModel(
                 val threads = response.messages ?: emptyList()
                 
                 // Group by thread to avoid duplicates, preserving latest activity order.
+                // We decode names before grouping to ensure consistent keys.
                 val uniqueThreads = threads.distinctBy { 
-                    val f = HtmlUtils.decodeHtml(it.forum).trim()
-                    val t = HtmlUtils.decodeHtml(it.topic).trim()
+                    val f = HtmlUtils.normalizeName(it.forum)
+                    val t = HtmlUtils.normalizeName(it.topic)
                     "$f/$t/${it.effectiveRootId}" 
                 }
 
                 val resolvedThreads = uniqueThreads.map { thread ->
                     async {
-                        val forum = HtmlUtils.decodeHtml(thread.forum ?: "").trim()
-                        val topic = HtmlUtils.decodeHtml(thread.topic ?: "").trim()
+                        val forum = HtmlUtils.normalizeName(thread.forum ?: "")
+                        val topic = HtmlUtils.normalizeName(thread.topic ?: "")
                         val rootId = thread.effectiveRootId
-                        val topicId = (forum + topic).hashCode()
+                        val topicId = HtmlUtils.calculateTopicId(forum, topic)
                         
                         if (rootId == 0) {
                             return@async InterestingThreadUI(
@@ -270,7 +271,7 @@ class WelcomeViewModel(
             val result = extractStringFromXml(response.string())
             val messageId = result.toIntOrNull()
             if (messageId != null && messageId > 0) {
-                val topicId = (forum + topic).hashCode()
+                val topicId = HtmlUtils.calculateTopicId(forum, topic)
                 val newMessage = CIXMessage(
                     remoteId = messageId,
                     author = "me",
