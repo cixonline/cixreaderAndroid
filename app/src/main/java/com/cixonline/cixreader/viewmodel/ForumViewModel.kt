@@ -86,6 +86,22 @@ class ForumViewModel(
         }
     }
 
+    fun resignForum(forum: Folder) {
+        viewModelScope.launch {
+            isLoading = true
+            try {
+                val success = repository.resignForum(forum.name, forum.id)
+                if (success) {
+                    _expandedForums.value = _expandedForums.value - forum.id
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
     fun setShowOnlyUnread(onlyUnread: Boolean) {
         _showOnlyUnread.value = onlyUnread
     }

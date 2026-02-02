@@ -6,12 +6,32 @@ import com.cixonline.cixreader.db.FolderDao
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.utils.HtmlUtils
 import kotlinx.coroutines.flow.Flow
+import org.xmlpull.v1.XmlPullParserFactory
+import java.io.StringReader
 
 class ForumRepository(
     private val api: CixApi,
     private val folderDao: FolderDao
 ) {
     val allFolders: Flow<List<Folder>> = folderDao.getAll()
+
+    private fun extractStringFromXml(xml: String): String {
+        return try {
+            val factory = XmlPullParserFactory.newInstance()
+            val parser = factory.newPullParser()
+            parser.setInput(StringReader(xml))
+            var eventType = parser.eventType
+            while (eventType != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                if (eventType == org.xmlpull.v1.XmlPullParser.TEXT) {
+                    return parser.text
+                }
+                eventType = parser.next()
+            }
+            xml
+        } catch (e: Exception) {
+            xml
+        }
+    }
 
     suspend fun refreshForums() {
         try {
@@ -50,6 +70,23 @@ class ForumRepository(
             folderDao.insertAll(topics)
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    suspend fun resignForum(forumName: String, forumId: Int): Boolean {
+        return try {
+            val encodedForum = HtmlUtils.cixEncode(forumName)
+            val response = api.resignForum(encodedForum)
+            val result = extractStringFromXml(response.string())
+            if (result == "Success") {
+                folderDao.deleteById(forumId)
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
         }
     }
 

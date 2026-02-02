@@ -4,6 +4,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,10 +20,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -51,8 +52,17 @@ fun ForumListScreen(
     var showMenu by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    
+    // Track which forum is currently swiped to reveal the Resign button
+    var swipedForumId by remember { mutableStateOf<Int?>(null) }
 
     Scaffold(
+        modifier = Modifier.pointerInput(Unit) {
+            // Detect taps outside of items to close any swiped Resign button
+            detectTapGestures {
+                swipedForumId = null
+            }
+        },
         topBar = {
             TopAppBar(
                 title = {
@@ -249,7 +259,7 @@ fun ForumListScreen(
                                     }
                                 }
                         ) {
-                            items(displayList) { (item, isTopic) ->
+                            items(displayList, key = { it.first.id.toString() + if (it.second) "-topic" else "-forum" }) { (item, isTopic) ->
                                 if (isTopic) {
                                     val forum = folders.find { it.id == item.parentId }
                                     CompactTopicItem(
@@ -263,12 +273,14 @@ fun ForumListScreen(
                                         }
                                     )
                                 } else {
-                                    CompactForumItem(
-                                        title = item.name,
-                                        unreadCount = item.unread,
+                                    SwipeToResignRow(
+                                        item = item,
                                         isExpanded = expandedForums.contains(item.id),
                                         isLoading = viewModel.isLoading,
-                                        onClick = { viewModel.toggleForum(item) }
+                                        isSwiped = swipedForumId == item.id,
+                                        onSwipe = { swipedId -> swipedForumId = swipedId },
+                                        onResign = { viewModel.resignForum(item) },
+                                        onToggle = { viewModel.toggleForum(item) }
                                     )
                                 }
                                 HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -316,6 +328,99 @@ fun ForumListScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SwipeToResignRow(
+    item: Folder,
+    isExpanded: Boolean,
+    isLoading: Boolean,
+    isSwiped: Boolean,
+    onSwipe: (Int?) -> Unit,
+    onResign: () -> Unit,
+    onToggle: () -> Unit
+) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) {
+                onSwipe(item.id)
+                true // Settle at the end to expose the button
+            } else {
+                onSwipe(null)
+                true // Settle back
+            }
+        }
+    )
+
+    // Sync external state (swipedForumId) with internal state
+    LaunchedEffect(isSwiped) {
+        if (!isSwiped && dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
+            dismissState.reset()
+        }
+    }
+
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Red)
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Forum name remains showing on the left in the background area
+                Text(
+                    text = item.name,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Clicking this button is the ONLY way to resign
+                Button(
+                    onClick = {
+                        onResign()
+                        onSwipe(null)
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Color.Red
+                    ),
+                    shape = MaterialTheme.shapes.extraSmall,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "Resign",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
+            }
+        }
+    ) {
+        CompactForumItem(
+            title = item.name,
+            unreadCount = item.unread,
+            isExpanded = isExpanded,
+            isLoading = isLoading,
+            onClick = {
+                if (isSwiped) {
+                    // If already swiped, a click covers the button again
+                    onSwipe(null)
+                } else {
+                    // Otherwise, toggle expansion as normal
+                    onToggle()
+                }
+            }
+        )
+    }
+}
+
 @Composable
 fun CompactForumItem(
     title: String,
@@ -324,11 +429,12 @@ fun CompactForumItem(
     isLoading: Boolean,
     onClick: () -> Unit
 ) {
+    // Surface MUST have an opaque background to hide the Resign button behind it
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        color = MaterialTheme.colorScheme.surface
     ) {
         Row(
             modifier = Modifier

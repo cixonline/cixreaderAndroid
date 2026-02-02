@@ -58,6 +58,11 @@ interface CixApi {
         @Query("mark") mark: Boolean = true
     ): ResponseBody
 
+    @GET("forums/{forum}/resign.xml")
+    suspend fun resignForum(
+        @Path("forum", encoded = true) forum: String
+    ): ResponseBody
+
     @POST("forums/post.xml")
     suspend fun postMessage(@Body request: PostMessageRequest): ResponseBody
 
