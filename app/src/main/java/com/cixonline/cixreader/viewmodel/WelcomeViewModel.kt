@@ -148,6 +148,12 @@ class WelcomeViewModel(
                     "$f/$t/${it.effectiveRootId}" 
                 }
 
+                // Get current membership set to avoid 400s on message.xml
+                val memberForums = folderDao.getAll().first()
+                    .filter { it.isRootFolder }
+                    .map { it.name.lowercase() }
+                    .toSet()
+
                 val resolvedThreads = uniqueThreads.map { thread ->
                     async {
                         val forum = HtmlUtils.normalizeName(thread.forum ?: "")
@@ -171,8 +177,8 @@ class WelcomeViewModel(
                         // 1. Try to get from cache
                         var cachedRoot = messageDao.getByRemoteId(rootId, topicId)
                         
-                        if (cachedRoot == null) {
-                            // 2. Not in cache, fetch using message.xml API
+                        // 2. Not in cache AND we are a member, fetch using message.xml API
+                        if (cachedRoot == null && memberForums.contains(forum.lowercase())) {
                             try {
                                 val encodedForum = HtmlUtils.cixEncode(forum)
                                 val encodedTopic = HtmlUtils.cixEncode(topic)
@@ -210,7 +216,7 @@ class WelcomeViewModel(
                                 isRootResolved = true
                             )
                         } else {
-                            // Fallback to original thread data if resolution fails
+                            // Fallback to original thread data if resolution fails OR not a member
                             val displayDateTime = thread.dateTime ?: ""
                             val formattedDateTime = if (displayDateTime.contains("T") || displayDateTime.contains("-")) {
                                 DateUtils.formatCixDate(displayDateTime)
@@ -238,6 +244,50 @@ class WelcomeViewModel(
             } finally {
                 _isLoading.value = false
             }
+        }
+    }
+
+    suspend fun joinForumIfNeeded(forumName: String): Boolean {
+        val currentForums = folderDao.getAll().first()
+        val isMember = currentForums.any { it.isRootFolder && it.name.equals(forumName, ignoreCase = true) }
+        
+        if (!isMember) {
+            return try {
+                val encodedForum = HtmlUtils.cixEncode(forumName)
+                val response = api.joinForum(encodedForum)
+                val result = extractStringFromXml(response.string())
+                if (result == "Success") {
+                    // Refresh folders after joining
+                    refreshFolders()
+                    true
+                } else {
+                    false
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false
+            }
+        }
+        return true
+    }
+
+    private suspend fun refreshFolders() {
+        try {
+            val resultSet = api.getForums()
+            val folders = resultSet.forums.mapNotNull { row ->
+                val name = row.name ?: return@mapNotNull null
+                val normalizedName = HtmlUtils.normalizeName(name)
+                Folder(
+                    id = HtmlUtils.calculateForumId(normalizedName),
+                    name = normalizedName,
+                    parentId = -1,
+                    unread = row.unread?.toIntOrNull() ?: 0,
+                    unreadPriority = row.priority?.toIntOrNull() ?: 0
+                )
+            }
+            folderDao.insertAll(folders)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 

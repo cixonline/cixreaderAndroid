@@ -158,12 +158,18 @@ fun WelcomeScreen(
                             InterestingThreadItem(
                                 thread = thread,
                                 onClick = {
-                                    onThreadClick(
-                                        thread.forum,
-                                        thread.topic,
-                                        HtmlUtils.calculateTopicId(thread.forum, thread.topic),
-                                        thread.rootId
-                                    )
+                                    scope.launch {
+                                        if (viewModel.joinForumIfNeeded(thread.forum)) {
+                                            onThreadClick(
+                                                thread.forum,
+                                                thread.topic,
+                                                HtmlUtils.calculateTopicId(thread.forum, thread.topic),
+                                                thread.rootId
+                                            )
+                                        } else {
+                                            snackbarHostState.showSnackbar("Failed to join forum ${thread.forum}")
+                                        }
+                                    }
                                 },
                                 onAuthorClick = { viewModel.showProfile(thread.author) }
                             )
@@ -185,21 +191,29 @@ fun WelcomeScreen(
                         scope.launch {
                             val firstUnread = viewModel.getFirstUnreadMessage()
                             if (firstUnread != null) {
-                                onThreadClick(
-                                    firstUnread.forumName,
-                                    firstUnread.topicName,
-                                    firstUnread.topicId,
-                                    firstUnread.rootId
-                                )
+                                if (viewModel.joinForumIfNeeded(firstUnread.forumName)) {
+                                    onThreadClick(
+                                        firstUnread.forumName,
+                                        firstUnread.topicName,
+                                        firstUnread.topicId,
+                                        firstUnread.rootId
+                                    )
+                                } else {
+                                    snackbarHostState.showSnackbar("Failed to join forum ${firstUnread.forumName}")
+                                }
                             } else if (threads.isNotEmpty()) {
                                 // Fallback to interesting threads if no unread in cache
                                 val firstThread = threads.first()
-                                onThreadClick(
-                                    firstThread.forum,
-                                    firstThread.topic,
-                                    HtmlUtils.calculateTopicId(firstThread.forum, firstThread.topic),
-                                    firstThread.rootId
-                                )
+                                if (viewModel.joinForumIfNeeded(firstThread.forum)) {
+                                    onThreadClick(
+                                        firstThread.forum,
+                                        firstThread.topic,
+                                        HtmlUtils.calculateTopicId(firstThread.forum, firstThread.topic),
+                                        firstThread.rootId
+                                    )
+                                } else {
+                                    snackbarHostState.showSnackbar("Failed to join forum ${firstThread.forum}")
+                                }
                             } else {
                                 snackbarHostState.showSnackbar("No unread messages or recent threads found")
                             }
