@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -260,11 +261,20 @@ fun ForumDirectoryItem(
                     Text("View")
                 }
             } else {
-                Button(
-                    onClick = onJoinClick,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                ) {
-                    Text("Join")
+                if (forum.type == "c") { // Closed forum
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Closed Forum",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                } else { // Open forum
+                    Button(
+                        onClick = onJoinClick,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Text("Join")
+                    }
                 }
             }
         }
