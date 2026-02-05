@@ -743,8 +743,26 @@ fun ReplyPane(
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(modifier = Modifier.padding(8.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "Reply to ${replyTo.author} (#${replyTo.remoteId})", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+            OutlinedTextField(
+                value = text, 
+                onValueChange = { text = it }, 
+                modifier = Modifier.fillMaxWidth().weight(1f), 
+                placeholder = { Text("Type your message here...") }, 
+                textStyle = MaterialTheme.typography.bodySmall, 
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrectEnabled = true)
+            )
+            
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp), 
+                horizontalArrangement = Arrangement.SpaceBetween, 
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Reply to ${replyTo.author} (#${replyTo.remoteId})", 
+                    style = MaterialTheme.typography.labelMedium, 
+                    color = MaterialTheme.colorScheme.primary, 
+                    modifier = Modifier.weight(1f)
+                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { launcher.launch("*/*") }) {
                         Icon(Icons.Default.AttachFile, contentDescription = "Attach File", tint = if (attachmentUri != null) Color(0xFFD91B5C) else LocalContentColor.current)
@@ -757,7 +775,6 @@ fun ReplyPane(
                     Button(onClick = { onPost(text, attachmentUri, attachmentName) }, enabled = text.isNotBlank()) { Text("Post") }
                 }
             }
-            OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth().weight(1f), placeholder = { Text("Type your message here...") }, textStyle = MaterialTheme.typography.bodySmall, keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrectEnabled = true))
         }
     }
 }
