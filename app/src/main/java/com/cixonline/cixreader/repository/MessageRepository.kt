@@ -1,6 +1,7 @@
 package com.cixonline.cixreader.repository
 
 import com.cixonline.cixreader.api.CixApi
+import com.cixonline.cixreader.api.PostAttachment
 import com.cixonline.cixreader.api.PostMessageRequest
 import com.cixonline.cixreader.db.MessageDao
 import com.cixonline.cixreader.models.CIXMessage
@@ -94,9 +95,21 @@ class MessageRepository(
         }
     }
 
-    suspend fun postMessage(forum: String, topic: String, body: String, replyTo: Int): Int = withContext(Dispatchers.IO) {
+    suspend fun postMessage(
+        forum: String, 
+        topic: String, 
+        body: String, 
+        replyTo: Int,
+        attachments: List<PostAttachment>? = null
+    ): Int = withContext(Dispatchers.IO) {
         try {
-            val request = PostMessageRequest(body = body, forum = forum, topic = topic, msgId = replyTo.toString())
+            val request = PostMessageRequest(
+                body = body, 
+                forum = forum, 
+                topic = topic, 
+                msgId = replyTo.toString(),
+                attachments = attachments
+            )
             val response = api.postMessage(request)
             val result = extractStringFromXml(response.string())
             

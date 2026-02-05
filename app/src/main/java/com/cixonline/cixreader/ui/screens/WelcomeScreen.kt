@@ -1,5 +1,8 @@
 package com.cixonline.cixreader.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -376,11 +380,27 @@ fun PostMessageDialog(
     var messageBody by remember { mutableStateOf("") }
     var forumExpanded by remember { mutableStateOf(false) }
     var topicExpanded by remember { mutableStateOf(false) }
+    
+    var attachmentUri by remember { mutableStateOf<Uri?>(null) }
+    var attachmentName by remember { mutableStateOf<String?>(null) }
+    
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var isPosting by remember { mutableStateOf(false) }
 
     val sortedForums = remember(forums) { forums.sortedBy { it.name.lowercase() } }
     val sortedTopics = remember(topics) { topics.sortedBy { it.name.lowercase() } }
+
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        attachmentUri = uri
+        attachmentName = uri?.let { u ->
+            context.contentResolver.query(u, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                cursor.moveToFirst()
+                cursor.getString(nameIndex)
+            }
+        }
+    }
 
     LaunchedEffect(messageBody) {
         if (selectedForum == null && selectedTopic == null) {
@@ -522,6 +542,16 @@ fun PostMessageDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically) {
+                    
+                    IconButton(onClick = { launcher.launch("*/*") }) {
+                        Icon(Icons.Default.AttachFile, contentDescription = "Attach File", tint = if (attachmentUri != null) Color(0xFFD91B5C) else LocalContentColor.current)
+                    }
+                    if (attachmentName != null) {
+                        Text(text = attachmentName!!, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 80.dp))
+                    }
+                    
+                    Spacer(modifier = Modifier.weight(1f))
+
                     TextButton(onClick = onDismiss) {
                         Text("Cancel")
                     }
@@ -543,9 +573,12 @@ fun PostMessageDialog(
                                 isPosting = true
                                 scope.launch {
                                     val success = viewModel.postMessage(
+                                        context,
                                         selectedForum!!.name,
                                         selectedTopic!!.name,
-                                        messageBody
+                                        messageBody,
+                                        attachmentUri,
+                                        attachmentName
                                     )
                                     isPosting = false
                                     if (success) onPostSuccess()

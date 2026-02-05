@@ -1,9 +1,13 @@
 package com.cixonline.cixreader.viewmodel
 
+import android.content.Context
+import android.net.Uri
+import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.cixonline.cixreader.api.CixApi
+import com.cixonline.cixreader.api.PostAttachment
 import com.cixonline.cixreader.api.UserProfile
 import com.cixonline.cixreader.db.CachedProfileDao
 import com.cixonline.cixreader.db.DraftDao
@@ -49,7 +53,6 @@ class TopicViewModel(
         repository.getMessagesForTopic(topicId),
         _searchQuery
     ) { allMessages, query ->
-        // Filter out withdrawn messages
         val filtered = allMessages.filter { msg ->
             !msg.body.contains("<<withdrawn by author>>", ignoreCase = true) &&
             !msg.body.contains("<<withdrawn by moderator>>", ignoreCase = true) &&
@@ -85,43 +88,6 @@ class TopicViewModel(
         }
     }
 
-    private fun getEffectiveRootId(msg: CIXMessage): Int {
-        return if (msg.rootId != 0) msg.rootId else msg.remoteId
-    }
-
-    private fun getThreadInOrder(allMessages: List<CIXMessage>, children: Map<Int, List<CIXMessage>>, rootId: Int): List<CIXMessage> {
-        val result = mutableListOf<CIXMessage>()
-        
-        fun walk(m: CIXMessage) {
-            result.add(m)
-            children[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it) }
-        }
-        
-        val root = allMessages.find { it.remoteId == rootId }
-        if (root != null) {
-            walk(root)
-        } else {
-            // If explicit root is missing, collect all messages with this rootId
-            val threadNodes = allMessages.filter { (it.rootId != 0 && it.rootId == rootId) || (it.rootId == 0 && it.remoteId == rootId) }
-                .sortedBy { it.date }
-            
-            val seen = mutableSetOf<Int>()
-            threadNodes.forEach { node ->
-                if (!seen.contains(node.remoteId) && allMessages.none { it.remoteId == node.commentId }) {
-                    // This is a "local root"
-                    fun localWalk(m: CIXMessage) {
-                        if (seen.add(m.remoteId)) {
-                            result.add(m)
-                            children[m.remoteId]?.sortedBy { it.date }?.forEach { localWalk(it) }
-                        }
-                    }
-                    localWalk(node)
-                }
-            }
-        }
-        return result
-    }
-
     fun findNextUnread(currentMessageId: Int?): CIXMessage? {
         val allMessages = messages.value
         if (allMessages.isEmpty()) return null
@@ -130,7 +96,6 @@ class TopicViewModel(
         val roots = allMessages.filter { it.isRoot }.sortedByDescending { it.date }
         
         if (currentMessageId == null) {
-            // Find first unread following thread order
             for (root in roots) {
                 val thread = getThreadInOrder(allMessages, children, root.remoteId)
                 val unread = thread.find { it.unread }
@@ -140,9 +105,8 @@ class TopicViewModel(
         }
 
         val currentMsg = allMessages.find { it.remoteId == currentMessageId } ?: return null
-        val currentRootId = getEffectiveRootId(currentMsg)
+        val currentRootId = if (currentMsg.rootId != 0) currentMsg.rootId else currentMsg.remoteId
         
-        // 1. Search in the current thread after the current message
         val currentThread = getThreadInOrder(allMessages, children, currentRootId)
         val currentIndex = currentThread.indexOfFirst { it.remoteId == currentMessageId }
         if (currentIndex != -1) {
@@ -151,20 +115,18 @@ class TopicViewModel(
             }
         }
         
-        // 2. Search in subsequent threads
-        val currentRootIndex = roots.indexOfFirst { getEffectiveRootId(it) == currentRootId }
+        val currentRootIndex = roots.indexOfFirst { (if (it.rootId != 0) it.rootId else it.remoteId) == currentRootId }
         if (currentRootIndex != -1) {
             for (i in (currentRootIndex + 1) until roots.size) {
-                val nextThread = getThreadInOrder(allMessages, children, getEffectiveRootId(roots[i]))
+                val nextThread = getThreadInOrder(allMessages, children, if (roots[i].rootId != 0) roots[i].rootId else roots[i].remoteId)
                 val unread = nextThread.find { it.unread }
                 if (unread != null) return unread
             }
         }
         
-        // 3. Wrap around to earlier threads
         val limit = if (currentRootIndex != -1) currentRootIndex else roots.size
         for (i in 0 until limit) {
-            val nextThread = getThreadInOrder(allMessages, children, getEffectiveRootId(roots[i]))
+            val nextThread = getThreadInOrder(allMessages, children, if (roots[i].rootId != 0) roots[i].rootId else roots[i].remoteId)
             val unread = nextThread.find { it.unread }
             if (unread != null) return unread
         }
@@ -172,12 +134,43 @@ class TopicViewModel(
         return null
     }
 
-    suspend fun postReply(replyToId: Int, body: String): Boolean {
+    private fun getThreadInOrder(allMessages: List<CIXMessage>, children: Map<Int, List<CIXMessage>>, rootId: Int): List<CIXMessage> {
+        val result = mutableListOf<CIXMessage>()
+        fun walk(m: CIXMessage) {
+            result.add(m)
+            children[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it) }
+        }
+        val root = allMessages.find { it.remoteId == rootId }
+        if (root != null) walk(root)
+        return result
+    }
+
+    suspend fun postReply(
+        context: Context,
+        replyToId: Int, 
+        body: String, 
+        attachmentUri: Uri?, 
+        attachmentName: String?
+    ): Boolean {
         _isLoading.value = true
-        val result = repository.postMessage(forumName, topicName, body, replyToId)
+        
+        val attachments = if (attachmentUri != null && attachmentName != null) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(attachmentUri)
+                val bytes = inputStream?.readBytes()
+                inputStream?.close()
+                if (bytes != null) {
+                    listOf(PostAttachment(data = Base64.encodeToString(bytes, Base64.DEFAULT), filename = attachmentName))
+                } else null
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            }
+        } else null
+
+        val result = repository.postMessage(forumName, topicName, body, replyToId, attachments)
         val success = result != 0
         if (success) {
-            // Delete draft if it exists for this context
             draftDao.deleteDraftForContext(forumName, topicName, replyToId)
             refresh()
         }

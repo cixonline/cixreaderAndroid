@@ -1,5 +1,8 @@
 package com.cixonline.cixreader.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -74,6 +77,7 @@ fun ThreadScreen(
     val selectedResume by viewModel.selectedResume.collectAsState()
     val selectedMugshotUrl by viewModel.selectedMugshotUrl.collectAsState()
     val fontSizeMultiplier = remember { settingsManager.getFontSize() }
+    val context = LocalContext.current
 
     // State for expanded roots (by remoteId)
     var expandedRootIds by remember { mutableStateOf(setOf<Int>()) }
@@ -271,9 +275,9 @@ fun ThreadScreen(
                                 replyTo = selectedMessage!!,
                                 initialText = replyInitialText,
                                 onCancel = { showReplyPane = false },
-                                onPost = { body ->
+                                onPost = { body, uri, name ->
                                     coroutineScope.launch {
-                                        if (viewModel.postReply(selectedMessage!!.remoteId, body)) {
+                                        if (viewModel.postReply(context, selectedMessage!!.remoteId, body, uri, name)) {
                                             showReplyPane = false
                                         }
                                     }
@@ -718,18 +722,39 @@ fun ReplyPane(
     replyTo: CIXMessage,
     initialText: String = "",
     onCancel: () -> Unit,
-    onPost: (String) -> Unit,
+    onPost: (String, Uri?, String?) -> Unit,
     onSaveDraft: (String) -> Unit
 ) {
     var text by remember(initialText) { mutableStateOf(initialText) }
+    var attachmentUri by remember { mutableStateOf<Uri?>(null) }
+    var attachmentName by remember { mutableStateOf<String?>(null) }
+    
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        attachmentUri = uri
+        attachmentName = uri?.let { u ->
+            context.contentResolver.query(u, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                cursor.moveToFirst()
+                cursor.getString(nameIndex)
+            }
+        }
+    }
+
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(modifier = Modifier.padding(8.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(text = "Reply to ${replyTo.author} (#${replyTo.remoteId})", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { launcher.launch("*/*") }) {
+                        Icon(Icons.Default.AttachFile, contentDescription = "Attach File", tint = if (attachmentUri != null) Color(0xFFD91B5C) else LocalContentColor.current)
+                    }
+                    if (attachmentName != null) {
+                        Text(text = attachmentName!!, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 100.dp))
+                    }
                     TextButton(onClick = onCancel) { Text("Cancel") }
                     TextButton(onClick = { onSaveDraft(text) }, enabled = text.isNotBlank()) { Text("Draft") }
-                    Button(onClick = { onPost(text) }, enabled = text.isNotBlank()) { Text("Post") }
+                    Button(onClick = { onPost(text, attachmentUri, attachmentName) }, enabled = text.isNotBlank()) { Text("Post") }
                 }
             }
             OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth().weight(1f), placeholder = { Text("Type your message here...") }, textStyle = MaterialTheme.typography.bodySmall, keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrectEnabled = true))

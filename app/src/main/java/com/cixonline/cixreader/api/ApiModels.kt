@@ -246,6 +246,12 @@ class MessageApi {
     var topic: String? = null
 }
 
+@Root(name = "Attachment", strict = false)
+class PostAttachment(
+    @field:Element(name = "Data") var data: String = "",
+    @field:Element(name = "Filename") var filename: String = ""
+)
+
 @Root(name = "PostMessage", strict = false)
 @Namespace(reference = "http://cixonline.com")
 data class PostMessageRequest(
@@ -254,7 +260,8 @@ data class PostMessageRequest(
     @field:Element(name = "Topic") @param:Element(name = "Topic") var topic: String = "",
     @field:Element(name = "MsgID") @param:Element(name = "MsgID") var msgId: String = "0",
     @field:Element(name = "MarkRead") @param:Element(name = "MarkRead") var markRead: String = "1",
-    @field:Element(name = "WrapColumn") @param:Element(name = "WrapColumn") var wrapColumn: String = "0"
+    @field:Element(name = "WrapColumn") @param:Element(name = "WrapColumn") var wrapColumn: String = "0",
+    @field:ElementList(name = "Attachments", required = false, entry = "Attachment", inline = false) var attachments: List<PostAttachment>? = null
 )
 
 @Root(name = "Forum", strict = false)

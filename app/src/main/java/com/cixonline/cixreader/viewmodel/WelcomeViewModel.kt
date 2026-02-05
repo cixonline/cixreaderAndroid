@@ -1,5 +1,8 @@
 package com.cixonline.cixreader.viewmodel
 
+import android.content.Context
+import android.net.Uri
+import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -15,6 +18,7 @@ import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.models.Draft
 import com.cixonline.cixreader.api.WhoApi
+import com.cixonline.cixreader.api.PostAttachment
 import com.cixonline.cixreader.api.PostMessageRequest
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
@@ -314,9 +318,30 @@ class WelcomeViewModel(
         }
     }
 
-    suspend fun postMessage(forum: String, topic: String, body: String): Boolean {
+    suspend fun postMessage(
+        context: Context,
+        forum: String, 
+        topic: String, 
+        body: String,
+        attachmentUri: Uri?,
+        attachmentName: String?
+    ): Boolean {
         return try {
-            val request = PostMessageRequest(body = body, forum = forum, topic = topic)
+            val attachments = if (attachmentUri != null && attachmentName != null) {
+                try {
+                    val inputStream = context.contentResolver.openInputStream(attachmentUri)
+                    val bytes = inputStream?.readBytes()
+                    inputStream?.close()
+                    if (bytes != null) {
+                        listOf(PostAttachment(data = Base64.encodeToString(bytes, Base64.DEFAULT), filename = attachmentName))
+                    } else null
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    null
+                }
+            } else null
+
+            val request = PostMessageRequest(body = body, forum = forum, topic = topic, attachments = attachments)
             val response = api.postMessage(request)
             val result = extractStringFromXml(response.string())
             val messageId = result.toIntOrNull()
