@@ -81,7 +81,7 @@ class MessageRepository(
                     withdrawPending = existing?.withdrawPending ?: false
                 )
             }
-
+            
             if (messages.isNotEmpty()) {
                 messageDao.insertAll(messages)
             }
@@ -147,7 +147,7 @@ class MessageRepository(
 
     suspend fun markAsRead(message: CIXMessage) = withContext(Dispatchers.IO) {
         if (message.unread) {
-            val updatedMessage = message.copy(unread = false)
+            val updatedMessage = message.copy(unread = false, readPending = true)
             messageDao.update(updatedMessage)
         }
     }

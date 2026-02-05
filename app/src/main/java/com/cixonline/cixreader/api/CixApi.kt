@@ -63,6 +63,14 @@ interface CixApi {
         @Path("forum", encoded = true) forum: String
     ): ResponseBody
 
+    @GET("forums/{forum}/{topic}/{start}/{end}/markreadrange.xml")
+    suspend fun markReadRange(
+        @Path("forum", encoded = true) forum: String,
+        @Path("topic", encoded = true) topic: String,
+        @Path("start") start: Int,
+        @Path("end") end: Int
+    ): ResponseBody
+
     @POST("forums/post.xml")
     suspend fun postMessage(@Body request: PostMessageRequest): ResponseBody
 

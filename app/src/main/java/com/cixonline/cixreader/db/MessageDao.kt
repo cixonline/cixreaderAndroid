@@ -27,6 +27,9 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE unread = 1 AND date > :cutoffDate ORDER BY date ASC LIMIT 1")
     suspend fun getFirstUnreadMessage(cutoffDate: Long): CIXMessage?
 
+    @Query("SELECT * FROM messages WHERE readPending = 1")
+    suspend fun getReadPendingMessages(): List<CIXMessage>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(message: CIXMessage)
 

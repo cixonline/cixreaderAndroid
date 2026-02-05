@@ -22,6 +22,10 @@ class SyncRepository(
 
     suspend fun syncLatestMessages() = withContext(Dispatchers.IO) {
         try {
+            // 1. Sync local read status to server
+            syncReadStatusToServer()
+
+            // 2. Sync new messages from server
             Log.d(tag, "Starting periodic sync via sync.xml")
             
             var start = 0
@@ -39,7 +43,11 @@ class SyncRepository(
                     val topic = HtmlUtils.normalizeName(apiMsg.topic)
                     val topicId = HtmlUtils.calculateTopicId(forum, topic)
                     
+                    // Preserve local state if message already exists
+                    val existing = messageDao.getByRemoteId(apiMsg.id, topicId)
+
                     CIXMessage(
+                        id = existing?.id ?: 0,
                         remoteId = apiMsg.id,
                         author = HtmlUtils.decodeHtml(apiMsg.author ?: ""),
                         body = HtmlUtils.decodeHtml(apiMsg.body ?: ""),
@@ -50,7 +58,9 @@ class SyncRepository(
                         forumName = forum,
                         topicName = topic,
                         subject = HtmlUtils.decodeHtml(apiMsg.subject),
-                        unread = true
+                        unread = existing?.unread ?: true,
+                        starred = existing?.starred ?: false,
+                        readPending = existing?.readPending ?: false
                     )
                 }
                 
@@ -67,6 +77,47 @@ class SyncRepository(
         }
     }
 
+    private suspend fun syncReadStatusToServer() {
+        try {
+            val pending = messageDao.getReadPendingMessages()
+            if (pending.isEmpty()) return
+
+            Log.d(tag, "Syncing ${pending.size} read status updates to server")
+
+            // Group by topic to use markreadrange
+            val grouped = pending.groupBy { it.topicId }
+
+            for ((topicId, msgs) in grouped) {
+                if (msgs.isEmpty()) continue
+
+                val forumName = msgs.first().forumName
+                val topicName = msgs.first().topicName
+
+                // For markreadrange, we need the range.
+                // CIX markreadrange marks all messages between start and end as read.
+                val minId = msgs.minOf { it.remoteId }
+                val maxId = msgs.maxOf { it.remoteId }
+
+                try {
+                    val encodedForum = HtmlUtils.cixEncode(forumName)
+                    val encodedTopic = HtmlUtils.cixEncode(topicName)
+
+                    api.markReadRange(encodedForum, encodedTopic, minId, maxId)
+
+                    // Clear pending flag on success
+                    val updated = msgs.map { it.copy(readPending = false) }
+                    messageDao.insertAll(updated)
+
+                    Log.d(tag, "Marked range $minId-$maxId as read in $forumName/$topicName")
+                } catch (e: Exception) {
+                    Log.e(tag, "Failed to mark range as read for $forumName/$topicName", e)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Error during read status sync", e)
+        }
+    }
+
     private suspend fun refreshMessages(forumName: String, topicName: String, topicId: Int) {
         try {
             val latestMessage = messageDao.getLatestMessage(topicId)
@@ -80,7 +131,9 @@ class SyncRepository(
             val resultSet = api.getMessages(encodedForum, encodedTopic, since = since)
             
             val messages = resultSet.messages.map { apiMsg ->
+                val existing = messageDao.getByRemoteId(apiMsg.id, topicId)
                 CIXMessage(
+                    id = existing?.id ?: 0,
                     remoteId = apiMsg.id,
                     author = HtmlUtils.decodeHtml(apiMsg.author ?: ""),
                     body = HtmlUtils.decodeHtml(apiMsg.body ?: ""),
@@ -91,7 +144,9 @@ class SyncRepository(
                     forumName = forumName,
                     topicName = topicName,
                     subject = HtmlUtils.decodeHtml(apiMsg.subject),
-                    unread = true 
+                    unread = existing?.unread ?: true,
+                    starred = existing?.starred ?: false,
+                    readPending = existing?.readPending ?: false
                 )
             }
             
@@ -107,7 +162,10 @@ class SyncRepository(
         try {
             Log.d(tag, "Starting full sync")
             
-            // 1. Refresh Forums
+            // 1. Sync Read Status first
+            syncReadStatusToServer()
+
+            // 2. Refresh Forums
             val forumResultSet = api.getForums()
             val forums = forumResultSet.forums.mapNotNull { row ->
                 val folderName = row.name ?: return@mapNotNull null
@@ -122,7 +180,7 @@ class SyncRepository(
             }
             folderDao.insertAll(forums)
 
-            // 2. Refresh Topics and Messages
+            // 3. Refresh Topics and Messages
             for (forum in forums) {
                 val encodedForumName = HtmlUtils.cixEncode(forum.name)
                 val topicResultSet = api.getUserForumTopics(encodedForumName)
