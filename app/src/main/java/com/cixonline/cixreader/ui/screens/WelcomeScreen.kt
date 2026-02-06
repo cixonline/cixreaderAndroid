@@ -380,6 +380,7 @@ fun PostMessageDialog(
     var messageBody by remember { mutableStateOf("") }
     var forumExpanded by remember { mutableStateOf(false) }
     var topicExpanded by remember { mutableStateOf(false) }
+    var showCancelConfirm by remember { mutableStateOf(false) }
     
     var attachmentUri by remember { mutableStateOf<Uri?>(null) }
     var attachmentName by remember { mutableStateOf<String?>(null) }
@@ -402,6 +403,38 @@ fun PostMessageDialog(
         }
     }
 
+    if (showCancelConfirm) {
+        AlertDialog(
+            onDismissRequest = { showCancelConfirm = false },
+            title = { Text("Cancel Message") },
+            text = { Text("Are you sure you want to discard this message? You can also save it as a draft.") },
+            confirmButton = {
+                TextButton(onClick = { 
+                    showCancelConfirm = false
+                    onDismiss() 
+                }) {
+                    Text("Discard", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { 
+                        if (selectedForum != null && selectedTopic != null) {
+                            viewModel.saveDraft(messageBody)
+                        }
+                        showCancelConfirm = false
+                        onDismiss()
+                    }) {
+                        Text("Save Draft")
+                    }
+                    TextButton(onClick = { showCancelConfirm = false }) {
+                        Text("Keep Editing")
+                    }
+                }
+            }
+        )
+    }
+
     LaunchedEffect(messageBody) {
         if (selectedForum == null && selectedTopic == null) {
             viewModel.suggestForumAndTopic(messageBody)
@@ -417,7 +450,9 @@ fun PostMessageDialog(
         }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = {
+        if (messageBody.isNotBlank()) showCancelConfirm = true else onDismiss()
+    }) {
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
             tonalElevation = 6.dp,
@@ -552,7 +587,9 @@ fun PostMessageDialog(
                     
                     Spacer(modifier = Modifier.weight(1f))
 
-                    TextButton(onClick = onDismiss) {
+                    TextButton(onClick = {
+                        if (messageBody.isNotBlank()) showCancelConfirm = true else onDismiss()
+                    }) {
                         Text("Cancel")
                     }
                     TextButton(

@@ -728,6 +728,7 @@ fun ReplyPane(
     var text by remember(initialText) { mutableStateOf(initialText) }
     var attachmentUri by remember { mutableStateOf<Uri?>(null) }
     var attachmentName by remember { mutableStateOf<String?>(null) }
+    var showCancelConfirm by remember { mutableStateOf(false) }
     
     val context = LocalContext.current
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -739,6 +740,35 @@ fun ReplyPane(
                 cursor.getString(nameIndex)
             }
         }
+    }
+
+    if (showCancelConfirm) {
+        AlertDialog(
+            onDismissRequest = { showCancelConfirm = false },
+            title = { Text("Cancel Message") },
+            text = { Text("Are you sure you want to discard this message? You can also save it as a draft.") },
+            confirmButton = {
+                TextButton(onClick = { 
+                    showCancelConfirm = false
+                    onCancel() 
+                }) {
+                    Text("Discard", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { 
+                        onSaveDraft(text)
+                        showCancelConfirm = false
+                    }) {
+                        Text("Save Draft")
+                    }
+                    TextButton(onClick = { showCancelConfirm = false }) {
+                        Text("Keep Editing")
+                    }
+                }
+            }
+        )
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
@@ -770,7 +800,13 @@ fun ReplyPane(
                     if (attachmentName != null) {
                         Text(text = attachmentName!!, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 100.dp))
                     }
-                    TextButton(onClick = onCancel) { Text("Cancel") }
+                    TextButton(onClick = {
+                        if (text.isNotBlank() && text != initialText) {
+                            showCancelConfirm = true
+                        } else {
+                            onCancel()
+                        }
+                    }) { Text("Cancel") }
                     TextButton(onClick = { onSaveDraft(text) }, enabled = text.isNotBlank()) { Text("Draft") }
                     Button(onClick = { onPost(text, attachmentUri, attachmentName) }, enabled = text.isNotBlank()) { Text("Post") }
                 }
