@@ -160,7 +160,8 @@ class TopicViewModel(
                 val bytes = inputStream?.readBytes()
                 inputStream?.close()
                 if (bytes != null) {
-                    listOf(PostAttachment(data = Base64.encodeToString(bytes, Base64.DEFAULT), filename = attachmentName))
+                    // Use NO_WRAP to prevent newlines in Base64 data which can break some XML parsers/APIs
+                    listOf(PostAttachment(data = Base64.encodeToString(bytes, Base64.NO_WRAP), filename = attachmentName))
                 } else null
             } catch (e: Exception) {
                 e.printStackTrace()

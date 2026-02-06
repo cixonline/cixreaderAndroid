@@ -3,6 +3,7 @@ package com.cixonline.cixreader.api
 import okhttp3.ResponseBody
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Headers
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -71,8 +72,13 @@ interface CixApi {
         @Path("end") end: Int
     ): ResponseBody
 
+    @Headers("Content-Type: text/xml")
     @POST("forums/post.xml")
     suspend fun postMessage(@Body request: PostMessageRequest): ResponseBody
+
+    @Headers("Content-Type: text/xml")
+    @POST("forums/post2.xml")
+    suspend fun postMessage2(@Body request: PostMessage2Request): ResponseBody
 
     @GET("forums/interestingthreads.xml")
     suspend fun getInterestingThreads(

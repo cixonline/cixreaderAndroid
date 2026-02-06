@@ -4,7 +4,6 @@ import org.simpleframework.xml.Attribute
 import org.simpleframework.xml.Element
 import org.simpleframework.xml.ElementList
 import org.simpleframework.xml.Namespace
-import org.simpleframework.xml.Order
 import org.simpleframework.xml.Root
 import org.simpleframework.xml.Text
 
@@ -80,6 +79,7 @@ class ForumResultSet {
 }
 
 @Root(name = "ForumRow", strict = false)
+@Namespace(reference = "http://cixonline.com")
 class ForumResultSetRow {
     @field:Element(name = "Flags", required = false)
     var flags: String? = null
@@ -108,6 +108,7 @@ class TopicResultSet {
 }
 
 @Root(name = "Topic", strict = false)
+@Namespace(reference = "http://cixonline.com")
 class TopicResult {
     @field:Element(name = "Name", required = false)
     var name: String? = null
@@ -136,6 +137,7 @@ class UserTopicResultSet {
 }
 
 @Root(name = "UserTopic", strict = false)
+@Namespace(reference = "http://cixonline.com")
 class UserTopicApi {
     @field:Element(name = "Flag", required = false)
     var flag: String? = null
@@ -167,6 +169,7 @@ class UserForumTopicResultSet2 {
 }
 
 @Root(name = "UserForumTopic2", strict = false)
+@Namespace(reference = "http://cixonline.com")
 class UserForumTopic2 {
     @field:Element(name = "Flags", required = false)
     var flags: Int = 0
@@ -210,6 +213,7 @@ class MessageResultSet {
 }
 
 @Root(name = "Message", strict = false)
+@Namespace(reference = "http://cixonline.com")
 class MessageApi {
     @field:Element(name = "ID", required = false)
     var id: Int = 0
@@ -243,36 +247,34 @@ class MessageApi {
 }
 
 @Root(name = "Attachment", strict = false)
-@Order(elements = ["Filename", "Data"])
 data class PostAttachment(
-    @field:Element(name = "Filename") @param:Element(name = "Filename") var filename: String = "",
-    @field:Element(name = "Data") @param:Element(name = "Data") var data: String = ""
+    @field:Element(name = "Data") @param:Element(name = "Data") var data: String = "",
+    @field:Element(name = "Filename") @param:Element(name = "Filename") var filename: String = ""
 )
 
 @Root(name = "PostMessage", strict = false)
 @Namespace(reference = "http://cixonline.com")
-@Order(elements = ["Body", "Forum", "Topic", "MsgID", "MarkRead", "WrapColumn"])
-data class PostMessageRequest @JvmOverloads constructor(
+data class PostMessageRequest(
     @field:Element(name = "Body") @param:Element(name = "Body") var body: String = "",
     @field:Element(name = "Forum") @param:Element(name = "Forum") var forum: String = "",
     @field:Element(name = "Topic") @param:Element(name = "Topic") var topic: String = "",
-    @field:Element(name = "MsgID") @param:Element(name = "MsgID") var msgId: Int = 0,
-    @field:Element(name = "MarkRead") @param:Element(name = "MarkRead") var markRead: Int = 1,
-    @field:Element(name = "WrapColumn") @param:Element(name = "WrapColumn") var wrapColumn: Int = 0
+    @field:Element(name = "MsgID") @param:Element(name = "MsgID") var msgId: String = "0",
+    @field:Element(name = "MarkRead") @param:Element(name = "MarkRead") var markRead: String = "1",
+    @field:Element(name = "WrapColumn") @param:Element(name = "WrapColumn") var wrapColumn: String = "0"
 )
 
 @Root(name = "PostMessage2", strict = false)
 @Namespace(reference = "http://cixonline.com")
-@Order(elements = ["Body", "Forum", "Topic", "MsgID", "MarkRead", "WrapColumn", "Attachments"])
-data class PostMessage2Request @JvmOverloads constructor(
+data class PostMessage2Request(
     @field:Element(name = "Body") @param:Element(name = "Body") var body: String = "",
     @field:Element(name = "Forum") @param:Element(name = "Forum") var forum: String = "",
     @field:Element(name = "Topic") @param:Element(name = "Topic") var topic: String = "",
-    @field:Element(name = "MsgID") @param:Element(name = "MsgID") var msgId: Int = 0,
-    @field:Element(name = "MarkRead") @param:Element(name = "MarkRead") var markRead: Int = 1,
-    @field:Element(name = "WrapColumn") @param:Element(name = "WrapColumn") var wrapColumn: Int = 0,
-    @field:ElementList(name = "Attachments", entry = "Attachment", required = false, inline = false) 
-    @param:ElementList(name = "Attachments", entry = "Attachment", required = false, inline = false)
+    @field:Element(name = "MsgID") @param:Element(name = "MsgID") var msgId: String = "0",
+    @field:Element(name = "MarkRead") @param:Element(name = "MarkRead") var markRead: String = "1",
+    @field:Element(name = "WrapColumn") @param:Element(name = "WrapColumn") var wrapColumn: String = "0",
+    @field:ElementList(name = "Attachments", required = false, entry = "Attachment", inline = false) 
+    @param:ElementList(name = "Attachments")
+    @Namespace(reference = "http://cixonline.com")
     var attachments: List<PostAttachment>? = null
 )
 
@@ -325,6 +327,7 @@ class WhosApi {
 }
 
 @Root(name = "Who", strict = false)
+@Namespace(reference = "http://cixonline.com")
 class WhoApi {
     @field:Element(name = "Name", required = false)
     var name: String? = null
@@ -344,6 +347,7 @@ class CategoryResultSet {
 }
 
 @Root(name = "Category", strict = false)
+@Namespace(reference = "http://cixonline.com")
 class CategoryResult {
     @field:Element(name = "Name", required = false)
     var name: String? = null
@@ -360,6 +364,7 @@ class DirListings {
 }
 
 @Root(name = "DirListing", strict = false)
+@Namespace(reference = "http://cixonline.com")
 data class DirListing(
     @field:Element(name = "Forum", required = false)
     var forum: String? = null,

@@ -3,6 +3,8 @@ package com.cixonline.cixreader.repository
 import com.cixonline.cixreader.api.CixApi
 import com.cixonline.cixreader.api.PostAttachment
 import com.cixonline.cixreader.api.PostMessageRequest
+import com.cixonline.cixreader.api.PostMessage2Request
+import com.cixonline.cixreader.api.PostMessage2Response
 import com.cixonline.cixreader.db.MessageDao
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.utils.DateUtils
@@ -13,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.StringReader
+import org.simpleframework.xml.core.Persister
 
 class NotAMemberException(val forumName: String) : Exception("Not a member of forum: $forumName")
 
@@ -20,6 +23,8 @@ class MessageRepository(
     private val api: CixApi,
     private val messageDao: MessageDao
 ) {
+    private val serializer = Persister()
+
     fun getMessagesForTopic(topicId: Int): Flow<List<CIXMessage>> {
         return messageDao.getByTopic(topicId)
     }
@@ -32,7 +37,8 @@ class MessageRepository(
             var eventType = parser.eventType
             while (eventType != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
                 if (eventType == org.xmlpull.v1.XmlPullParser.TEXT) {
-                    return parser.text
+                    val text = parser.text?.trim()
+                    if (!text.isNullOrEmpty()) return text
                 }
                 eventType = parser.next()
             }
@@ -103,23 +109,55 @@ class MessageRepository(
         attachments: List<PostAttachment>? = null
     ): Int = withContext(Dispatchers.IO) {
         try {
-            val request = PostMessageRequest(
-                body = body, 
-                forum = forum, 
-                topic = topic, 
-                msgId = replyTo.toString(),
-                attachments = attachments
-            )
-            val response = api.postMessage(request)
-            val result = extractStringFromXml(response.string())
+            // Append attachment links to the message body as requested by CIX requirements
+            var postedBody = body
+            attachments?.forEach { attachment ->
+                val link = "https://forums.cix.co.uk/secure/download.aspx?f=${attachment.filename}"
+                postedBody += "\n\n$link"
+            }
+
+            val response = if (attachments != null && attachments.isNotEmpty()) {
+                val request = PostMessage2Request(
+                    body = postedBody,
+                    forum = forum,
+                    topic = topic,
+                    msgId = replyTo.toString(),
+                    attachments = attachments
+                )
+                api.postMessage2(request)
+            } else {
+                val request = PostMessageRequest(
+                    body = postedBody,
+                    forum = forum,
+                    topic = topic,
+                    msgId = replyTo.toString()
+                )
+                api.postMessage(request)
+            }
             
-            val messageId = result.toIntOrNull()
-            if (messageId != null && messageId > 0) {
+            val responseString = response.string()
+            
+            var messageId = 0
+            val finalBody = postedBody
+
+            if (responseString.trim().startsWith("<")) {
+                try {
+                    val resp = serializer.read(PostMessage2Response::class.java, responseString)
+                    messageId = resp.id
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    messageId = extractStringFromXml(responseString).toIntOrNull() ?: 0
+                }
+            } else {
+                messageId = extractStringFromXml(responseString).toIntOrNull() ?: 0
+            }
+            
+            if (messageId > 0) {
                 val topicId = HtmlUtils.calculateTopicId(forum, topic)
                 val newMessage = CIXMessage(
                     remoteId = messageId,
                     author = "me",
-                    body = body,
+                    body = finalBody,
                     date = System.currentTimeMillis(),
                     commentId = replyTo,
                     rootId = 0,
@@ -129,15 +167,15 @@ class MessageRepository(
                     unread = false
                 )
                 messageDao.insert(newMessage)
-                messageId
-            } else if (result == "Success") {
-                -1
+                return@withContext messageId
+            } else if (responseString.contains("Success")) {
+                return@withContext -1
             } else {
-                0
+                return@withContext 0
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            0
+            return@withContext 0
         }
     }
 

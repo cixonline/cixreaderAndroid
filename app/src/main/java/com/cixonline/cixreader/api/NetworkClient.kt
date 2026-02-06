@@ -2,6 +2,7 @@ package com.cixonline.cixreader.api
 
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.scalars.ScalarsConverterFactory
@@ -46,8 +47,6 @@ object NetworkClient {
         val url = chain.request().url.toString()
         if (url.contains("/mugshot")) {
             val contentType = response.header("Content-Type")
-            // If Content-Type is missing or not an image type, force it to image/jpeg
-            // to help Coil's decoders recognize it as an image.
             if (contentType == null || !contentType.startsWith("image/")) {
                 val body = response.body
                 if (body != null) {
@@ -60,15 +59,19 @@ object NetworkClient {
         response
     }
 
-    val okHttpClient by lazy {
+    val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(60, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(60, TimeUnit.SECONDS)
+            // Strictly enforce HTTP/1.1 to avoid HTTP/2 StreamResetException (CANCEL)
+            // Some servers reset HTTP/2 streams for large POST bodies.
+            .protocols(listOf(Protocol.HTTP_1_1))
+            .connectTimeout(90, TimeUnit.SECONDS)
+            .readTimeout(90, TimeUnit.SECONDS)
+            .writeTimeout(120, TimeUnit.SECONDS) // Extra time for large attachment uploads
             .addInterceptor(authInterceptor)
             .addInterceptor(mugshotContentTypeInterceptor)
             .addInterceptor(HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BODY
+                // Reduced logging level to avoid buffering issues with large payloads
+                level = HttpLoggingInterceptor.Level.HEADERS
             })
             .build()
     }
@@ -91,8 +94,6 @@ object NetworkClient {
                 .okHttpClient(okHttpClient)
                 .crossfade(true)
                 .components {
-                    // BitmapFactoryDecoder is more lenient than the modern ImageDecoder
-                    // and often succeeds where ImageDecoder returns 'unimplemented'.
                     add(BitmapFactoryDecoder.Factory())
                 }
                 .build().also { imageLoader = it }

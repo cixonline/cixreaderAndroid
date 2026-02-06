@@ -20,6 +20,7 @@ import com.cixonline.cixreader.models.Draft
 import com.cixonline.cixreader.api.WhoApi
 import com.cixonline.cixreader.api.PostAttachment
 import com.cixonline.cixreader.api.PostMessageRequest
+import com.cixonline.cixreader.api.PostMessage2Request
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
 import kotlinx.coroutines.async
@@ -333,7 +334,8 @@ class WelcomeViewModel(
                     val bytes = inputStream?.readBytes()
                     inputStream?.close()
                     if (bytes != null) {
-                        listOf(PostAttachment(data = Base64.encodeToString(bytes, Base64.DEFAULT), filename = attachmentName))
+                        // Use NO_WRAP to avoid newlines in Base64 which can break the XML payload or trigger stream resets
+                        listOf(PostAttachment(data = Base64.encodeToString(bytes, Base64.NO_WRAP), filename = attachmentName))
                     } else null
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -341,8 +343,14 @@ class WelcomeViewModel(
                 }
             } else null
 
-            val request = PostMessageRequest(body = body, forum = forum, topic = topic, attachments = attachments)
-            val response = api.postMessage(request)
+            val response = if (attachments != null) {
+                val request = PostMessage2Request(body = body, forum = forum, topic = topic, attachments = attachments)
+                api.postMessage2(request)
+            } else {
+                val request = PostMessageRequest(body = body, forum = forum, topic = topic)
+                api.postMessage(request)
+            }
+            
             val result = extractStringFromXml(response.string())
             val messageId = result.toIntOrNull()
             if (messageId != null && messageId > 0) {
