@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.StringReader
+import java.net.URLEncoder
 import org.simpleframework.xml.core.Persister
 
 class NotAMemberException(val forumName: String) : Exception("Not a member of forum: $forumName")
@@ -112,25 +113,29 @@ class MessageRepository(
             // Append attachment links to the message body as requested by CIX requirements
             var postedBody = body
             attachments?.forEach { attachment ->
-                val link = "https://forums.cix.co.uk/secure/download.aspx?f=${attachment.filename}"
+                val encodedFilename = URLEncoder.encode(attachment.filename, "UTF-8")
+                val link = "https://forums.cix.co.uk/secure/download.aspx?f=$encodedFilename"
                 postedBody += "\n\n$link"
             }
+            
+            val encodedForum = HtmlUtils.cixEncode(forum)
+            val encodedTopic = HtmlUtils.cixEncode(topic)
 
             val response = if (attachments != null && attachments.isNotEmpty()) {
                 val request = PostMessage2Request(
                     body = postedBody,
-                    forum = forum,
-                    topic = topic,
-                    msgId = replyTo.toString(),
+                    forum = encodedForum,
+                    topic = encodedTopic,
+                    msgId = replyTo,
                     attachments = attachments
                 )
                 api.postMessage2(request)
             } else {
                 val request = PostMessageRequest(
                     body = postedBody,
-                    forum = forum,
-                    topic = topic,
-                    msgId = replyTo.toString()
+                    forum = encodedForum,
+                    topic = encodedTopic,
+                    msgId = replyTo
                 )
                 api.postMessage(request)
             }

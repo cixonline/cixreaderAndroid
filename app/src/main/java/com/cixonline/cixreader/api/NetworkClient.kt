@@ -45,7 +45,8 @@ object NetworkClient {
     private val mugshotContentTypeInterceptor = Interceptor { chain ->
         val response = chain.proceed(chain.request())
         val url = chain.request().url.toString()
-        if (url.contains("/mugshot")) {
+        // Force image content type for mugshots and potential image attachments from CIX
+        if (url.contains("/mugshot") || (url.contains("download.aspx") && (url.lowercase().contains(".jpg") || url.lowercase().contains(".png") || url.lowercase().contains(".jpeg") || url.lowercase().contains(".gif")))) {
             val contentType = response.header("Content-Type")
             if (contentType == null || !contentType.startsWith("image/")) {
                 val body = response.body
@@ -96,6 +97,8 @@ object NetworkClient {
                 .components {
                     add(BitmapFactoryDecoder.Factory())
                 }
+                // Disable hardware bitmaps to avoid "unimplemented" errors on some devices
+                .allowHardware(false)
                 .build().also { imageLoader = it }
         }
     }
