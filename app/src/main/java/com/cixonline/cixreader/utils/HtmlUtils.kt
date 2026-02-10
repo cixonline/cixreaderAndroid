@@ -77,4 +77,14 @@ object HtmlUtils {
     fun cixCategoryEncode(text: String?): String {
         return cixEncode(text)
     }
+
+    /**
+     * Encodes a filename for CIX attachment.
+     * CIX filenames typically replace spaces with underscores and remove other special characters.
+     */
+    fun encodeFilename(filename: String?): String {
+        if (filename.isNullOrBlank()) return ""
+        return filename.replace(" ", "_")
+            .filter { it.isLetterOrDigit() || it == '.' || it == '_' || it == '-' }
+    }
 }

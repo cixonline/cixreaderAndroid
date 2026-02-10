@@ -1,5 +1,6 @@
 package com.cixonline.cixreader.repository
 
+import android.util.Log
 import com.cixonline.cixreader.api.CixApi
 import com.cixonline.cixreader.api.PostAttachment
 import com.cixonline.cixreader.api.PostMessageRequest
@@ -15,8 +16,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.StringReader
-import java.net.URLEncoder
+import java.io.StringWriter
 import org.simpleframework.xml.core.Persister
+import org.simpleframework.xml.convert.AnnotationStrategy
 
 class NotAMemberException(val forumName: String) : Exception("Not a member of forum: $forumName")
 
@@ -24,7 +26,9 @@ class MessageRepository(
     private val api: CixApi,
     private val messageDao: MessageDao
 ) {
-    private val serializer = Persister()
+    private val tag = "MessageRepository"
+    // Use AnnotationStrategy to prevent SimpleXML from adding 'class' attributes to elements
+    private val serializer = Persister(AnnotationStrategy())
 
     fun getMessagesForTopic(topicId: Int): Flow<List<CIXMessage>> {
         return messageDao.getByTopic(topicId)
@@ -97,7 +101,7 @@ class MessageRepository(
             if (e.message?.contains("not a member", ignoreCase = true) == true) {
                 throw NotAMemberException(forum)
             }
-            e.printStackTrace()
+            Log.e(tag, "Refresh messages failed", e)
             throw e
         }
     }
@@ -110,10 +114,14 @@ class MessageRepository(
         attachments: List<PostAttachment>? = null
     ): Int = withContext(Dispatchers.IO) {
         try {
-            // Append attachment links to the message body as requested by CIX requirements
+            // Encode filenames and append attachment links to the message body as before
             var postedBody = body
             attachments?.forEach { attachment ->
-                val encodedFilename = URLEncoder.encode(attachment.filename, "UTF-8")
+                // Use CIX specific encoding for filenames (no spaces, alphanumeric only)
+                val encodedFilename = HtmlUtils.encodeFilename(attachment.filename)
+                attachment.filename = encodedFilename
+                
+                // Append the direct download link using the encoded filename
                 val link = "https://forums.cix.co.uk/secure/download.aspx?f=$encodedFilename"
                 postedBody += "\n\n$link"
             }
@@ -129,6 +137,16 @@ class MessageRepository(
                     msgId = replyTo,
                     attachments = attachments
                 )
+                
+                // Debug: Log the request XML
+                try {
+                    val writer = StringWriter()
+                    serializer.write(request, writer)
+                    Log.d(tag, "Sending PostMessage2Request XML: ${writer.toString()}")
+                } catch (e: Exception) {
+                    Log.e(tag, "Failed to serialize debug request XML", e)
+                }
+                
                 api.postMessage2(request)
             } else {
                 val request = PostMessageRequest(
@@ -141,6 +159,7 @@ class MessageRepository(
             }
             
             val responseString = response.string()
+            Log.d(tag, "Received response: $responseString")
             
             var messageId = 0
             val finalBody = postedBody
@@ -149,12 +168,15 @@ class MessageRepository(
                 try {
                     val resp = serializer.read(PostMessage2Response::class.java, responseString)
                     messageId = resp.id
+                    Log.d(tag, "Parsed messageId from XML: $messageId")
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    Log.e(tag, "Failed to parse response XML", e)
                     messageId = extractStringFromXml(responseString).toIntOrNull() ?: 0
+                    Log.d(tag, "Extracted messageId from raw text after XML failure: $messageId")
                 }
             } else {
-                messageId = extractStringFromXml(responseString).toIntOrNull() ?: 0
+                messageId = responseString.trim().toIntOrNull() ?: extractStringFromXml(responseString).toIntOrNull() ?: 0
+                Log.d(tag, "Parsed messageId from non-XML response: $messageId")
             }
             
             if (messageId > 0) {
@@ -179,7 +201,7 @@ class MessageRepository(
                 return@withContext 0
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(tag, "postMessage failed", e)
             return@withContext 0
         }
     }

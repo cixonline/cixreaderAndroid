@@ -72,11 +72,11 @@ interface CixApi {
         @Path("end") end: Int
     ): ResponseBody
 
-    @Headers("Content-Type: text/xml")
+    @Headers("Content-Type: application/xml")
     @POST("forums/post.xml")
     suspend fun postMessage(@Body request: PostMessageRequest): ResponseBody
 
-    @Headers("Content-Type: text/xml")
+    @Headers("Content-Type: application/xml")
     @POST("forums/post2.xml")
     suspend fun postMessage2(@Body request: PostMessage2Request): ResponseBody
 

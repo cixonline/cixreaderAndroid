@@ -273,25 +273,27 @@ data class PostMessage2Request @JvmOverloads constructor(
     @field:Element(name = "WrapColumn") @param:Element(name = "WrapColumn") var wrapColumn: Int = 0,
     @field:ElementList(name = "Attachments", entry = "Attachment", required = false, inline = false) 
     @param:ElementList(name = "Attachments", entry = "Attachment", required = false, inline = false)
+    @field:Namespace(reference = "http://cixonline.com")
     var attachments: List<PostAttachment>? = null
 )
 
 @Root(name = "PostMessage2Response", strict = false)
 @Namespace(reference = "http://cixonline.com")
 class PostMessage2Response {
-    @field:Element(name = "ID")
+    @field:Element(name = "ID", required = false)
     var id: Int = 0
 
     @field:ElementList(name = "Attachments", entry = "Attachment", required = false)
+    @field:Namespace(reference = "http://cixonline.com")
     var attachments: List<AttachmentResponse>? = null
 }
 
 @Root(name = "Attachment", strict = false)
 class AttachmentResponse {
-    @field:Element(name = "Filename")
+    @field:Element(name = "Filename", required = false)
     var filename: String? = null
 
-    @field:Element(name = "URL")
+    @field:Element(name = "URL", required = false)
     var url: String? = null
 }
 

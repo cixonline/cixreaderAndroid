@@ -11,6 +11,8 @@ import java.util.concurrent.TimeUnit
 import coil.ImageLoader
 import coil.decode.BitmapFactoryDecoder
 import okhttp3.Interceptor
+import org.simpleframework.xml.core.Persister
+import org.simpleframework.xml.convert.AnnotationStrategy
 
 object NetworkClient {
     private const val BASE_URL = "https://api.cixonline.com/v2.0/cix.svc/"
@@ -78,11 +80,14 @@ object NetworkClient {
     }
 
     val api: CixApi by lazy {
+        // Use AnnotationStrategy to prevent SimpleXML from adding 'class' attributes to elements
+        val serializer = Persister(AnnotationStrategy())
+
         Retrofit.Builder()
             .baseUrl(BASE_URL)
             .client(okHttpClient)
             .addConverterFactory(ScalarsConverterFactory.create())
-            .addConverterFactory(SimpleXmlConverterFactory.create())
+            .addConverterFactory(SimpleXmlConverterFactory.create(serializer))
             .build()
             .create(CixApi::class.java)
     }
