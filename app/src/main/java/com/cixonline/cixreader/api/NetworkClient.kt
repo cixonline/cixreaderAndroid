@@ -1,5 +1,6 @@
 package com.cixonline.cixreader.api
 
+import com.google.gson.GsonBuilder
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -7,6 +8,7 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.scalars.ScalarsConverterFactory
 import retrofit2.converter.simplexml.SimpleXmlConverterFactory
+import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 import coil.ImageLoader
 import coil.decode.BitmapFactoryDecoder
@@ -85,11 +87,16 @@ object NetworkClient {
         // Use AnnotationStrategy to prevent SimpleXML from adding 'class' attributes to elements
         val serializer = Persister(AnnotationStrategy())
 
+        val gson = GsonBuilder()
+            .setLenient()
+            .create()
+
         Retrofit.Builder()
             .baseUrl(BASE_URL)
             .client(okHttpClient)
             .addConverterFactory(ScalarsConverterFactory.create())
             .addConverterFactory(SimpleXmlConverterFactory.create(serializer))
+            .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
             .create(CixApi::class.java)
     }

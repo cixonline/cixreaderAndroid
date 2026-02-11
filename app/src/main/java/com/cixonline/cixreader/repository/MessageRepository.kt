@@ -115,121 +115,103 @@ class MessageRepository(
         attachments: List<PostAttachment>? = null
     ): Int = withContext(Dispatchers.IO) {
         try {
-            // Encode filenames and append attachment links to the message body
-            var postedBody = body
-            attachments?.forEachIndexed { index, attachment ->
-                // Use CIX specific encoding for filenames (no spaces, alphanumeric only)
-                val encodedFilename = HtmlUtils.encodeFilename(attachment.filename)
-                attachment.filename = encodedFilename
-                
-                // Add marker to body as per documentation
-                val marker = "{${index + 1}}"
-                val link = "https://forums.cix.co.uk/secure/download.aspx?f=$encodedFilename"
-                
-                if (!postedBody.contains(marker)) {
-                    postedBody += "\n\n$marker ($link)"
-                }
-            }
-            
-            // Forum and Topic names in the XML body should NOT be cixEncoded (like URL paths).
+            // Forum and Topic names in the XML/JSON body should NOT be cixEncoded (like URL paths).
             // Normalizing names to ensure they match expected server values.
             val forumParam = HtmlUtils.normalizeName(forum)
             val topicParam = HtmlUtils.normalizeName(topic)
 
-            val response = if (attachments != null && attachments.isNotEmpty()) {
-                val request = PostMessage2Request(
-                    attachments = attachments,
-                    body = postedBody,
-                    forum = forumParam,
-                    markRead = 1,
-                    msgId = replyTo,
-                    topic = topicParam
-                )
-                
-                // Debug: Log the request XML
-                try {
-                    val writer = StringWriter()
-                    serializer.write(request, writer)
-                    Log.d(tag, "Sending PostMessage2Request XML: ${writer.toString()}")
-                } catch (e: Exception) {
-                    Log.e(tag, "Failed to serialize debug request XML (PostMessage2Request)", e)
+            if (attachments != null && attachments.isNotEmpty()) {
+                // When attaching files, we MUST use JSON and set Flags to 1 to get returned links.
+                // We create a deep copy of attachments to avoid modifying the original list.
+                val processedAttachments = attachments.map { 
+                    it.copy(filename = HtmlUtils.encodeFilename(it.filename))
                 }
-                
-                api.postMessage2(request)
-            } else {
-                val request = PostMessageRequest(
-                    body = postedBody,
-                    forum = forumParam,
-                    markRead = 1,
-                    msgId = replyTo,
-                    topic = topicParam
-                )
-                
-                // Debug: Log the request XML
-                try {
-                    val writer = StringWriter()
-                    serializer.write(request, writer)
-                    Log.d(tag, "Sending PostMessageRequest XML: ${writer.toString()}")
-                } catch (e: Exception) {
-                    Log.e(tag, "Failed to serialize debug request XML (PostMessageRequest)", e)
-                }
-                
-                api.postMessage(request)
-            }
-            
-            val responseString = response.string()
-            Log.d(tag, "Received response: $responseString")
-            
-            var messageId = 0
-            val finalBody = postedBody
 
-            if (responseString.trim().startsWith("<")) {
-                // If it looks like a proper response object, try parsing it
-                if (responseString.contains("PostMessage2Response") || responseString.contains("PostMessageResponse")) {
-                    try {
-                        val resp = serializer.read(PostMessage2Response::class.java, responseString)
-                        messageId = resp.id
-                        Log.d(tag, "Parsed messageId from expected XML: $messageId")
-                    } catch (e: Exception) {
-                        Log.e(tag, "Failed to parse response XML as PostMessage2Response", e)
+                val request = PostMessage2Request(
+                    attachments = processedAttachments,
+                    body = body,
+                    flags = 1, // Flags: 1 returns links for attachments
+                    forum = forumParam,
+                    markRead = 1,
+                    msgId = replyTo,
+                    topic = topicParam
+                )
+                
+                Log.d(tag, "Sending PostMessage2Request JSON with ${processedAttachments.size} attachments")
+                val response = api.postMessage2Json(request)
+                
+                var postedBody = body
+                response.attachments?.forEachIndexed { index, attachment ->
+                    val marker = "{${index + 1}}"
+                    val link = attachment.url
+                    if (link != null && !postedBody.contains(marker)) {
+                        postedBody += "\n\n$marker ($link)"
                     }
                 }
-                
-                // Fallback: extract text from XML if we didn't get an ID (e.g. <string>84</string>)
-                if (messageId <= 0) {
-                    messageId = extractStringFromXml(responseString).toIntOrNull() ?: 0
-                    Log.d(tag, "Extracted messageId from simple or failed XML: $messageId")
+
+                if (response.id > 0) {
+                    insertNewMessageLocal(response.id, author, postedBody, replyTo, forum, topic)
+                    return@withContext response.id
                 }
+                return@withContext 0
             } else {
-                messageId = responseString.trim().toIntOrNull() ?: 0
-                Log.d(tag, "Parsed messageId from non-XML response: $messageId")
-            }
-            
-            if (messageId > 0) {
-                val topicId = HtmlUtils.calculateTopicId(forum, topic)
-                val newMessage = CIXMessage(
-                    remoteId = messageId,
-                    author = author,
-                    body = finalBody,
-                    date = System.currentTimeMillis(),
-                    commentId = replyTo,
-                    rootId = 0,
-                    topicId = topicId,
-                    forumName = forum,
-                    topicName = topic,
-                    unread = false
+                // No attachments, use XML for simplicity as before (or JSON if preferred)
+                val request = PostMessageRequest(
+                    body = body,
+                    forum = forumParam,
+                    markRead = 1,
+                    msgId = replyTo,
+                    topic = topicParam
                 )
-                messageDao.insert(newMessage)
-                return@withContext messageId
-            } else if (responseString.contains("Success")) {
-                return@withContext -1
-            } else {
+                
+                val response = api.postMessage(request)
+                val responseString = response.string()
+                Log.d(tag, "Received XML response: $responseString")
+                
+                var messageId = 0
+                if (responseString.trim().startsWith("<")) {
+                    if (responseString.contains("PostMessage2Response") || responseString.contains("PostMessageResponse")) {
+                        try {
+                            val resp = serializer.read(PostMessage2Response::class.java, responseString)
+                            messageId = resp.id
+                        } catch (e: Exception) {
+                            Log.e(tag, "Failed to parse response XML", e)
+                        }
+                    }
+                    if (messageId <= 0) {
+                        messageId = extractStringFromXml(responseString).toIntOrNull() ?: 0
+                    }
+                } else {
+                    messageId = responseString.trim().toIntOrNull() ?: 0
+                }
+                
+                if (messageId > 0) {
+                    insertNewMessageLocal(messageId, author, body, replyTo, forum, topic)
+                    return@withContext messageId
+                }
                 return@withContext 0
             }
         } catch (e: Exception) {
             Log.e(tag, "postMessage failed", e)
             return@withContext 0
         }
+    }
+
+    private suspend fun insertNewMessageLocal(id: Int, author: String, body: String, replyTo: Int, forum: String, topic: String) {
+        val topicId = HtmlUtils.calculateTopicId(forum, topic)
+        val newMessage = CIXMessage(
+            remoteId = id,
+            author = author,
+            body = body,
+            date = System.currentTimeMillis(),
+            commentId = replyTo,
+            rootId = 0,
+            topicId = topicId,
+            forumName = forum,
+            topicName = topic,
+            unread = false
+        )
+        messageDao.insert(newMessage)
     }
 
     suspend fun joinForum(forum: String): Boolean = withContext(Dispatchers.IO) {

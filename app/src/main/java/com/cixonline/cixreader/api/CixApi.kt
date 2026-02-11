@@ -80,6 +80,10 @@ interface CixApi {
     @POST("forums/post2.xml")
     suspend fun postMessage2(@Body request: PostMessage2Request): ResponseBody
 
+    @Headers("Content-Type: application/json", "Accept: application/json")
+    @POST("forums/post2.json")
+    suspend fun postMessage2Json(@Body request: PostMessage2Request): PostMessage2Response
+
     @GET("forums/interestingthreads.xml")
     suspend fun getInterestingThreads(
         @Query("count") count: Int = 20,
