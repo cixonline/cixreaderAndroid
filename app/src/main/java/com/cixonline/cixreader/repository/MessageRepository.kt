@@ -184,17 +184,24 @@ class MessageRepository(
             val finalBody = postedBody
 
             if (responseString.trim().startsWith("<")) {
-                try {
-                    val resp = serializer.read(PostMessage2Response::class.java, responseString)
-                    messageId = resp.id
-                    Log.d(tag, "Parsed messageId (ID) from XML: $messageId")
-                } catch (e: Exception) {
-                    Log.e(tag, "Failed to parse response XML", e)
+                // If it looks like a proper response object, try parsing it
+                if (responseString.contains("PostMessage2Response") || responseString.contains("PostMessageResponse")) {
+                    try {
+                        val resp = serializer.read(PostMessage2Response::class.java, responseString)
+                        messageId = resp.id
+                        Log.d(tag, "Parsed messageId from expected XML: $messageId")
+                    } catch (e: Exception) {
+                        Log.e(tag, "Failed to parse response XML as PostMessage2Response", e)
+                    }
+                }
+                
+                // Fallback: extract text from XML if we didn't get an ID (e.g. <string>84</string>)
+                if (messageId <= 0) {
                     messageId = extractStringFromXml(responseString).toIntOrNull() ?: 0
-                    Log.d(tag, "Extracted messageId from raw text after XML failure: $messageId")
+                    Log.d(tag, "Extracted messageId from simple or failed XML: $messageId")
                 }
             } else {
-                messageId = responseString.trim().toIntOrNull() ?: extractStringFromXml(responseString).toIntOrNull() ?: 0
+                messageId = responseString.trim().toIntOrNull() ?: 0
                 Log.d(tag, "Parsed messageId from non-XML response: $messageId")
             }
             
