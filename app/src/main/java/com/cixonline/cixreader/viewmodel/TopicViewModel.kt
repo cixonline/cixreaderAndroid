@@ -3,6 +3,7 @@ package com.cixonline.cixreader.viewmodel
 import android.content.Context
 import android.net.Uri
 import android.util.Base64
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -152,7 +153,7 @@ class TopicViewModel(
         body: String, 
         attachmentUri: Uri?, 
         attachmentName: String?
-    ): Int {
+    ): Boolean {
         _isLoading.value = true
         
         val attachments = if (attachmentUri != null && attachmentName != null) {
@@ -172,8 +173,10 @@ class TopicViewModel(
 
         val currentAuthor = NetworkClient.getUsername()
         val resultId = repository.postMessage(forumName, topicName, body, replyToId, currentAuthor, attachments)
-        
-        if (resultId != 0) {
+        Log.d("TopicViewModel", "postMessage returned: $resultId") // Log the result
+
+        val success = resultId != 0
+        if (success) {
             draftDao.deleteDraftForContext(forumName, topicName, replyToId)
             
             // Set scroll to the newly posted message if we have its ID
@@ -187,7 +190,7 @@ class TopicViewModel(
             }
         }
         _isLoading.value = false
-        return resultId
+        return success
     }
 
     fun saveDraft(replyToId: Int, body: String) {

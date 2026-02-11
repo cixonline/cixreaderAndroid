@@ -43,6 +43,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
@@ -299,7 +300,7 @@ fun ThreadScreen(
                                 onCancel = { showReplyPane = false },
                                 onPost = { body, uri, name ->
                                     coroutineScope.launch {
-                                        if (viewModel.postReply(context, selectedMessage!!.remoteId, body, uri, name) != 0) {
+                                        if (viewModel.postReply(context, selectedMessage!!.remoteId, body, uri, name)) {
                                             showReplyPane = false
                                         }
                                     }
@@ -691,6 +692,7 @@ fun MessageViewer(
     }
 }
 
+@OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 fun MediaPreview(url: String) {
     val extension = url.substringAfterLast(".").lowercase()
@@ -717,6 +719,7 @@ fun MediaPreview(url: String) {
     }
 }
 
+@OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 fun VideoPlayer(url: String) {
     val context = LocalContext.current
@@ -729,6 +732,7 @@ fun VideoPlayer(url: String) {
     ) { AndroidView(factory = { ctx -> PlayerView(ctx).apply { player = exoPlayer } }, modifier = Modifier.fillMaxSize()) }
 }
 
+@OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 fun AudioPlayer(url: String) {
     val context = LocalContext.current

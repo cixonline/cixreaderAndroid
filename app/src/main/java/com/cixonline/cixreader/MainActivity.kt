@@ -12,6 +12,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.work.*
 import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.db.AppDatabase
 import com.cixonline.cixreader.repository.ForumRepository
@@ -21,6 +22,8 @@ import com.cixonline.cixreader.ui.theme.CIXReaderTheme
 import com.cixonline.cixreader.utils.SettingsManager
 import com.cixonline.cixreader.utils.ThemeMode
 import com.cixonline.cixreader.viewmodel.*
+import com.cixonline.cixreader.workers.SyncWorker
+import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,6 +34,8 @@ class MainActivity : ComponentActivity() {
         val forumRepository = ForumRepository(NetworkClient.api, database.folderDao())
         val messageRepository = MessageRepository(NetworkClient.api, database.messageDao())
         val settingsManager = SettingsManager(this)
+
+        setupBackgroundSync()
 
         setContent {
             val fontSizeMultiplier by settingsManager.fontSizeFlow.collectAsState(initial = settingsManager.getFontSize())
@@ -234,5 +239,42 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        triggerImmediateSync()
+    }
+
+    private fun setupBackgroundSync() {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val syncRequest = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
+            .setConstraints(constraints)
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "CixBackgroundSync",
+            ExistingPeriodicWorkPolicy.KEEP,
+            syncRequest
+        )
+    }
+
+    private fun triggerImmediateSync() {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val syncRequest = OneTimeWorkRequestBuilder<SyncWorker>()
+            .setConstraints(constraints)
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniqueWork(
+            "CixImmediateSync",
+            ExistingWorkPolicy.REPLACE,
+            syncRequest
+        )
     }
 }
