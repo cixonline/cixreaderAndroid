@@ -13,10 +13,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.cixonline.cixreader.api.NetworkClient
-import com.cixonline.cixreader.db.*
+import com.cixonline.cixreader.db.AppDatabase
 import com.cixonline.cixreader.repository.ForumRepository
 import com.cixonline.cixreader.repository.MessageRepository
-import com.cixonline.cixreader.repository.SyncRepository
 import com.cixonline.cixreader.ui.screens.*
 import com.cixonline.cixreader.ui.theme.CIXReaderTheme
 import com.cixonline.cixreader.utils.SettingsManager
@@ -31,7 +30,6 @@ class MainActivity : ComponentActivity() {
         val database = AppDatabase.getDatabase(this)
         val forumRepository = ForumRepository(NetworkClient.api, database.folderDao())
         val messageRepository = MessageRepository(NetworkClient.api, database.messageDao())
-        val syncRepository = SyncRepository(NetworkClient.api, database.folderDao(), database.messageDao())
         val settingsManager = SettingsManager(this)
 
         setContent {
@@ -49,25 +47,16 @@ class MainActivity : ComponentActivity() {
                 fontSizeMultiplier = fontSizeMultiplier
             ) {
                 val navController = rememberNavController()
-                
-                // Initialize and start periodic sync
-                val syncViewModel: SyncViewModel = viewModel(
-                    factory = SyncViewModelFactory(syncRepository)
-                )
-                
+
                 val (savedUser, savedPass) = settingsManager.getCredentials()
                 val startDestination = if (savedUser != null && savedPass != null) {
                     NetworkClient.setCredentials(savedUser, savedPass)
-                    LaunchedEffect(Unit) {
-                        syncViewModel.startPeriodicSync()
-                    }
                     "welcome"
                 } else {
                     "login"
                 }
 
                 val onLogout = {
-                    syncViewModel.stopPeriodicSync()
                     settingsManager.clearCredentials()
                     navController.navigate("login") {
                         popUpTo(0) { inclusive = true }
@@ -86,7 +75,6 @@ class MainActivity : ComponentActivity() {
                         LoginScreen(
                             viewModel = loginViewModel,
                             onLoginSuccess = {
-                                syncViewModel.startPeriodicSync()
                                 navController.navigate("welcome") {
                                     popUpTo("login") { inclusive = true }
                                 }
@@ -113,8 +101,8 @@ class MainActivity : ComponentActivity() {
                             onDirectoryClick = {
                                 navController.navigate("directory")
                             },
-                            onThreadClick = { forum, topic, topicId, rootId ->
-                                navController.navigate("thread/$forum/$topic/$topicId?rootId=$rootId")
+                            onThreadClick = { forum, topic, topicId, rootId, msgId ->
+                                navController.navigate("thread/$forum/$topic/$topicId?rootId=$rootId&msgId=$msgId")
                             },
                             onLogout = onLogout,
                             onSettingsClick = onSettingsClick
@@ -137,9 +125,7 @@ class MainActivity : ComponentActivity() {
                             },
                             onLogout = onLogout,
                             onSettingsClick = onSettingsClick,
-                            onProfileClick = { user ->
-                                forumViewModel.showProfile(user)
-                            }
+                            onProfileClick = { _ -> }
                         )
                     }
                     composable("directory") {
@@ -162,7 +148,9 @@ class MainActivity : ComponentActivity() {
                             },
                             onLogout = onLogout,
                             onSettingsClick = onSettingsClick,
-                            onProfileClick = { /* Profile display not implemented for Directory yet */ }
+                            onProfileClick = { _ ->
+                                // Just a dummy for now as DirectoryScreen expects it
+                            }
                         )
                     }
                     composable("settings") {
@@ -193,7 +181,7 @@ class MainActivity : ComponentActivity() {
                             },
                             onLogout = onLogout,
                             onSettingsClick = onSettingsClick,
-                            onProfileClick = { /* Profile display not implemented for TopicList yet */ }
+                            onProfileClick = { _ -> }
                         )
                     }
                     composable(
@@ -212,11 +200,11 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     ) { backStackEntry ->
-                        val forumName = backStackEntry.arguments?.getString("forumName") ?: ""
-                        val topicName = backStackEntry.arguments?.getString("topicName") ?: ""
-                        val topicId = backStackEntry.arguments?.getInt("topicId") ?: 0
-                        val rootId = backStackEntry.arguments?.getInt("rootId") ?: 0
-                        val msgId = backStackEntry.arguments?.getInt("msgId") ?: 0
+                        val forumNameArg = backStackEntry.arguments?.getString("forumName") ?: ""
+                        val topicNameArg = backStackEntry.arguments?.getString("topicName") ?: ""
+                        val topicIdArg = backStackEntry.arguments?.getInt("topicId") ?: 0
+                        val rootIdArg = backStackEntry.arguments?.getInt("rootId") ?: 0
+                        val msgIdArg = backStackEntry.arguments?.getInt("msgId") ?: 0
                         
                         val viewModel: TopicViewModel = viewModel(
                             factory = TopicViewModelFactory(
@@ -224,11 +212,11 @@ class MainActivity : ComponentActivity() {
                                 repository = messageRepository, 
                                 cachedProfileDao = database.cachedProfileDao(),
                                 draftDao = database.draftDao(),
-                                forumName = forumName, 
-                                topicName = topicName, 
-                                topicId = topicId, 
-                                initialMessageId = msgId,
-                                initialRootId = rootId
+                                forumName = forumNameArg,
+                                topicName = topicNameArg,
+                                topicId = topicIdArg,
+                                initialMessageId = msgIdArg,
+                                initialRootId = rootIdArg
                             )
                         )
                         ThreadScreen(

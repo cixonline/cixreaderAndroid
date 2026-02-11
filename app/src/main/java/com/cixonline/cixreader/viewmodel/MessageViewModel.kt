@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.repository.MessageRepository
 import kotlinx.coroutines.flow.Flow
@@ -38,7 +39,8 @@ class MessageViewModel(
         viewModelScope.launch {
             isLoading = true
             try {
-                val result = repository.postMessage(forumName, topicName, body, replyTo)
+                val author = NetworkClient.getUsername()
+                val result = repository.postMessage(forumName, topicName, body, replyTo, author)
                 val success = result != 0
                 if (success) {
                     repository.refreshMessages(forumName, topicName, topicId)

@@ -243,49 +243,49 @@ class MessageApi {
 }
 
 @Root(name = "Attachment", strict = false)
-@Order(elements = ["Filename", "EncodedData"])
+@Namespace(reference = "http://cixonline.com")
+@Order(elements = ["EncodedData", "Filename"])
 data class PostAttachment(
-    @field:Element(name = "Filename") @param:Element(name = "Filename") var filename: String = "",
-    @field:Element(name = "EncodedData") @param:Element(name = "EncodedData") var data: String = ""
+    @field:Element(name = "EncodedData") @param:Element(name = "EncodedData") var data: String = "",
+    @field:Element(name = "Filename") @param:Element(name = "Filename") var filename: String = ""
 )
 
 @Root(name = "PostMessage", strict = false)
 @Namespace(reference = "http://cixonline.com")
-@Order(elements = ["Body", "Forum", "Topic", "MsgID", "MarkRead"])
+@Order(elements = ["Body", "Forum", "MarkRead", "MsgID", "Topic"])
 data class PostMessageRequest @JvmOverloads constructor(
     @field:Element(name = "Body") @param:Element(name = "Body") var body: String = "",
     @field:Element(name = "Forum") @param:Element(name = "Forum") var forum: String = "",
-    @field:Element(name = "Topic") @param:Element(name = "Topic") var topic: String = "",
+    @field:Element(name = "MarkRead") @param:Element(name = "MarkRead") var markRead: Int = 1,
     @field:Element(name = "MsgID") @param:Element(name = "MsgID") var msgId: Int = 0,
-    @field:Element(name = "MarkRead") @param:Element(name = "MarkRead") var markRead: Int = 1
+    @field:Element(name = "Topic") @param:Element(name = "Topic") var topic: String = ""
 )
 
 @Root(name = "PostMessage2", strict = false)
 @Namespace(reference = "http://cixonline.com")
-@Order(elements = ["Body", "Forum", "Topic", "MsgID", "MarkRead", "Flags", "Attachments"])
+@Order(elements = ["Attachments", "Body", "Forum", "MarkRead", "MsgID", "Topic"])
 data class PostMessage2Request @JvmOverloads constructor(
-    @field:Element(name = "Body") @param:Element(name = "Body") var body: String = "",
-    @field:Element(name = "Forum") @param:Element(name = "Forum") var forum: String = "",
-    @field:Element(name = "Topic") @param:Element(name = "Topic") var topic: String = "",
-    @field:Element(name = "MsgID") @param:Element(name = "MsgID") var msgId: Int = 0,
-    @field:Element(name = "MarkRead") @param:Element(name = "MarkRead") var markRead: Int = 1,
-    @field:Element(name = "Flags") @param:Element(name = "Flags") var flags: Int = 0,
     @field:ElementList(name = "Attachments", entry = "Attachment", required = false, inline = false) 
     @param:ElementList(name = "Attachments", entry = "Attachment", required = false, inline = false)
-    var attachments: List<PostAttachment>? = null
+    @field:Namespace(reference = "http://cixonline.com")
+    var attachments: List<PostAttachment>? = null,
+
+    @field:Element(name = "Body") @param:Element(name = "Body") var body: String = "",
+    @field:Element(name = "Forum") @param:Element(name = "Forum") var forum: String = "",
+    @field:Element(name = "MarkRead") @param:Element(name = "MarkRead") var markRead: Int = 1,
+    @field:Element(name = "MsgID") @param:Element(name = "MsgID") var msgId: Int = 0,
+    @field:Element(name = "Topic") @param:Element(name = "Topic") var topic: String = ""
 )
 
 @Root(name = "PostMessage2Response", strict = false)
 @Namespace(reference = "http://cixonline.com")
 class PostMessage2Response {
-    @field:Element(name = "MessageNumber", required = false)
-    var messageNumber: Int = 0
+    @field:Element(name = "ID", required = false)
+    var id: Int = 0
 
-    @field:Element(name = "Response", required = false)
-    var response: String? = null
-
-    @field:Element(name = "Body", required = false)
-    var body: String? = null
+    @field:ElementList(name = "Attachments", entry = "Attachment", required = false)
+    @field:Namespace(reference = "http://cixonline.com")
+    var attachments: List<AttachmentResponse>? = null
 }
 
 @Root(name = "Attachment", strict = false)

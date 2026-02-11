@@ -47,10 +47,10 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.cixonline.cixreader.R
-import com.cixonline.cixreader.api.UserProfile
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.viewmodel.TopicViewModel
 import com.cixonline.cixreader.utils.SettingsManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -76,7 +76,7 @@ fun ThreadScreen(
     val selectedProfile by viewModel.selectedProfile.collectAsState()
     val selectedResume by viewModel.selectedResume.collectAsState()
     val selectedMugshotUrl by viewModel.selectedMugshotUrl.collectAsState()
-    val fontSizeMultiplier = remember { settingsManager.getFontSize() }
+    val scrollToMessageId by viewModel.scrollToMessageId.collectAsState()
     val context = LocalContext.current
 
     // State for expanded roots (by remoteId)
@@ -112,6 +112,20 @@ fun ThreadScreen(
                 selectedMessage = targetMsg
                 val rootId = findRootForMessage(targetMsg, messages)
                 expandedRootIds = expandedRootIds + rootId
+            }
+        }
+    }
+
+    // Effect to handle jump-to-position when scrollToMessageId changes
+    LaunchedEffect(scrollToMessageId, messages) {
+        if (scrollToMessageId != null && messages.isNotEmpty()) {
+            val targetMsg = messages.find { it.remoteId == scrollToMessageId }
+            if (targetMsg != null) {
+                selectedMessage = targetMsg
+                val rootId = findRootForMessage(targetMsg, messages)
+                expandedRootIds = expandedRootIds + rootId
+                // Reset the scroll state after jumping
+                viewModel.onScrollToMessageComplete()
             }
         }
     }
@@ -277,7 +291,7 @@ fun ThreadScreen(
                                 onCancel = { showReplyPane = false },
                                 onPost = { body, uri, name ->
                                     coroutineScope.launch {
-                                        if (viewModel.postReply(context, selectedMessage!!.remoteId, body, uri, name)) {
+                                        if (viewModel.postReply(context, selectedMessage!!.remoteId, body, uri, name) != 0) {
                                             showReplyPane = false
                                         }
                                     }
@@ -321,7 +335,7 @@ fun CombinedThreadList(
     listState: LazyListState
 ) {
     val displayItems = remember(messages, expandedRootIds) {
-        if (messages.isEmpty()) return@remember emptyList<ThreadDisplayItem>()
+        if (messages.isEmpty()) return@remember emptyList()
         val result = mutableListOf<ThreadDisplayItem>()
         
         val messageIds = messages.map { it.remoteId }.toSet()
@@ -345,6 +359,7 @@ fun CombinedThreadList(
         result
     }
 
+    // Improved scrolling logic with small delay to ensure layout is ready
     LaunchedEffect(selectedMessageId, displayItems) {
         if (selectedMessageId != null) {
             val index = displayItems.indexOfFirst {
@@ -354,11 +369,12 @@ fun CombinedThreadList(
                 }
             }
             if (index != -1) {
+                delay(100) // Small delay to allow list to settle
                 val layoutInfo = listState.layoutInfo
                 val viewportHeight = layoutInfo.viewportSize.height
                 if (viewportHeight > 0) {
                     val visibleItem = layoutInfo.visibleItemsInfo.find { it.index == index }
-                    val itemSize = visibleItem?.size ?: 40 
+                    val itemSize = visibleItem?.size ?: 64 // Use a more realistic default size
                     val offset = (viewportHeight - itemSize) / 2
                     listState.animateScrollToItem(index, -offset)
                 } else {

@@ -31,6 +31,8 @@ object NetworkClient {
         }
     }
 
+    fun getUsername() = username
+
     private val authInterceptor = Interceptor { chain ->
         val request = chain.request()
         val currentUsername = username

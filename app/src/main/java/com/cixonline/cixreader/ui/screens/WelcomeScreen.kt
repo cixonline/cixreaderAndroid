@@ -40,7 +40,7 @@ fun WelcomeScreen(
     currentUsername: String?,
     onExploreForums: () -> Unit,
     onDirectoryClick: () -> Unit,
-    onThreadClick: (forum: String, topic: String, topicId: Int, rootId: Int) -> Unit,
+    onThreadClick: (forum: String, topic: String, topicId: Int, rootId: Int, msgId: Int) -> Unit,
     onLogout: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
@@ -168,7 +168,8 @@ fun WelcomeScreen(
                                                 thread.forum,
                                                 thread.topic,
                                                 HtmlUtils.calculateTopicId(thread.forum, thread.topic),
-                                                thread.rootId
+                                                thread.rootId,
+                                                thread.rootId // Pass rootId as msgId if it's a thread view
                                             )
                                         } else {
                                             snackbarHostState.showSnackbar("Failed to join forum ${thread.forum}")
@@ -200,7 +201,8 @@ fun WelcomeScreen(
                                         firstUnread.forumName,
                                         firstUnread.topicName,
                                         firstUnread.topicId,
-                                        firstUnread.rootId
+                                        firstUnread.rootId,
+                                        firstUnread.remoteId
                                     )
                                 } else {
                                     snackbarHostState.showSnackbar("Failed to join forum ${firstUnread.forumName}")
@@ -213,6 +215,7 @@ fun WelcomeScreen(
                                         firstThread.forum,
                                         firstThread.topic,
                                         HtmlUtils.calculateTopicId(firstThread.forum, firstThread.topic),
+                                        firstThread.rootId,
                                         firstThread.rootId
                                     )
                                 } else {
