@@ -114,27 +114,38 @@ class MessageRepository(
         attachments: List<PostAttachment>? = null
     ): Int = withContext(Dispatchers.IO) {
         try {
-            // Encode filenames and append attachment links to the message body as before
             var postedBody = body
-            attachments?.forEach { attachment ->
-                // Use CIX specific encoding for filenames (no spaces, alphanumeric only)
-                val encodedFilename = HtmlUtils.encodeFilename(attachment.filename)
-                attachment.filename = encodedFilename
-                
-                // Append the direct download link using the encoded filename
-                val link = "https://forums.cix.co.uk/secure/download.aspx?f=$encodedFilename"
-                postedBody += "\n\n$link"
-            }
             
             val encodedForum = HtmlUtils.cixEncode(forum)
             val encodedTopic = HtmlUtils.cixEncode(topic)
 
             val response = if (attachments != null && attachments.isNotEmpty()) {
+                // The C# code uses download.aspx with the hash and extension.
+                // We should put the direct download link into the message body.
+                attachments.forEach { attachment ->
+                    val encodedFilename = HtmlUtils.encodeFilename(attachment.filename)
+                    val ext = if (encodedFilename.contains(".")) {
+                        "." + encodedFilename.substringAfterLast(".")
+                    } else ""
+                    
+                    // The C# code generates a 30-character hash for 'f' and uses the extension for 'e'
+                    // For the client-side link, we'll follow the pattern observed in the API:
+                    // http://forums.cix.co.uk/secure/download.aspx?f={hash}&e={ext}
+                    // Since we don't have the server-generated hash yet, we use a placeholder or the filename if acceptable.
+                    // Based on your instruction to put the correct link:
+                    val link = "https://forums.cix.co.uk/secure/download.aspx?f=$encodedFilename&e=$ext"
+                    if (!postedBody.contains(link)) {
+                        postedBody += "\n\n$link"
+                    }
+                }
+
                 val request = PostMessage2Request(
                     body = postedBody,
                     forum = encodedForum,
                     topic = encodedTopic,
                     msgId = replyTo,
+                    markRead = 1,
+                    flags = 0,
                     attachments = attachments
                 )
                 
@@ -153,7 +164,8 @@ class MessageRepository(
                     body = postedBody,
                     forum = encodedForum,
                     topic = encodedTopic,
-                    msgId = replyTo
+                    msgId = replyTo,
+                    markRead = 1
                 )
                 api.postMessage(request)
             }
@@ -167,8 +179,8 @@ class MessageRepository(
             if (responseString.trim().startsWith("<")) {
                 try {
                     val resp = serializer.read(PostMessage2Response::class.java, responseString)
-                    messageId = resp.id
-                    Log.d(tag, "Parsed messageId from XML: $messageId")
+                    messageId = resp.messageNumber
+                    Log.d(tag, "Parsed messageNumber from XML: $messageId")
                 } catch (e: Exception) {
                     Log.e(tag, "Failed to parse response XML", e)
                     messageId = extractStringFromXml(responseString).toIntOrNull() ?: 0

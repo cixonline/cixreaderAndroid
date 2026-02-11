@@ -160,8 +160,8 @@ class TopicViewModel(
                 val bytes = inputStream?.readBytes()
                 inputStream?.close()
                 if (bytes != null) {
-                    // Use DEFAULT which matches C# behavior for Base64 (may include line wraps for large data)
-                    listOf(PostAttachment(data = Base64.encodeToString(bytes, Base64.DEFAULT), filename = attachmentName))
+                    // Use NO_WRAP to avoid extra newlines in the XML element, matching C# default behavior for short strings
+                    listOf(PostAttachment(data = Base64.encodeToString(bytes, Base64.NO_WRAP), filename = attachmentName))
                 } else null
             } catch (e: Exception) {
                 e.printStackTrace()

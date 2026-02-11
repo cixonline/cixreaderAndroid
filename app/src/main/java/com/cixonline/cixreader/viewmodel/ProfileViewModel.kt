@@ -85,6 +85,9 @@ class ProfileDelegate(
                 coroutineScope {
                     val resumeJob = async {
                         try {
+                            // The api.getResume now returns Resume object (from Step 1 fix)
+                            // But here we're treating it as ResponseBody in some paths
+                            // Let's check CixApi again. It returns ResponseBody to avoid parsing issues if Resume is empty.
                             val response = api.getResume(user)
                             val xml = response.string()
                             val rawContent = extractRawContent(xml)
