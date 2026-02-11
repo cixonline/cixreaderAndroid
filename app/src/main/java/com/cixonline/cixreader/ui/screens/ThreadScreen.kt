@@ -219,10 +219,18 @@ fun ThreadScreen(
                                 selectedMessage = msg
                             },
                             onToggleExpand = { rootId ->
-                                expandedRootIds = if (expandedRootIds.contains(rootId)) {
-                                    expandedRootIds - rootId
-                                } else {
+                                val expanding = !expandedRootIds.contains(rootId)
+                                expandedRootIds = if (expanding) {
                                     expandedRootIds + rootId
+                                } else {
+                                    expandedRootIds - rootId
+                                }
+                                
+                                if (expanding) {
+                                    // Focus on the root message when expanding
+                                    messages.find { it.remoteId == rootId }?.let { rootMsg ->
+                                        selectedMessage = rootMsg
+                                    }
                                 }
                             },
                             listState = listState

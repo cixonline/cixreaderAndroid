@@ -44,8 +44,12 @@ class MessageViewModel(
                 val success = result != 0
                 if (success) {
                     repository.refreshMessages(forumName, topicName, topicId)
+                    onComplete(true) // Call onComplete with success true to signal closure
+                } else {
+                    onComplete(false)
                 }
-                onComplete(success)
+            } catch (e: Exception) {
+                onComplete(false)
             } finally {
                 isLoading = false
             }
