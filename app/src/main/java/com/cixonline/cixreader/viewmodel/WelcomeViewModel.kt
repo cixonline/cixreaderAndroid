@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.cixonline.cixreader.api.CixApi
 import com.cixonline.cixreader.api.InterestingThreadApi
+import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.api.UserProfile
 import com.cixonline.cixreader.db.MessageDao
 import com.cixonline.cixreader.db.FolderDao
@@ -19,8 +20,7 @@ import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.models.Draft
 import com.cixonline.cixreader.api.WhoApi
 import com.cixonline.cixreader.api.PostAttachment
-import com.cixonline.cixreader.api.PostMessageRequest
-import com.cixonline.cixreader.api.PostMessage2Request
+import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
 import kotlinx.coroutines.async
@@ -44,6 +44,7 @@ data class InterestingThreadUI(
 class WelcomeViewModel(
     private val api: CixApi,
     private val messageDao: MessageDao,
+    private val messageRepository: MessageRepository,
     private val folderDao: FolderDao,
     private val dirForumDao: DirForumDao,
     private val cachedProfileDao: CachedProfileDao,
@@ -321,12 +322,13 @@ class WelcomeViewModel(
 
     suspend fun postMessage(
         context: Context,
-        forum: String, 
-        topic: String, 
+        forum: String,
+        topic: String,
         body: String,
         attachmentUri: Uri?,
         attachmentName: String?
     ): Boolean {
+        _isLoading.value = true
         return try {
             val attachments = if (attachmentUri != null && attachmentName != null) {
                 try {
@@ -334,7 +336,7 @@ class WelcomeViewModel(
                     val bytes = inputStream?.readBytes()
                     inputStream?.close()
                     if (bytes != null) {
-                        // Use NO_WRAP to avoid newlines in Base64 which can break the XML payload or trigger stream resets
+                        // Use NO_WRAP to avoid newlines in Base64 which can break the XML payload
                         listOf(PostAttachment(data = Base64.encodeToString(bytes, Base64.NO_WRAP), filename = attachmentName))
                     } else null
                 } catch (e: Exception) {
@@ -343,40 +345,27 @@ class WelcomeViewModel(
                 }
             } else null
 
-            val response = if (attachments != null) {
-                val request = PostMessage2Request(body = body, forum = forum, topic = topic, attachments = attachments)
-                api.postMessage2(request)
-            } else {
-                val request = PostMessageRequest(body = body, forum = forum, topic = topic)
-                api.postMessage(request)
-            }
-            
-            val result = extractStringFromXml(response.string())
-            val messageId = result.toIntOrNull()
-            if (messageId != null && messageId > 0) {
-                val topicId = HtmlUtils.calculateTopicId(forum, topic)
-                val newMessage = CIXMessage(
-                    remoteId = messageId,
-                    author = "me",
-                    body = body,
-                    date = System.currentTimeMillis(),
-                    commentId = 0,
-                    rootId = 0,
-                    topicId = topicId,
-                    forumName = forum,
-                    topicName = topic,
-                    unread = false
-                )
-                messageDao.insert(newMessage)
+            val author = NetworkClient.getUsername()
+            val messageId = messageRepository.postMessage(
+                forum = forum,
+                topic = topic,
+                body = body,
+                replyTo = 0, // New post from Welcome screen
+                author = author,
+                attachments = attachments
+            )
+
+            val success = messageId > 0
+            if (success) {
                 // Delete draft if exists
                 draftDao.deleteDraftForContext(forum, topic, 0)
-                true
-            } else {
-                result == "Success"
             }
+            success
         } catch (e: Exception) {
             e.printStackTrace()
             false
+        } finally {
+            _isLoading.value = false
         }
     }
 
@@ -418,7 +407,8 @@ class WelcomeViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WelcomeViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return WelcomeViewModel(api, messageDao, folderDao, dirForumDao, cachedProfileDao, draftDao) as T
+            val messageRepository = MessageRepository(api, messageDao)
+            return WelcomeViewModel(api, messageDao, messageRepository, folderDao, dirForumDao, cachedProfileDao, draftDao) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

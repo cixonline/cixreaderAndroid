@@ -10,7 +10,7 @@ import retrofit2.http.Query
 
 interface CixApi {
     @GET("user/account.xml")
-    suspend fun getAccount(): Account
+    suspend fun getAccount(): ResponseBody
 
     @GET("user/forums.xml")
     suspend fun getForums(): ForumResultSet
@@ -73,16 +73,12 @@ interface CixApi {
     ): ResponseBody
 
     @Headers("Content-Type: application/xml")
-    @POST("forums/post.xml")
-    suspend fun postMessage(@Body request: PostMessageRequest): ResponseBody
-
-    @Headers("Content-Type: application/xml")
     @POST("forums/post2.xml")
-    suspend fun postMessage2(@Body request: PostMessage2Request): ResponseBody
+    suspend fun postMessage(@Body request: PostMessage2Request): ResponseBody
 
     @Headers("Content-Type: application/json", "Accept: application/json")
     @POST("forums/post2.json")
-    suspend fun postMessage2Json(@Body request: PostMessage2Request): PostMessage2Response
+    suspend fun postMessageJson(@Body request: PostMessage2Request): PostMessage2Response
 
     @GET("forums/interestingthreads.xml")
     suspend fun getInterestingThreads(

@@ -1,5 +1,6 @@
 package com.cixonline.cixreader.api
 
+import com.google.gson.annotations.SerializedName
 import org.simpleframework.xml.Attribute
 import org.simpleframework.xml.Element
 import org.simpleframework.xml.ElementList
@@ -7,7 +8,7 @@ import org.simpleframework.xml.Namespace
 import org.simpleframework.xml.Order
 import org.simpleframework.xml.Root
 import org.simpleframework.xml.Text
-import com.google.gson.annotations.SerializedName
+
 
 @Root(name = "Account", strict = false)
 @Namespace(reference = "http://cixonline.com")
@@ -243,85 +244,49 @@ class MessageApi {
     var topic: String? = null
 }
 
-@Root(name = "Attachment", strict = false)
-@Namespace(reference = "http://cixonline.com")
-@Order(elements = ["EncodedData", "Filename"])
 data class PostAttachment(
-    @field:Element(name = "EncodedData") @param:Element(name = "EncodedData") 
-    @SerializedName("EncodedData")
-    var data: String = "",
-    
-    @field:Element(name = "Filename") @param:Element(name = "Filename") 
     @SerializedName("Filename")
-    var filename: String = ""
+    var filename: String = "",
+
+    @SerializedName("EncodedData")
+    var data: String = ""
 )
 
-@Root(name = "PostMessage", strict = false)
-@Namespace(reference = "http://cixonline.com")
-@Order(elements = ["Body", "Forum", "MarkRead", "MsgID", "Topic"])
-data class PostMessageRequest @JvmOverloads constructor(
-    @field:Element(name = "Body") @param:Element(name = "Body") var body: String = "",
-    @field:Element(name = "Forum") @param:Element(name = "Forum") var forum: String = "",
-    @field:Element(name = "MarkRead") @param:Element(name = "MarkRead") var markRead: Int = 1,
-    @field:Element(name = "MsgID") @param:Element(name = "MsgID") var msgId: Int = 0,
-    @field:Element(name = "Topic") @param:Element(name = "Topic") var topic: String = ""
-)
-
-@Root(name = "PostMessage2", strict = false)
-@Namespace(reference = "http://cixonline.com")
-@Order(elements = ["Attachments", "Body", "Flags", "Forum", "MarkRead", "MsgID", "Topic"])
 data class PostMessage2Request @JvmOverloads constructor(
-    @field:ElementList(name = "Attachments", entry = "Attachment", required = false, inline = false) 
-    @param:ElementList(name = "Attachments", entry = "Attachment", required = false, inline = false)
-    @field:Namespace(reference = "http://cixonline.com")
-    @SerializedName("Attachments")
-    var attachments: List<PostAttachment>? = null,
-
-    @field:Element(name = "Body") @param:Element(name = "Body") 
-    @SerializedName("Body")
-    var body: String = "",
-
-    @field:Element(name = "Flags", required = false) @param:Element(name = "Flags", required = false)
-    @SerializedName("Flags")
-    var flags: Int = 0,
-
-    @field:Element(name = "Forum") @param:Element(name = "Forum") 
     @SerializedName("Forum")
     var forum: String = "",
 
-    @field:Element(name = "MarkRead") @param:Element(name = "MarkRead") 
-    @SerializedName("MarkRead")
-    var markRead: Int = 1,
+    @SerializedName("Flags")
+    var flags: Int = 0,
 
-    @field:Element(name = "MsgID") @param:Element(name = "MsgID") 
+    @SerializedName("Topic")
+    var topic: String = "",
+
+    @SerializedName("Body")
+    var body: String? = "",
+
     @SerializedName("MsgID")
     var msgId: Int = 0,
 
-    @field:Element(name = "Topic") @param:Element(name = "Topic") 
-    @SerializedName("Topic")
-    var topic: String = ""
+    @SerializedName("MarkRead")
+    var markRead: Int = 1,
+
+    @SerializedName("Attachments")
+    var attachments: List<PostAttachment>? = null
 )
 
-@Root(name = "PostMessage2Response", strict = false)
-@Namespace(reference = "http://cixonline.com")
 class PostMessage2Response {
-    @field:Element(name = "ID", required = false)
     @SerializedName("ID")
     var id: Int = 0
 
-    @field:ElementList(name = "Attachments", entry = "Attachment", required = false)
-    @field:Namespace(reference = "http://cixonline.com")
     @SerializedName("Attachments")
     var attachments: List<AttachmentResponse>? = null
 }
 
-@Root(name = "Attachment", strict = false)
 class AttachmentResponse {
-    @field:Element(name = "Filename", required = false)
     @SerializedName("Filename")
     var filename: String? = null
 
-    @field:Element(name = "URL", required = false)
     @SerializedName("URL")
     var url: String? = null
 }

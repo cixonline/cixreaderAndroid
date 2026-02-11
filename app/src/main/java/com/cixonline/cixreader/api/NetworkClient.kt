@@ -77,8 +77,7 @@ object NetworkClient {
             .addInterceptor(authInterceptor)
             .addInterceptor(mugshotContentTypeInterceptor)
             .addInterceptor(HttpLoggingInterceptor().apply {
-                // Reduced logging level to avoid buffering issues with large payloads
-                level = HttpLoggingInterceptor.Level.HEADERS
+                level = HttpLoggingInterceptor.Level.BODY
             })
             .build()
     }
@@ -95,7 +94,9 @@ object NetworkClient {
             .baseUrl(BASE_URL)
             .client(okHttpClient)
             .addConverterFactory(ScalarsConverterFactory.create())
+            // SimpleXml first to handle all the XML-annotated models (most of the API)
             .addConverterFactory(SimpleXmlConverterFactory.create(serializer))
+            // Gson next to handle models without XML annotations (like PostMessage2Request)
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
             .create(CixApi::class.java)
