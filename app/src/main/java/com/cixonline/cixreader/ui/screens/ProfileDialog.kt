@@ -22,6 +22,7 @@ import coil.request.ImageRequest
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.api.UserProfile
+import com.cixonline.cixreader.viewmodel.ProfileDelegate
 
 @Composable
 fun ProfileDialog(
@@ -60,7 +61,7 @@ fun ProfileDialog(
                         }
                     }
                     
-                    val imageModel = mugshotUrl ?: profile.userName?.let { "https://api.cixonline.com/v2.0/cix.svc/user/$it/mugshot" }
+                    val imageModel = mugshotUrl ?: profile.userName?.let { ProfileDelegate.getMugshotUrl(it) }
                     
                     if (imageModel != null) {
                         var state by remember { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
