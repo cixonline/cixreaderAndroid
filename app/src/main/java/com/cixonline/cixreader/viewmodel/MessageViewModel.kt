@@ -40,11 +40,12 @@ class MessageViewModel(
             isLoading = true
             try {
                 val author = NetworkClient.getUsername()
-                val result = repository.postMessage(forumName, topicName, body, replyTo, author)
-                val success = result != 0
+                val resultId = repository.postMessage(forumName, topicName, body, replyTo, author)
+                val success = resultId > 0
                 if (success) {
-                    repository.refreshMessages(forumName, topicName, topicId)
-                    onComplete(true) // Call onComplete with success true to signal closure
+                    // No need to call refreshMessages() here because postMessage()
+                    // now handles adding the message to the local cache itself.
+                    onComplete(true)
                 } else {
                     onComplete(false)
                 }

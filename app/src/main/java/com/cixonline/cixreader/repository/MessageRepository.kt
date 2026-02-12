@@ -41,7 +41,7 @@ class MessageRepository(
                     id = existing?.id ?: 0,
                     remoteId = apiMsg.id,
                     author = HtmlUtils.decodeHtml(apiMsg.author ?: ""),
-                    body = HtmlUtils.decodeHtml(apiMsg.body ?: ""),
+                    body = HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(apiMsg.body ?: "")),
                     date = DateUtils.parseCixDate(apiMsg.dateTime),
                     commentId = apiMsg.replyTo,
                     rootId = apiMsg.rootId,
@@ -89,9 +89,19 @@ class MessageRepository(
                 it.copy(filename = HtmlUtils.encodeFilename(it.filename))
             }
 
+            // Add attachment markers like {1}, {2} to the body if they aren't already present.
+            // The server will replace these markers with the actual URLs.
+            var bodyForRequest = body
+            processedAttachments?.forEachIndexed { index, _ ->
+                val marker = "{${index + 1}}"
+                if (!bodyForRequest.contains(marker)) {
+                    bodyForRequest += "\n\n$marker"
+                }
+            }
+
             val request = PostMessage2Request(
                 attachments = processedAttachments,
-                body = body,
+                body = bodyForRequest,
                 flags = if (processedAttachments != null && processedAttachments.isNotEmpty()) 1 else 0,
                 forum = forumParam,
                 markRead = 1,
@@ -102,18 +112,22 @@ class MessageRepository(
             Log.d(tag, "Sending PostMessage2Request JSON via dedicated JSON client")
             // Use the dedicated JSON client to ensure proper serialization and avoid XML conflicts.
             val response = JsonNetworkClient.api.postMessageJson(request)
-            
-            var postedBody = body
-            response.attachments?.forEachIndexed { index, attachment ->
-                val marker = "{" + (index + 1) + "}"
-                val link = attachment.url
-                if (link != null && !postedBody.contains(marker)) {
-                    postedBody = postedBody + "\n\n" + marker + " (" + link + ")"
-                }
-            }
 
             if (response.id > 0) {
-                insertNewMessageLocal(response.id, author, postedBody, replyTo, forum, topic)
+                // For the local database, we replace the markers with the actual URLs returned by the server.
+                var updatedBody = bodyForRequest
+                response.attachments?.forEachIndexed { index, attachmentResponse ->
+                    val marker = "{${index + 1}}"
+                    var url = attachmentResponse.url
+                    if (url != null) {
+                        // Cleanup the URL: remove :80 and ensure https
+                        url = HtmlUtils.cleanCixUrls(url)
+                        updatedBody = updatedBody.replace(marker, url)
+                    }
+                }
+
+                // Insert the new message locally with the body containing the actual URLs.
+                insertNewMessageLocal(response.id, author, updatedBody, replyTo, forum, topic)
                 return@withContext response.id
             }
             return@withContext 0

@@ -195,7 +195,7 @@ fun ForumListScreen(
                     }
                 } else if (folders.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No forums found.", style = MaterialTheme.typography.bodyLarge)
+                        Text("Loading...", style = MaterialTheme.typography.bodyLarge)
                     }
                 } else {
                     val displayList = remember(folders, expandedForums, showOnlyUnread) {

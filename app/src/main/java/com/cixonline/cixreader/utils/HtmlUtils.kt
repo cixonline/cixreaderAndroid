@@ -26,6 +26,14 @@ object HtmlUtils {
     }
 
     /**
+     * Cleans up CIX attachment URLs in the text (removes :80, ensures https).
+     */
+    fun cleanCixUrls(text: String?): String {
+        if (text == null) return ""
+        return text.replace(":80", "").replace("http://", "https://")
+    }
+
+    /**
      * Decodes HTML entities and trims whitespace for use in names (Forums, Topics, etc).
      */
     fun normalizeName(text: String?): String {

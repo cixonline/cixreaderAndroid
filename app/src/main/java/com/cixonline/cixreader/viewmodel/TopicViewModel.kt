@@ -72,7 +72,15 @@ class TopicViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
-        refresh()
+        // Only refresh from server if the local cache is empty.
+        // The messages StateFlow will automatically update whenever the DB changes.
+        viewModelScope.launch {
+            repository.getMessagesForTopic(topicId).first().let { currentMessages ->
+                if (currentMessages.isEmpty()) {
+                    refresh()
+                }
+            }
+        }
     }
 
     fun refresh() {
@@ -184,10 +192,8 @@ class TopicViewModel(
                 _scrollToMessageId.value = resultId
             }
             
-            // Refresh in background so we don't block the UI from closing the reply window
-            viewModelScope.launch {
-                refresh()
-            }
+            // Note: repository.postMessage() already handles local cache update,
+            // so no refresh() is needed here.
         }
         _isLoading.value = false
         return success

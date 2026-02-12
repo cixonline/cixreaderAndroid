@@ -276,7 +276,7 @@ data class PostMessage2Request @JvmOverloads constructor(
 )
 
 class PostMessage2Response {
-    @SerializedName("ID")
+    @SerializedName("MessageNumber")
     var id: Int = 0
 
     @SerializedName("Attachments")
