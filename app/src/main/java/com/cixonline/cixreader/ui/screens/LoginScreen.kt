@@ -10,9 +10,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cixonline.cixreader.BuildConfig
@@ -25,6 +27,8 @@ fun LoginScreen(
     viewModel: LoginViewModel,
     onLoginSuccess: () -> Unit
 ) {
+    val uriHandler = LocalUriHandler.current
+
     Surface(
         color = Color(0xFFD91B5C),
         modifier = Modifier.fillMaxSize()
@@ -131,6 +135,18 @@ fun LoginScreen(
                 } else {
                     Text("Login")
                 }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            TextButton(
+                onClick = { uriHandler.openUri("https://signup-forums.cix.co.uk/") }
+            ) {
+                Text(
+                    text = "Don't have an account? Sign up here",
+                    color = Color.White,
+                    textDecoration = TextDecoration.Underline
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
