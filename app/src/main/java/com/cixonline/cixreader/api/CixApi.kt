@@ -28,7 +28,7 @@ interface CixApi {
     suspend fun getResume(@Path("user") user: String): ResponseBody
 
     @GET("user/{user}/mugshot.xml")
-    suspend fun getMugshot(@Path("user") user: String): Mugshot
+    suspend fun getMugshot(@Path("user") user: String): ResponseBody
 
     @GET("user/alltopics.xml")
     suspend fun getAllTopics(@Query("maxresults") maxResults: Int = 5000): UserForumTopicResultSet2

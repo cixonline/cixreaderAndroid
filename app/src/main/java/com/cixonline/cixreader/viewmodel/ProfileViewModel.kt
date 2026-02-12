@@ -96,19 +96,28 @@ class ProfileDelegate(
                     }
                     val mugshotJob = async {
                         try {
-                            val mugshot = api.getMugshot(user)
-                            val url = mugshot.image
-                            if (!url.isNullOrBlank()) {
-                                val cleanedUrl = HtmlUtils.cleanCixUrls(url)
-                                Log.d(tag, "Mugshot URL for $user: $cleanedUrl")
-                                cleanedUrl
+                            val response = api.getMugshot(user)
+                            val contentType = response.contentType()?.toString()
+                            
+                            if (contentType?.contains("xml") == true) {
+                                val xml = response.string()
+                                val imageMatch = Regex("<Image[^>]*>(.*?)</Image>", RegexOption.DOT_MATCHES_ALL).find(xml)
+                                val url = imageMatch?.groupValues?.get(1)
+                                if (!url.isNullOrBlank()) {
+                                    val cleanedUrl = HtmlUtils.cleanCixUrls(url)
+                                    Log.d(tag, "Mugshot URL for $user from XML: $cleanedUrl")
+                                    cleanedUrl
+                                } else {
+                                    getMugshotUrl(user) ?: ""
+                                }
                             } else {
-                                // Default to the direct mugshot endpoint if XML returns empty
-                                "https://api.cixonline.com/v2.0/cix.svc/user/$user/mugshot"
+                                // Likely binary image data already, use the mugshot.xml endpoint as the image source
+                                Log.d(tag, "Mugshot for $user is binary, using direct URL")
+                                getMugshotUrl(user) ?: ""
                             }
                         } catch (e: Exception) {
-                            Log.e(tag, "Failed to fetch mugshot XML for $user, falling back to direct URL", e)
-                            "https://api.cixonline.com/v2.0/cix.svc/user/$user/mugshot"
+                            Log.e(tag, "Failed to fetch mugshot for $user, falling back to direct URL", e)
+                            getMugshotUrl(user) ?: ""
                         }
                     }
 
@@ -182,7 +191,7 @@ class ProfileDelegate(
     companion object {
         fun getMugshotUrl(userName: String?): String? {
             if (userName.isNullOrBlank()) return null
-            return "https://api.cixonline.com/v2.0/cix.svc/user/$userName/mugshot"
+            return "https://api.cixonline.com/v2.0/cix.svc/user/$userName/mugshot.xml"
         }
     }
 }

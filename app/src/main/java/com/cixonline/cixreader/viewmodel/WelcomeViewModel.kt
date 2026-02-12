@@ -249,7 +249,7 @@ class WelcomeViewModel(
             Log.d("WelcomeViewModel", "Match found: ${bestMatch.first.name}/${bestMatch.second.name}")
             _selectedForum.value = bestMatch.first
             _selectedTopic.value = bestMatch.second
-            _suggestedForumAndTopic.value = bestMatch
+            _suggestedForumAndTopic.value = Pair(bestMatch.first, bestMatch.second)
         } else {
             selectDefaultForum(forums, topics)
         }
@@ -320,13 +320,19 @@ class WelcomeViewModel(
                         val topic = HtmlUtils.normalizeName(thread.topic ?: "")
                         val topicId = HtmlUtils.calculateTopicId(forum, topic)
                         
-                        // First, use root.xml to get the actual root message ID for this thread
-                        val rootId = try {
-                            val rootResponse = api.getRootMessageId(HtmlUtils.cixEncode(forum), HtmlUtils.cixEncode(topic), thread.id)
-                            val rootIdStr = extractStringFromXml(rootResponse.string()).trim()
-                            rootIdStr.toIntOrNull() ?: thread.effectiveRootId
-                        } catch (e: Exception) {
-                            Log.e("WelcomeViewModel", "Failed to get root ID for ${thread.id}, using effectiveRootId", e)
+                        // Use a valid message ID from the thread to call root.xml
+                        val msgIdToUse = if (thread.id != 0) thread.id else thread.effectiveRootId
+                        
+                        val rootId = if (msgIdToUse != 0) {
+                            try {
+                                val rootResponse = api.getRootMessageId(HtmlUtils.cixEncode(forum), HtmlUtils.cixEncode(topic), msgIdToUse)
+                                val rootIdStr = extractStringFromXml(rootResponse.string()).trim()
+                                rootIdStr.toIntOrNull() ?: thread.effectiveRootId
+                            } catch (e: Exception) {
+                                Log.e("WelcomeViewModel", "Failed to get root ID for $msgIdToUse, using effectiveRootId", e)
+                                thread.effectiveRootId
+                            }
+                        } else {
                             thread.effectiveRootId
                         }
 

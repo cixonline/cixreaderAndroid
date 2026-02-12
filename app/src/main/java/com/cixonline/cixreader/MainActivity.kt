@@ -217,6 +217,7 @@ class MainActivity : ComponentActivity() {
                                 repository = messageRepository, 
                                 cachedProfileDao = database.cachedProfileDao(),
                                 draftDao = database.draftDao(),
+                                folderDao = database.folderDao(),
                                 forumName = forumNameArg,
                                 topicName = topicNameArg,
                                 topicId = topicIdArg,
@@ -233,6 +234,9 @@ class MainActivity : ComponentActivity() {
                             settingsManager = settingsManager,
                             onNavigateToThread = { f, t, tId, rId, mId ->
                                 navController.navigate("thread/$f/$t/$tId?rootId=$rId&msgId=$mId")
+                            },
+                            onNavigateToDirectory = {
+                                navController.navigate("directory")
                             }
                         )
                     }
