@@ -33,12 +33,19 @@ interface CixApi {
     @GET("user/alltopics.xml")
     suspend fun getAllTopics(@Query("maxresults") maxResults: Int = 5000): UserForumTopicResultSet2
 
-    @GET("forums/{forum}/{topic}/{msgid}.xml")
+    @GET("forums/{forum}/{topic}/message.xml")
     suspend fun getMessage(
         @Path("forum", encoded = true) forum: String,
         @Path("topic", encoded = true) topic: String,
-        @Path("msgid") msgId: Int
+        @Query("msgid") msgId: Int
     ): MessageApi
+
+    @GET("forums/{forum}/{topic}/{msgid}/root.xml")
+    suspend fun getRootMessageId(
+        @Path("forum", encoded = true) forum: String,
+        @Path("topic", encoded = true) topic: String,
+        @Path("msgid") msgId: Int
+    ): ResponseBody
 
     @GET("forums/{forum}/{topic}/allmessages.xml")
     suspend fun getMessages(

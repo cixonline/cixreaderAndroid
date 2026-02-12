@@ -318,27 +318,79 @@ class WelcomeViewModel(
                     async {
                         val forum = HtmlUtils.normalizeName(thread.forum ?: "")
                         val topic = HtmlUtils.normalizeName(thread.topic ?: "")
-                        val rootId = thread.effectiveRootId
                         val topicId = HtmlUtils.calculateTopicId(forum, topic)
-                        if (rootId == 0) return@async InterestingThreadUI(forum, topic, 0, HtmlUtils.decodeHtml(thread.author ?: ""), DateUtils.formatCixDate(thread.dateTime), HtmlUtils.decodeHtml(thread.body ?: ""), if (!thread.subject.isNullOrBlank()) HtmlUtils.decodeHtml(thread.subject!!) else null)
+                        
+                        // First, use root.xml to get the actual root message ID for this thread
+                        val rootId = try {
+                            val rootResponse = api.getRootMessageId(HtmlUtils.cixEncode(forum), HtmlUtils.cixEncode(topic), thread.id)
+                            val rootIdStr = extractStringFromXml(rootResponse.string()).trim()
+                            rootIdStr.toIntOrNull() ?: thread.effectiveRootId
+                        } catch (e: Exception) {
+                            Log.e("WelcomeViewModel", "Failed to get root ID for ${thread.id}, using effectiveRootId", e)
+                            thread.effectiveRootId
+                        }
+
+                        if (rootId == 0) {
+                            return@async InterestingThreadUI(
+                                forum, topic, 0, 
+                                HtmlUtils.decodeHtml(thread.author ?: ""), 
+                                DateUtils.formatCixDate(thread.dateTime), 
+                                HtmlUtils.decodeHtml(thread.body ?: ""), 
+                                if (!thread.subject.isNullOrBlank()) HtmlUtils.decodeHtml(thread.subject!!) else null
+                            )
+                        }
+
                         var cachedRoot = messageDao.getByRemoteId(rootId, topicId)
                         if (cachedRoot == null && memberForums.contains(forum.lowercase())) {
                             try {
+                                // Now use message.xml to get the metadata and content for that root message ID
                                 val messageApi = api.getMessage(HtmlUtils.cixEncode(forum), HtmlUtils.cixEncode(topic), rootId)
-                                val newMessage = CIXMessage(remoteId = messageApi.id, author = HtmlUtils.decodeHtml(messageApi.author ?: ""), body = HtmlUtils.decodeHtml(messageApi.body ?: ""), date = DateUtils.parseCixDate(messageApi.dateTime), commentId = messageApi.replyTo, rootId = messageApi.rootId, topicId = topicId, forumName = forum, topicName = topic, unread = true)
+                                val newMessage = CIXMessage(
+                                    remoteId = messageApi.id, 
+                                    author = HtmlUtils.decodeHtml(messageApi.author ?: ""), 
+                                    body = HtmlUtils.decodeHtml(messageApi.body ?: ""), 
+                                    date = DateUtils.parseCixDate(messageApi.dateTime), 
+                                    commentId = messageApi.replyTo, 
+                                    rootId = messageApi.rootId, 
+                                    topicId = topicId, 
+                                    forumName = forum, 
+                                    topicName = topic, 
+                                    unread = true
+                                )
                                 messageDao.insert(newMessage)
                                 cachedRoot = newMessage
-                            } catch (e: Exception) { e.printStackTrace() }
+                            } catch (e: Exception) { 
+                                Log.e("WelcomeViewModel", "Failed to fetch root message $rootId", e)
+                            }
                         }
+                        
                         if (cachedRoot != null) {
-                            InterestingThreadUI(forum, topic, rootId, cachedRoot.author, DateUtils.formatDateTime(cachedRoot.date), cachedRoot.body, if (!thread.subject.isNullOrBlank()) HtmlUtils.decodeHtml(thread.subject!!) else null, true)
+                            InterestingThreadUI(
+                                forum, topic, rootId, 
+                                cachedRoot.author, 
+                                DateUtils.formatDateTime(cachedRoot.date), 
+                                cachedRoot.body, 
+                                if (!thread.subject.isNullOrBlank()) HtmlUtils.decodeHtml(thread.subject!!) else null, 
+                                true
+                            )
                         } else {
-                            InterestingThreadUI(forum, topic, rootId, HtmlUtils.decodeHtml(thread.author ?: ""), DateUtils.formatCixDate(thread.dateTime), HtmlUtils.decodeHtml(thread.body ?: ""), if (!thread.subject.isNullOrBlank()) HtmlUtils.decodeHtml(thread.subject!!) else null, false)
+                            InterestingThreadUI(
+                                forum, topic, rootId, 
+                                HtmlUtils.decodeHtml(thread.author ?: ""), 
+                                DateUtils.formatCixDate(thread.dateTime), 
+                                HtmlUtils.decodeHtml(thread.body ?: ""), 
+                                if (!thread.subject.isNullOrBlank()) HtmlUtils.decodeHtml(thread.subject!!) else null, 
+                                false
+                            )
                         }
                     }
                 }.awaitAll()
                 _interestingThreads.value = resolvedThreads
-            } catch (e: Exception) { e.printStackTrace() } finally { _isLoading.value = false }
+            } catch (e: Exception) { 
+                Log.e("WelcomeViewModel", "Refresh failed", e)
+            } finally { 
+                _isLoading.value = false 
+            }
         }
     }
 
