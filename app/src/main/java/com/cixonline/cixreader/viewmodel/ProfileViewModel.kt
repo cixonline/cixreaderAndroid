@@ -1,5 +1,6 @@
 package com.cixonline.cixreader.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cixonline.cixreader.api.CixApi
@@ -29,6 +30,7 @@ class ProfileDelegate(
     private val api: CixApi,
     private val cachedProfileDao: CachedProfileDao
 ) {
+    private val tag = "ProfileDelegate"
     private val _selectedProfile = MutableStateFlow<UserProfile?>(null)
     val selectedProfile: StateFlow<UserProfile?> = _selectedProfile
 
@@ -46,7 +48,6 @@ class ProfileDelegate(
     fun showProfile(scope: kotlinx.coroutines.CoroutineScope, user: String) {
         scope.launch {
             _isLoading.value = true
-            // Clear previous state to ensure a fresh look for the new profile
             _selectedProfile.value = null
             _selectedResume.value = null
             _selectedMugshotUrl.value = null
@@ -56,7 +57,6 @@ class ProfileDelegate(
                 val now = System.currentTimeMillis()
                 
                 if (cached != null && (now - cached.lastUpdated) < CACHE_EXPIRATION_MS) {
-                    // Use cached data
                     val profile = UserProfile().apply {
                         userName = cached.userName
                         fullName = cached.fullName
@@ -74,20 +74,15 @@ class ProfileDelegate(
                     return@launch
                 }
 
-                // Fetch basic profile first to show the dialog quickly
                 val profile = api.getProfile(user)
                 if (profile.userName.isNullOrBlank()) {
                     profile.userName = user
                 }
                 _selectedProfile.value = profile
 
-                // Load additional data (resume and mugshot) in parallel
                 coroutineScope {
                     val resumeJob = async {
                         try {
-                            // The api.getResume now returns Resume object (from Step 1 fix)
-                            // But here we're treating it as ResponseBody in some paths
-                            // Let's check CixApi again. It returns ResponseBody to avoid parsing issues if Resume is empty.
                             val response = api.getResume(user)
                             val xml = response.string()
                             val rawContent = extractRawContent(xml)
@@ -95,16 +90,25 @@ class ProfileDelegate(
                                 HtmlUtils.decodeHtml(rawContent).trim()
                             } else null
                         } catch (e: Exception) {
-                            e.printStackTrace()
+                            Log.e(tag, "Failed to fetch resume for $user", e)
                             null
                         }
                     }
                     val mugshotJob = async {
                         try {
                             val mugshot = api.getMugshot(user)
-                            mugshot.image
+                            val url = mugshot.image
+                            if (!url.isNullOrBlank()) {
+                                val cleanedUrl = HtmlUtils.cleanCixUrls(url)
+                                Log.d(tag, "Mugshot URL for $user: $cleanedUrl")
+                                cleanedUrl
+                            } else {
+                                // Default to the direct mugshot endpoint if XML returns empty
+                                "https://api.cixonline.com/v2.0/cix.svc/user/$user/mugshot"
+                            }
                         } catch (e: Exception) {
-                            null
+                            Log.e(tag, "Failed to fetch mugshot XML for $user, falling back to direct URL", e)
+                            "https://api.cixonline.com/v2.0/cix.svc/user/$user/mugshot"
                         }
                     }
 
@@ -114,7 +118,6 @@ class ProfileDelegate(
                     _selectedResume.value = resume
                     _selectedMugshotUrl.value = mugshotUrl
 
-                    // Cache the results
                     cachedProfileDao.insertProfile(
                         CachedProfile(
                             userName = user,
@@ -132,7 +135,7 @@ class ProfileDelegate(
                     )
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(tag, "showProfile failed for $user", e)
             } finally {
                 _isLoading.value = false
             }
@@ -142,18 +145,11 @@ class ProfileDelegate(
     private fun extractRawContent(xml: String): String? {
         val trimmedXml = xml.trim()
         if (!trimmedXml.startsWith("<")) return trimmedXml
-
-        // Try to find content inside <Body> tag first
         val bodyMatch = Regex("<Body[^>]*>(.*?)</Body>", RegexOption.DOT_MATCHES_ALL).find(xml)
         if (bodyMatch != null) return bodyMatch.groupValues[1]
-
-        // Try to find content inside the root <Resume> element
         val resumeMatch = Regex("<Resume[^>]*>(.*?)</Resume>", RegexOption.DOT_MATCHES_ALL).find(xml)
-        if (resumeMatch != null) {
-            return resumeMatch.groupValues[1]
-        }
+        if (resumeMatch != null) return resumeMatch.groupValues[1]
         
-        // Fallback: use XmlPullParser to extract all text nodes
         return try {
             val factory = XmlPullParserFactory.newInstance()
             factory.isNamespaceAware = false
@@ -162,9 +158,8 @@ class ProfileDelegate(
             var eventType = parser.eventType
             val sb = StringBuilder()
             while (eventType != XmlPullParser.END_DOCUMENT) {
-                if (eventType == XmlPullParser.TEXT) {
-                    sb.append(parser.text)
-                } else if (eventType == XmlPullParser.START_TAG) {
+                if (eventType == XmlPullParser.TEXT) sb.append(parser.text)
+                else if (eventType == XmlPullParser.START_TAG) {
                     val name = parser.name.lowercase()
                     if (name == "br") sb.append("\n")
                     else if (name == "p" || name == "div") sb.append("\n\n")
@@ -174,7 +169,6 @@ class ProfileDelegate(
             val result = sb.toString().trim()
             if (result.isNotEmpty()) result else null
         } catch (e: Exception) {
-            // Last resort: strip all tags using regex
             xml.replace(Regex("<[^>]*>"), " ").trim().replace(Regex(" +"), " ")
         }
     }
