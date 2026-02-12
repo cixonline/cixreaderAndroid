@@ -13,18 +13,29 @@ import com.cixonline.cixreader.api.PostAttachment
 import com.cixonline.cixreader.api.UserProfile
 import com.cixonline.cixreader.db.CachedProfileDao
 import com.cixonline.cixreader.db.DraftDao
+import com.cixonline.cixreader.db.FolderDao
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.Draft
+import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.repository.NotAMemberException
+import com.cixonline.cixreader.utils.HtmlUtils
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+
+sealed class NextUnreadItem {
+    data class Message(val message: CIXMessage) : NextUnreadItem()
+    data class Topic(val forum: String, val topic: String, val topicId: Int) : NextUnreadItem()
+    data class Forum(val forum: String) : NextUnreadItem()
+    object NoMoreUnread : NextUnreadItem()
+}
 
 class TopicViewModel(
     private val api: CixApi,
     private val repository: MessageRepository,
     private val cachedProfileDao: CachedProfileDao,
     private val draftDao: DraftDao,
+    private val folderDao: FolderDao,
     val forumName: String,
     val topicName: String,
     val topicId: Int,
@@ -72,8 +83,6 @@ class TopicViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
-        // Only refresh from server if the local cache is empty.
-        // The messages StateFlow will automatically update whenever the DB changes.
         viewModelScope.launch {
             repository.getMessagesForTopic(topicId).first().let { currentMessages ->
                 if (currentMessages.isEmpty()) {
@@ -98,50 +107,86 @@ class TopicViewModel(
         }
     }
 
-    fun findNextUnread(currentMessageId: Int?): CIXMessage? {
+    suspend fun findNextUnreadItem(currentMessageId: Int?): NextUnreadItem {
         val allMessages = messages.value
-        if (allMessages.isEmpty()) return null
-
         val children = allMessages.groupBy { it.commentId }
         val roots = allMessages.filter { it.isRoot }.sortedByDescending { it.date }
         
-        if (currentMessageId == null) {
+        // 1. Check current topic for unread messages
+        if (currentMessageId != null) {
+            val currentMsg = allMessages.find { it.remoteId == currentMessageId }
+            if (currentMsg != null) {
+                val currentRootId = if (currentMsg.rootId != 0) currentMsg.rootId else currentMsg.remoteId
+                val currentThread = getThreadInOrder(allMessages, children, currentRootId)
+                val currentIndex = currentThread.indexOfFirst { it.remoteId == currentMessageId }
+                if (currentIndex != -1) {
+                    for (i in (currentIndex + 1) until currentThread.size) {
+                        if (currentThread[i].unread) return NextUnreadItem.Message(currentThread[i])
+                    }
+                }
+                
+                // Check following threads in same topic
+                val currentRootIndex = roots.indexOfFirst { (if (it.rootId != 0) it.rootId else it.remoteId) == currentRootId }
+                if (currentRootIndex != -1) {
+                    for (i in (currentRootIndex + 1) until roots.size) {
+                        val nextThread = getThreadInOrder(allMessages, children, if (roots[i].rootId != 0) roots[i].rootId else roots[i].remoteId)
+                        val unread = nextThread.find { it.unread }
+                        if (unread != null) return NextUnreadItem.Message(unread)
+                    }
+                }
+            }
+        } else {
+            // No current message, find first unread in current topic
             for (root in roots) {
                 val thread = getThreadInOrder(allMessages, children, root.remoteId)
                 val unread = thread.find { it.unread }
-                if (unread != null) return unread
+                if (unread != null) return NextUnreadItem.Message(unread)
             }
-            return null
         }
 
-        val currentMsg = allMessages.find { it.remoteId == currentMessageId } ?: return null
-        val currentRootId = if (currentMsg.rootId != 0) currentMsg.rootId else currentMsg.remoteId
-        
-        val currentThread = getThreadInOrder(allMessages, children, currentRootId)
-        val currentIndex = currentThread.indexOfFirst { it.remoteId == currentMessageId }
-        if (currentIndex != -1) {
-            for (i in (currentIndex + 1) until currentThread.size) {
-                if (currentThread[i].unread) return currentThread[i]
+        // 2. No more unread in current topic. Find next topic in current forum.
+        val allFolders = folderDao.getAll().first()
+        val currentForum = allFolders.find { it.isRootFolder && it.name.equals(forumName, ignoreCase = true) }
+        if (currentForum != null) {
+            val forumTopics = allFolders.filter { it.parentId == currentForum.id }.sortedBy { it.index }
+            val currentTopicIndex = forumTopics.indexOfFirst { it.id == topicId }
+            if (currentTopicIndex != -1) {
+                // Search forward from current topic
+                for (i in (currentTopicIndex + 1) until forumTopics.size) {
+                    if (forumTopics[i].unread > 0) return NextUnreadItem.Topic(forumName, forumTopics[i].name, forumTopics[i].id)
+                }
+                // Wrap around within forum
+                for (i in 0 until currentTopicIndex) {
+                    if (forumTopics[i].unread > 0) return NextUnreadItem.Topic(forumName, forumTopics[i].name, forumTopics[i].id)
+                }
             }
-        }
-        
-        val currentRootIndex = roots.indexOfFirst { (if (it.rootId != 0) it.rootId else it.remoteId) == currentRootId }
-        if (currentRootIndex != -1) {
-            for (i in (currentRootIndex + 1) until roots.size) {
-                val nextThread = getThreadInOrder(allMessages, children, if (roots[i].rootId != 0) roots[i].rootId else roots[i].remoteId)
-                val unread = nextThread.find { it.unread }
-                if (unread != null) return unread
-            }
-        }
-        
-        val limit = if (currentRootIndex != -1) currentRootIndex else roots.size
-        for (i in 0 until limit) {
-            val nextThread = getThreadInOrder(allMessages, children, if (roots[i].rootId != 0) roots[i].rootId else roots[i].remoteId)
-            val unread = nextThread.find { it.unread }
-            if (unread != null) return unread
         }
 
-        return null
+        // 3. No more unread in current forum. Find next forum with unread.
+        val allForums = allFolders.filter { it.isRootFolder }.sortedBy { it.index }
+        val currentForumIndex = allForums.indexOfFirst { it.name.equals(forumName, ignoreCase = true) }
+        if (currentForumIndex != -1) {
+            // Search forward from current forum
+            for (i in (currentForumIndex + 1) until allForums.size) {
+                if (allForums[i].unread > 0) {
+                    val firstUnreadTopic = allFolders.find { it.parentId == allForums[i].id && it.unread > 0 }
+                    if (firstUnreadTopic != null) {
+                        return NextUnreadItem.Topic(allForums[i].name, firstUnreadTopic.name, firstUnreadTopic.id)
+                    }
+                }
+            }
+            // Wrap around
+            for (i in 0 until currentForumIndex) {
+                if (allForums[i].unread > 0) {
+                    val firstUnreadTopic = allFolders.find { it.parentId == allForums[i].id && it.unread > 0 }
+                    if (firstUnreadTopic != null) {
+                        return NextUnreadItem.Topic(allForums[i].name, firstUnreadTopic.name, firstUnreadTopic.id)
+                    }
+                }
+            }
+        }
+
+        return NextUnreadItem.NoMoreUnread
     }
 
     private fun getThreadInOrder(allMessages: List<CIXMessage>, children: Map<Int, List<CIXMessage>>, rootId: Int): List<CIXMessage> {
@@ -170,7 +215,6 @@ class TopicViewModel(
                 val bytes = inputStream?.readBytes()
                 inputStream?.close()
                 if (bytes != null) {
-                    // Use NO_WRAP to avoid extra newlines in the XML element, matching C# default behavior for short strings
                     listOf(PostAttachment(data = Base64.encodeToString(bytes, Base64.NO_WRAP), filename = attachmentName))
                 } else null
             } catch (e: Exception) {
@@ -181,19 +225,13 @@ class TopicViewModel(
 
         val currentAuthor = NetworkClient.getUsername()
         val resultId = repository.postMessage(forumName, topicName, body, replyToId, currentAuthor, attachments)
-        Log.d("TopicViewModel", "postMessage returned: $resultId") // Log the result
-
+        
         val success = resultId != 0
         if (success) {
             draftDao.deleteDraftForContext(forumName, topicName, replyToId)
-            
-            // Set scroll to the newly posted message if we have its ID
             if (resultId > 0) {
                 _scrollToMessageId.value = resultId
             }
-            
-            // Note: repository.postMessage() already handles local cache update,
-            // so no refresh() is needed here.
         }
         _isLoading.value = false
         return success
@@ -264,6 +302,7 @@ class TopicViewModelFactory(
     private val repository: MessageRepository,
     private val cachedProfileDao: CachedProfileDao,
     private val draftDao: DraftDao,
+    private val folderDao: FolderDao,
     private val forumName: String,
     private val topicName: String,
     private val topicId: Int,
@@ -273,7 +312,7 @@ class TopicViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(TopicViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return TopicViewModel(api, repository, cachedProfileDao, draftDao, forumName, topicName, topicId, initialMessageId, initialRootId) as T
+            return TopicViewModel(api, repository, cachedProfileDao, draftDao, folderDao, forumName, topicName, topicId, initialMessageId, initialRootId) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

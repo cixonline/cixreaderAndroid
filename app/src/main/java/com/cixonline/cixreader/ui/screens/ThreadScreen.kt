@@ -43,12 +43,12 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.CIXMessage
+import com.cixonline.cixreader.viewmodel.NextUnreadItem
 import com.cixonline.cixreader.viewmodel.TopicViewModel
 import com.cixonline.cixreader.utils.SettingsManager
 import kotlinx.coroutines.delay
@@ -70,7 +70,8 @@ fun ThreadScreen(
     onLogout: () -> Unit,
     onSettingsClick: () -> Unit,
     settingsManager: SettingsManager,
-    onNavigateToThread: (forum: String, topic: String, topicId: Int, rootId: Int, msgId: Int) -> Unit
+    onNavigateToThread: (forum: String, topic: String, topicId: Int, rootId: Int, msgId: Int) -> Unit,
+    onNavigateToDirectory: () -> Unit
 ) {
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -80,18 +81,16 @@ fun ThreadScreen(
     val scrollToMessageId by viewModel.scrollToMessageId.collectAsState()
     val context = LocalContext.current
 
-    // State for expanded roots (by remoteId)
     var expandedRootIds by remember { mutableStateOf(setOf<Int>()) }
-    
     var selectedMessage by remember { mutableStateOf<CIXMessage?>(null) }
     var showMenu by remember { mutableStateOf(false) }
     var showReplyPane by remember { mutableStateOf(false) }
     var replyInitialText by remember { mutableStateOf("") }
+    var showNoMoreUnreadDialog by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
-    // Function to find which root a message belongs to
     fun findRootForMessage(msg: CIXMessage, allMsgs: List<CIXMessage>): Int {
         val msgMap = allMsgs.associateBy { it.remoteId }
         var current = msg
@@ -106,7 +105,10 @@ fun ThreadScreen(
             val targetMsg = if (viewModel.initialMessageId != 0) {
                 messages.find { it.remoteId == viewModel.initialMessageId }
             } else {
-                viewModel.findNextUnread(null) ?: messages.filter { it.commentId == 0 }.maxByOrNull { it.date }
+                when (val next = viewModel.findNextUnreadItem(null)) {
+                    is NextUnreadItem.Message -> next.message
+                    else -> messages.filter { it.commentId == 0 }.maxByOrNull { it.date }
+                }
             }
 
             if (targetMsg != null) {
@@ -117,7 +119,6 @@ fun ThreadScreen(
         }
     }
 
-    // Effect to handle jump-to-position when scrollToMessageId changes
     LaunchedEffect(scrollToMessageId, messages) {
         if (scrollToMessageId != null && messages.isNotEmpty()) {
             val targetMsg = messages.find { it.remoteId == scrollToMessageId }
@@ -125,7 +126,6 @@ fun ThreadScreen(
                 selectedMessage = targetMsg
                 val rootId = findRootForMessage(targetMsg, messages)
                 expandedRootIds = expandedRootIds + rootId
-                // Reset the scroll state after jumping
                 viewModel.onScrollToMessageComplete()
             }
         }
@@ -135,6 +135,27 @@ fun ThreadScreen(
         if (showReplyPane && selectedMessage != null) {
             replyInitialText = viewModel.getDraft(selectedMessage!!.remoteId)?.body ?: ""
         }
+    }
+
+    if (showNoMoreUnreadDialog) {
+        AlertDialog(
+            onDismissRequest = { showNoMoreUnreadDialog = false },
+            title = { Text("No More Unread Messages") },
+            text = { Text("You have caught up with everything! Why not explore the Directory to find more interesting forums to join?") },
+            confirmButton = {
+                TextButton(onClick = { 
+                    showNoMoreUnreadDialog = false
+                    onNavigateToDirectory()
+                }) {
+                    Text("Go to Directory")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNoMoreUnreadDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -226,9 +247,7 @@ fun ThreadScreen(
                                 } else {
                                     expandedRootIds - rootId
                                 }
-                                
                                 if (expanding) {
-                                    // Focus on the root message when expanding
                                     messages.find { it.remoteId == rootId }?.let { rootMsg ->
                                         selectedMessage = rootMsg
                                     }
@@ -244,15 +263,29 @@ fun ThreadScreen(
                             replyActive = showReplyPane,
                             onReplyClick = { showReplyPane = !showReplyPane },
                             onNextUnreadClick = {
-                                val next = viewModel.findNextUnread(selectedMessage?.remoteId)
-                                if (next != null) {
+                                coroutineScope.launch {
+                                    val nextItem = viewModel.findNextUnreadItem(selectedMessage?.remoteId)
                                     if (selectedMessage!!.unread) {
                                         viewModel.markAsRead(selectedMessage!!)
                                     }
-                                    selectedMessage = next
-                                    val rootId = findRootForMessage(next, messages)
-                                    expandedRootIds = expandedRootIds + rootId
-                                    showReplyPane = false
+                                    
+                                    when (nextItem) {
+                                        is NextUnreadItem.Message -> {
+                                            selectedMessage = nextItem.message
+                                            val rootId = findRootForMessage(nextItem.message, messages)
+                                            expandedRootIds = expandedRootIds + rootId
+                                            showReplyPane = false
+                                        }
+                                        is NextUnreadItem.Topic -> {
+                                            onNavigateToThread(nextItem.forum, nextItem.topic, nextItem.topicId, 0, 0)
+                                        }
+                                        is NextUnreadItem.Forum -> {
+                                            // This case is handled via NextUnreadItem.Topic which also knows the forum
+                                        }
+                                        is NextUnreadItem.NoMoreUnread -> {
+                                            showNoMoreUnreadDialog = true
+                                        }
+                                    }
                                 }
                             },
                             onAuthorClick = { viewModel.showProfile(selectedMessage!!.author) }
@@ -346,10 +379,7 @@ fun CombinedThreadList(
     val displayItems = remember(messages, expandedRootIds) {
         if (messages.isEmpty()) return@remember emptyList()
         val result = mutableListOf<ThreadDisplayItem>()
-        
         val messageIds = messages.map { it.remoteId }.toSet()
-        
-        // Roots: commentId 0 OR parent missing
         val roots = messages.filter { it.commentId == 0 || !messageIds.contains(it.commentId) }
             .sortedByDescending { it.date }
 
@@ -368,7 +398,6 @@ fun CombinedThreadList(
         result
     }
 
-    // Improved scrolling logic with small delay to ensure layout is ready
     LaunchedEffect(selectedMessageId, displayItems) {
         if (selectedMessageId != null) {
             val index = displayItems.indexOfFirst {
@@ -378,12 +407,12 @@ fun CombinedThreadList(
                 }
             }
             if (index != -1) {
-                delay(100) // Small delay to allow list to settle
+                delay(100)
                 val layoutInfo = listState.layoutInfo
                 val viewportHeight = layoutInfo.viewportSize.height
                 if (viewportHeight > 0) {
                     val visibleItem = layoutInfo.visibleItemsInfo.find { it.index == index }
-                    val itemSize = visibleItem?.size ?: 64 // Use a more realistic default size
+                    val itemSize = visibleItem?.size ?: 64
                     val offset = (viewportHeight - itemSize) / 2
                     listState.animateScrollToItem(index, -offset)
                 } else {
@@ -428,16 +457,12 @@ fun CombinedThreadList(
 fun buildThreadTree(messages: List<CIXMessage>, startId: Int): List<Pair<CIXMessage, Int>> {
     val children = messages.groupBy { it.commentId }
     val result = mutableListOf<Pair<CIXMessage, Int>>()
-    
     fun walk(m: CIXMessage, depth: Int) {
         result.add(m to depth)
         children[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it, depth + 1) }
     }
-    
     val startMsg = messages.find { it.remoteId == startId }
-    if (startMsg != null) {
-        walk(startMsg, 0)
-    }
+    if (startMsg != null) walk(startMsg, 0)
     return result
 }
 
@@ -594,7 +619,6 @@ fun MessageActionBar(
                     color = Color.White
                 )
             }
-
             Row {
                 IconButton(onClick = onReplyClick) {
                     Icon(
@@ -664,18 +688,15 @@ fun MessageViewer(
                 }
             }
         }
-
         val annotatedString = remember(normalizedBody, message.forumName, message.topicName) {
             linkify(normalizedBody, message.forumName, message.topicName)
         }
-
         ClickableText(
             text = annotatedString,
             style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
             onClick = { offset ->
                 annotatedString.getStringAnnotations(tag = "URL", start = offset, end = offset)
                     .firstOrNull()?.let { uriHandler.openUri(it.item) }
-                
                 annotatedString.getStringAnnotations(tag = "CIX_REF", start = offset, end = offset)
                     .firstOrNull()?.let { annotation ->
                         val parts = annotation.item.split(":")
@@ -683,7 +704,6 @@ fun MessageViewer(
                     }
             }
         )
-
         val urls = remember(normalizedBody) { extractUrls(normalizedBody) }
         urls.forEach { url ->
             Spacer(modifier = Modifier.height(16.dp))
@@ -692,14 +712,12 @@ fun MessageViewer(
     }
 }
 
-@OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 fun MediaPreview(url: String) {
     val extension = url.substringAfterLast(".").lowercase()
     val isImage = remember(extension) { listOf("jpg", "jpeg", "png", "gif", "webp").contains(extension) }
     val isVideo = remember(extension) { listOf("mp4", "webm", "ogg").contains(extension) }
     val isAudio = remember(extension) { listOf("mp3", "wav", "m4a").contains(extension) }
-
     when {
         isImage -> Card(
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -719,7 +737,6 @@ fun MediaPreview(url: String) {
     }
 }
 
-@OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 fun VideoPlayer(url: String) {
     val context = LocalContext.current
@@ -732,7 +749,6 @@ fun VideoPlayer(url: String) {
     ) { AndroidView(factory = { ctx -> PlayerView(ctx).apply { player = exoPlayer } }, modifier = Modifier.fillMaxSize()) }
 }
 
-@OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 fun AudioPlayer(url: String) {
     val context = LocalContext.current
@@ -757,7 +773,6 @@ fun ReplyPane(
     var attachmentUri by remember { mutableStateOf<Uri?>(null) }
     var attachmentName by remember { mutableStateOf<String?>(null) }
     var showCancelConfirm by remember { mutableStateOf(false) }
-    
     val context = LocalContext.current
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         attachmentUri = uri
@@ -769,7 +784,6 @@ fun ReplyPane(
             }
         }
     }
-
     if (showCancelConfirm) {
         AlertDialog(
             onDismissRequest = { showCancelConfirm = false },
@@ -798,7 +812,6 @@ fun ReplyPane(
             }
         )
     }
-
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(modifier = Modifier.padding(8.dp)) {
             OutlinedTextField(
@@ -809,7 +822,6 @@ fun ReplyPane(
                 textStyle = MaterialTheme.typography.bodySmall, 
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrectEnabled = true)
             )
-            
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp), 
                 horizontalArrangement = Arrangement.SpaceBetween, 
