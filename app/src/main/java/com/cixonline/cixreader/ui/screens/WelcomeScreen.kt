@@ -24,6 +24,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.cixonline.cixreader.BuildConfig
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.Folder
@@ -377,9 +378,9 @@ fun PostMessageDialog(
 ) {
     val forums by viewModel.allForums.collectAsState(emptyList())
     val selectedForum by viewModel.selectedForum.collectAsState()
+    val selectedTopic by viewModel.selectedTopic.collectAsState()
     val topics by viewModel.topicsForSelectedForum.collectAsState()
     val suggestion by viewModel.suggestedForumAndTopic.collectAsState()
-    var selectedTopic by remember { mutableStateOf<Folder?>(null) }
     var messageBody by remember { mutableStateOf("") }
     var forumExpanded by remember { mutableStateOf(false) }
     var topicExpanded by remember { mutableStateOf(false) }
@@ -438,12 +439,6 @@ fun PostMessageDialog(
         )
     }
 
-    LaunchedEffect(messageBody) {
-        if (selectedForum == null && selectedTopic == null) {
-            viewModel.suggestForumAndTopic(messageBody)
-        }
-    }
-
     LaunchedEffect(selectedForum, selectedTopic) {
         if (selectedForum != null && selectedTopic != null) {
             val draft = viewModel.getDraftForContext(selectedForum!!.name, selectedTopic!!.name)
@@ -453,9 +448,12 @@ fun PostMessageDialog(
         }
     }
 
-    Dialog(onDismissRequest = {
-        if (messageBody.isNotBlank()) showCancelConfirm = true else onDismiss()
-    }) {
+    Dialog(
+        onDismissRequest = {
+            if (messageBody.isNotBlank()) showCancelConfirm = true else onDismiss()
+        },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
             tonalElevation = 6.dp,
@@ -496,7 +494,7 @@ fun PostMessageDialog(
                                 .fillMaxWidth()
                                 .clickable {
                                     viewModel.selectForum(sForum)
-                                    selectedTopic = sTopic
+                                    viewModel.selectTopic(sTopic)
                                     viewModel.clearSuggestion()
                                 }
                         ) {
@@ -514,34 +512,51 @@ fun PostMessageDialog(
                     }
                 }
 
-                // Forum Selection
-                ExposedDropdownMenuBox(
-                    expanded = forumExpanded,
-                    onExpandedChange = { forumExpanded = it }
+                // Forum Selection with Sparkle Gear Button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedTextField(
-                        value = selectedForum?.name ?: "Select Forum",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Forum") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = forumExpanded) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(
+                    ExposedDropdownMenuBox(
                         expanded = forumExpanded,
-                        onDismissRequest = { forumExpanded = false },
-                        modifier = Modifier.heightIn(max = 300.dp)
+                        onExpandedChange = { forumExpanded = it },
+                        modifier = Modifier.weight(1f)
                     ) {
-                        sortedForums.forEach { forum ->
-                            DropdownMenuItem(
-                                text = { Text(forum.name) },
-                                onClick = {
-                                    viewModel.selectForum(forum)
-                                    selectedTopic = null
-                                    forumExpanded = false
-                                }
-                            )
+                        OutlinedTextField(
+                            value = selectedForum?.name ?: "Select Forum",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Forum") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = forumExpanded) },
+                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = forumExpanded,
+                            onDismissRequest = { forumExpanded = false },
+                            modifier = Modifier.heightIn(max = 300.dp)
+                        ) {
+                            sortedForums.forEach { forum ->
+                                DropdownMenuItem(
+                                    text = { Text(forum.name) },
+                                    onClick = {
+                                        viewModel.selectForum(forum)
+                                        forumExpanded = false
+                                    }
+                                )
+                            }
                         }
+                    }
+
+                    IconButton(
+                        onClick = { viewModel.suggestForumAndTopic(messageBody) },
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = "Suggest Forum",
+                            tint = Color(0xFFD91B5C)
+                        )
                     }
                 }
 
@@ -568,7 +583,7 @@ fun PostMessageDialog(
                             DropdownMenuItem(
                                 text = { Text(topic.name) },
                                 onClick = {
-                                    selectedTopic = topic
+                                    viewModel.selectTopic(topic)
                                     topicExpanded = false
                                 }
                             )

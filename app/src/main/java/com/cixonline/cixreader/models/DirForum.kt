@@ -8,9 +8,9 @@ data class DirForum(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
     val title: String,
-    val description: String?,
-    val type: String?,
-    val category: String?,
-    val subCategory: String?,
+    val description: String? = null,
+    val type: String? = null,
+    val category: String? = null,
+    val subCategory: String? = null,
     val recent: Int = 0
 )

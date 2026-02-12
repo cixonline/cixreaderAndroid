@@ -121,7 +121,7 @@ class DirectoryViewModel(
         return DirForum(
             name = this.forum ?: "",
             title = this.title ?: "",
-            description = null,
+            description = this.title ?: "", // Use title as description if description is null
             type = this.type,
             category = this.cat,
             subCategory = this.sub,

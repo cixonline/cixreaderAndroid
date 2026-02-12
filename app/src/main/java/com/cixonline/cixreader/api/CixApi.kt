@@ -33,7 +33,7 @@ interface CixApi {
     @GET("user/alltopics.xml")
     suspend fun getAllTopics(@Query("maxresults") maxResults: Int = 5000): UserForumTopicResultSet2
 
-    @GET("forums/{forum}/{topic}/{msgid}/message.xml")
+    @GET("forums/{forum}/{topic}/{msgid}.xml")
     suspend fun getMessage(
         @Path("forum", encoded = true) forum: String,
         @Path("topic", encoded = true) topic: String,
