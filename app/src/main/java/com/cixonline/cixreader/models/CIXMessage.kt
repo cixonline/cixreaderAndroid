@@ -43,4 +43,10 @@ data class CIXMessage(
 
     val isPseudo: Boolean
         get() = remoteId >= Int.MAX_VALUE / 2
+
+    fun isWithdrawn(): Boolean {
+        return body.contains("<<withdrawn by author>>", ignoreCase = true) ||
+               body.contains("<<withdrawn by moderator>>", ignoreCase = true) ||
+               body.contains("<<withdrawn by system administrator>>", ignoreCase = true)
+    }
 }

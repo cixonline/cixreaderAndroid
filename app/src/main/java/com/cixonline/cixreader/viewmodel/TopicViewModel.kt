@@ -66,11 +66,7 @@ class TopicViewModel(
         repository.getMessagesForTopic(topicId),
         _searchQuery
     ) { allMessages, query ->
-        val filtered = allMessages.filter { msg ->
-            !msg.body.contains("<<withdrawn by author>>", ignoreCase = true) &&
-            !msg.body.contains("<<withdrawn by moderator>>", ignoreCase = true) &&
-            !msg.body.contains("<<withdrawn by system administrator>>", ignoreCase = true)
-        }
+        val filtered = allMessages.filter { msg -> !msg.isWithdrawn() }
         
         if (query.isBlank()) {
             filtered
@@ -80,6 +76,14 @@ class TopicViewModel(
                 msg.body.contains(query, ignoreCase = true)
             }
         }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val messageTree = messages.map { list ->
+        list.groupBy { it.commentId }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    private val roots = messages.map { list ->
+        list.filter { it.isRoot }.sortedByDescending { it.date }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
@@ -136,15 +140,15 @@ class TopicViewModel(
 
     suspend fun findNextUnreadItem(currentMessageId: Int?): NextUnreadItem {
         val allMessages = messages.value
-        val children = allMessages.groupBy { it.commentId }
-        val roots = allMessages.filter { it.isRoot }.sortedByDescending { it.date }
+        val tree = messageTree.value
+        val currentRoots = roots.value
         
         // 1. Check current topic for unread messages
         if (currentMessageId != null) {
             val currentMsg = allMessages.find { it.remoteId == currentMessageId }
             if (currentMsg != null) {
                 val currentRootId = if (currentMsg.rootId != 0) currentMsg.rootId else currentMsg.remoteId
-                val currentThread = getThreadInOrder(allMessages, children, currentRootId)
+                val currentThread = getThreadInOrder(allMessages, tree, currentRootId)
                 val currentIndex = currentThread.indexOfFirst { it.remoteId == currentMessageId }
                 if (currentIndex != -1) {
                     for (i in (currentIndex + 1) until currentThread.size) {
@@ -153,10 +157,10 @@ class TopicViewModel(
                 }
                 
                 // Check following threads in same topic
-                val currentRootIndex = roots.indexOfFirst { (if (it.rootId != 0) it.rootId else it.remoteId) == currentRootId }
+                val currentRootIndex = currentRoots.indexOfFirst { (if (it.rootId != 0) it.rootId else it.remoteId) == currentRootId }
                 if (currentRootIndex != -1) {
-                    for (i in (currentRootIndex + 1) until roots.size) {
-                        val nextThread = getThreadInOrder(allMessages, children, if (roots[i].rootId != 0) roots[i].rootId else roots[i].remoteId)
+                    for (i in (currentRootIndex + 1) until currentRoots.size) {
+                        val nextThread = getThreadInOrder(allMessages, tree, if (currentRoots[i].rootId != 0) currentRoots[i].rootId else currentRoots[i].remoteId)
                         val unread = nextThread.find { it.unread }
                         if (unread != null) return NextUnreadItem.Message(unread)
                     }
@@ -164,8 +168,8 @@ class TopicViewModel(
             }
         } else {
             // No current message, find first unread in current topic
-            for (root in roots) {
-                val thread = getThreadInOrder(allMessages, children, root.remoteId)
+            for (root in currentRoots) {
+                val thread = getThreadInOrder(allMessages, tree, root.remoteId)
                 val unread = thread.find { it.unread }
                 if (unread != null) return NextUnreadItem.Message(unread)
             }

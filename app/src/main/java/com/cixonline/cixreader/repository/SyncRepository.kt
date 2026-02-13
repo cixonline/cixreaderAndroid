@@ -32,13 +32,13 @@ class SyncRepository(
             Log.d(tag, "Starting periodic sync via user/sync.xml")
             
             val lastSyncDate = settingsManager.getLastSyncDate()
-            var start = 0
-            val count = 100
-            var fetchedTotal = 0
+            var currentSince = lastSyncDate
+            val maxResults = 5000
+            var fetchedTotal: Int
             var newestMessageDate: Long = 0
             
             do {
-                val resultSet = api.sync(count = count, start = start, since = lastSyncDate)
+                val resultSet = api.sync(count = maxResults, since = currentSince)
                 val messages = resultSet.messages
                 
                 if (messages.isEmpty()) break
@@ -83,9 +83,11 @@ class SyncRepository(
                 messageDao.insertAll(cixMessages)
                 
                 fetchedTotal = messages.size
-                start += count
+                if (newestMessageDate > 0) {
+                    currentSince = DateUtils.formatApiDate(newestMessageDate)
+                }
                 
-            } while (fetchedTotal >= count)
+            } while (fetchedTotal >= maxResults)
 
             if (newestMessageDate > 0) {
                 settingsManager.saveLastSyncDate(DateUtils.formatApiDate(newestMessageDate))

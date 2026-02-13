@@ -69,8 +69,7 @@ interface CixApi {
 
     @GET("user/sync.xml")
     suspend fun sync(
-        @Query("count") count: Int = 100,
-        @Query("start") start: Int = 0,
+        @Query("maxresults") count: Int = 5000,
         @Query("since") since: String? = null
     ): MessageResultSet
 
