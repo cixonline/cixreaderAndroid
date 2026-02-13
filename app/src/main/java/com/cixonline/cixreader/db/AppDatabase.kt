@@ -11,7 +11,7 @@ import com.cixonline.cixreader.models.DirForum
 import com.cixonline.cixreader.models.CachedProfile
 import com.cixonline.cixreader.models.Draft
 
-@Database(entities = [Folder::class, CIXMessage::class, DirForum::class, CachedProfile::class, Draft::class], version = 6, exportSchema = false)
+@Database(entities = [Folder::class, CIXMessage::class, DirForum::class, CachedProfile::class, Draft::class], version = 7, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun folderDao(): FolderDao

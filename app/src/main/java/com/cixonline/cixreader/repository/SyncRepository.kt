@@ -106,35 +106,22 @@ class SyncRepository(
 
             Log.d(tag, "Syncing ${pending.size} read status updates to server")
 
-            // Group by topic to use markreadrange
-            val grouped = pending.groupBy { it.topicId }
-
-            for ((topicId, msgs) in grouped) {
-                if (msgs.isEmpty()) continue
-
-                val forumName = msgs.first().forumName
-                val topicName = msgs.first().topicName
-
-                // For markreadrange, we need the range.
-                // CIX markreadrange marks all messages between start and end as read.
-                val minId = msgs.minOf { it.remoteId }
-                val maxId = msgs.maxOf { it.remoteId }
-
+            for (msg in pending) {
                 try {
-                    val encodedForum = HtmlUtils.cixEncode(forumName)
-                    val encodedTopic = HtmlUtils.cixEncode(topicName)
+                    val encodedForum = HtmlUtils.cixEncode(msg.forumName)
+                    val encodedTopic = HtmlUtils.cixEncode(msg.topicName)
 
-                    api.markReadRange(encodedForum, encodedTopic, minId, maxId)
+                    // Use forum.markreadmessage.get (markread.xml) as markreadrange is deprecated
+                    api.markRead(encodedForum, encodedTopic, msg.remoteId)
 
                     // Clear pending flag on success
-                    val updated = msgs.map { it.copy(readPending = false) }
-                    messageDao.insertAll(updated)
+                    messageDao.insertAll(listOf(msg.copy(readPending = false)))
 
-                    Log.d(tag, "Marked range $minId-$maxId as read in $forumName/$topicName")
+                    Log.d(tag, "Marked message ${msg.remoteId} as read in ${msg.forumName}/${msg.topicName}")
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Log.e(tag, "Failed to mark range as read for $forumName/$topicName", e)
+                    Log.e(tag, "Failed to mark message ${msg.remoteId} as read", e)
                 }
             }
         } catch (e: CancellationException) {

@@ -31,7 +31,7 @@ interface CixApi {
     suspend fun getMugshot(@Path("user") user: String): ResponseBody
 
     @GET("user/alltopics.xml")
-    suspend fun getAllTopics(@Query("maxresults") maxResults: Int = 5000): UserForumTopicResultSet2
+    suspend fun getAllTopics(@Query("maxResults") maxResults: Int = 5000): UserForumTopicResultSet2
 
     @GET("forums/{forum}/{topic}/{msgid}/message.xml")
     suspend fun getMessage(
@@ -72,12 +72,11 @@ interface CixApi {
         @Path("forum", encoded = true) forum: String
     ): ResponseBody
 
-    @GET("forums/{forum}/{topic}/{start}/{end}/markreadrange.xml")
-    suspend fun markReadRange(
+    @GET("forums/{forum}/{topic}/{msgid}/markread.xml")
+    suspend fun markRead(
         @Path("forum", encoded = true) forum: String,
         @Path("topic", encoded = true) topic: String,
-        @Path("start") start: Int,
-        @Path("end") end: Int
+        @Path("msgid") msgId: Int
     ): ResponseBody
 
     @Headers("Content-Type: application/xml")

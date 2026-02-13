@@ -17,7 +17,7 @@ data class Folder(
     val lastMessageDate: Long = 0,
     val deletePending: Boolean = false,
     val resignPending: Boolean = false,
-    val markReadRangePending: Boolean = false
+    val markReadPending: Boolean = false
 ) {
     @Ignore
     var isModified: Boolean = false
