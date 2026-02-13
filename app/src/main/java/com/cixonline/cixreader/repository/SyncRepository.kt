@@ -98,6 +98,7 @@ class SyncRepository(
             throw e
         } catch (e: Exception) {
             Log.e(tag, "Periodic sync failed", e)
+            throw e
         }
     }
 
@@ -179,6 +180,7 @@ class SyncRepository(
             throw e
         } catch (e: Exception) {
             Log.e(tag, "Failed to refresh messages for $forumName/$topicName", e)
+            throw e
         }
     }
 
@@ -230,6 +232,7 @@ class SyncRepository(
             throw e
         } catch (e: Exception) {
             Log.e(tag, "Full sync failed", e)
+            throw e
         }
     }
 }
