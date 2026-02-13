@@ -365,7 +365,7 @@ fun SwipeToResignRow(
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Red)
+                    .background(Color(0xFFD91B5C))
                     .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
