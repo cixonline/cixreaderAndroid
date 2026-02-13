@@ -46,6 +46,12 @@ data class InterestingThreadUI(
     val isRootResolved: Boolean = false
 )
 
+sealed class JoinResult {
+    object Success : JoinResult()
+    data class LimitReached(val forumName: String) : JoinResult()
+    data class Error(val message: String) : JoinResult()
+}
+
 class WelcomeViewModel(
     private val api: CixApi,
     private val messageDao: MessageDao,
@@ -66,6 +72,9 @@ class WelcomeViewModel(
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
+
+    private val _joinResult = MutableSharedFlow<JoinResult>()
+    val joinResult: SharedFlow<JoinResult> = _joinResult.asSharedFlow()
 
     override val selectedProfile: StateFlow<UserProfile?> = profileDelegate.selectedProfile
     override val selectedResume: StateFlow<String?> = profileDelegate.selectedResume
@@ -400,18 +409,40 @@ class WelcomeViewModel(
         }
     }
 
-    suspend fun joinForumIfNeeded(forumName: String): Boolean {
+    suspend fun joinForumIfNeeded(forumName: String): JoinResult {
         val isMember = folderDao.getAll().first().any { it.isRootFolder && it.name.equals(forumName, ignoreCase = true) }
         if (!isMember) {
             return try {
                 val response = api.joinForum(HtmlUtils.cixEncode(forumName))
-                if (extractStringFromXml(response.string()) == "Success") {
+                val resultStr = extractStringFromXml(response.string())
+                if (resultStr == "Success") {
                     refreshFolders()
-                    true
-                } else false
-            } catch (e: Exception) { e.printStackTrace(); false }
+                    JoinResult.Success
+                } else if (resultStr == "Failure" || resultStr.contains("Free account limited to 10 forums", ignoreCase = true)) {
+                    JoinResult.LimitReached(forumName)
+                } else {
+                    JoinResult.Error(resultStr)
+                }
+            } catch (e: Exception) { 
+                Log.e("WelcomeViewModel", "Join failed", e)
+                JoinResult.Error(e.message ?: "Unknown error")
+            }
         }
-        return true
+        return JoinResult.Success
+    }
+
+    suspend fun resignForum(forumName: String): Boolean {
+        return try {
+            val response = api.resignForum(HtmlUtils.cixEncode(forumName))
+            if (extractStringFromXml(response.string()) == "Success") {
+                val forumId = HtmlUtils.calculateForumId(forumName)
+                folderDao.deleteById(forumId)
+                true
+            } else false
+        } catch (e: Exception) {
+            Log.e("WelcomeViewModel", "Resign failed", e)
+            false
+        }
     }
 
     private suspend fun refreshFolders() {
@@ -453,7 +484,11 @@ class WelcomeViewModel(
                     if (bytes != null) listOf(PostAttachment(data = Base64.encodeToString(bytes, Base64.NO_WRAP), filename = attachmentName)) else null
                 } catch (e: Exception) { e.printStackTrace(); null }
             } else null
-            joinForumIfNeeded(forum)
+            val joinRes = joinForumIfNeeded(forum)
+            if (joinRes !is JoinResult.Success) {
+                 _joinResult.emit(joinRes)
+                 return false
+            }
             val author = NetworkClient.getUsername()
             val messageId = messageRepository.postMessage(forum, topic, body, 0, author, attachments)
             if (messageId > 0) draftDao.deleteDraftForContext(forum, topic, 0)

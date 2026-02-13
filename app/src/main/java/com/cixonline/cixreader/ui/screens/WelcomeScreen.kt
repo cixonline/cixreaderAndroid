@@ -32,6 +32,7 @@ import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
 import com.cixonline.cixreader.viewmodel.InterestingThreadUI
 import com.cixonline.cixreader.viewmodel.WelcomeViewModel
+import com.cixonline.cixreader.viewmodel.JoinResult
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,11 +54,23 @@ fun WelcomeScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showPostDialog by remember { mutableStateOf(false) }
     var showVersionDialog by remember { mutableStateOf(false) }
+    var pendingThreadToJoin by remember { mutableStateOf<InterestingThreadUI?>(null) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    val myForums by viewModel.allForums.collectAsState(emptyList())
+
     LaunchedEffect(Unit) {
         viewModel.refresh()
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.joinResult.collect { result ->
+            if (result is JoinResult.LimitReached) {
+                // This could happen if a background join fails (e.g. posting a message)
+                // For now we don't have a specific UI action here besides logging or showing a simple message
+            }
+        }
     }
 
     Scaffold(
@@ -164,16 +177,22 @@ fun WelcomeScreen(
                                 thread = thread,
                                 onClick = {
                                     scope.launch {
-                                        if (viewModel.joinForumIfNeeded(thread.forum)) {
-                                            onThreadClick(
-                                                thread.forum,
-                                                thread.topic,
-                                                HtmlUtils.calculateTopicId(thread.forum, thread.topic),
-                                                thread.rootId,
-                                                thread.rootId // Pass rootId as msgId if it's a thread view
-                                            )
-                                        } else {
-                                            snackbarHostState.showSnackbar("Failed to join forum ${thread.forum}")
+                                        when (val result = viewModel.joinForumIfNeeded(thread.forum)) {
+                                            is JoinResult.Success -> {
+                                                onThreadClick(
+                                                    thread.forum,
+                                                    thread.topic,
+                                                    HtmlUtils.calculateTopicId(thread.forum, thread.topic),
+                                                    thread.rootId,
+                                                    thread.rootId
+                                                )
+                                            }
+                                            is JoinResult.LimitReached -> {
+                                                pendingThreadToJoin = thread
+                                            }
+                                            is JoinResult.Error -> {
+                                                snackbarHostState.showSnackbar("Error: ${result.message}")
+                                            }
                                         }
                                     }
                                 },
@@ -197,30 +216,51 @@ fun WelcomeScreen(
                         scope.launch {
                             val firstUnread = viewModel.getFirstUnreadMessage()
                             if (firstUnread != null) {
-                                if (viewModel.joinForumIfNeeded(firstUnread.forumName)) {
-                                    onThreadClick(
-                                        firstUnread.forumName,
-                                        firstUnread.topicName,
-                                        firstUnread.topicId,
-                                        firstUnread.rootId,
-                                        firstUnread.remoteId
-                                    )
-                                } else {
-                                    snackbarHostState.showSnackbar("Failed to join forum ${firstUnread.forumName}")
+                                when (val result = viewModel.joinForumIfNeeded(firstUnread.forumName)) {
+                                    is JoinResult.Success -> {
+                                        onThreadClick(
+                                            firstUnread.forumName,
+                                            firstUnread.topicName,
+                                            firstUnread.topicId,
+                                            firstUnread.rootId,
+                                            firstUnread.remoteId
+                                        )
+                                    }
+                                    is JoinResult.LimitReached -> {
+                                        // Create a synthetic InterestingThreadUI for the limit dialog
+                                        pendingThreadToJoin = InterestingThreadUI(
+                                            forum = firstUnread.forumName,
+                                            topic = firstUnread.topicName,
+                                            rootId = firstUnread.rootId,
+                                            author = firstUnread.author,
+                                            dateTime = DateUtils.formatDateTime(firstUnread.date),
+                                            body = firstUnread.body,
+                                            subject = firstUnread.subject
+                                        )
+                                    }
+                                    is JoinResult.Error -> {
+                                        snackbarHostState.showSnackbar("Error: ${result.message}")
+                                    }
                                 }
                             } else if (threads.isNotEmpty()) {
                                 // Fallback to interesting threads if no unread in cache
                                 val firstThread = threads.first()
-                                if (viewModel.joinForumIfNeeded(firstThread.forum)) {
-                                    onThreadClick(
-                                        firstThread.forum,
-                                        firstThread.topic,
-                                        HtmlUtils.calculateTopicId(firstThread.forum, firstThread.topic),
-                                        firstThread.rootId,
-                                        firstThread.rootId
-                                    )
-                                } else {
-                                    snackbarHostState.showSnackbar("Failed to join forum ${firstThread.forum}")
+                                when (val result = viewModel.joinForumIfNeeded(firstThread.forum)) {
+                                    is JoinResult.Success -> {
+                                        onThreadClick(
+                                            firstThread.forum,
+                                            firstThread.topic,
+                                            HtmlUtils.calculateTopicId(firstThread.forum, firstThread.topic),
+                                            firstThread.rootId,
+                                            firstThread.rootId
+                                        )
+                                    }
+                                    is JoinResult.LimitReached -> {
+                                        pendingThreadToJoin = firstThread
+                                    }
+                                    is JoinResult.Error -> {
+                                        snackbarHostState.showSnackbar("Error: ${result.message}")
+                                    }
                                 }
                             } else {
                                 snackbarHostState.showSnackbar("No unread messages or recent threads found")
@@ -326,6 +366,59 @@ fun WelcomeScreen(
                 }
             }
         }
+    }
+
+    if (pendingThreadToJoin != null) {
+        val targetThread = pendingThreadToJoin!!
+        AlertDialog(
+            onDismissRequest = { pendingThreadToJoin = null },
+            title = { Text("Forum Limit Reached") },
+            text = {
+                Column {
+                    Text("You have reached the Forum limit for CIX Basic accounts. To join \"${targetThread.forum}\", you must first resign from an existing forum:")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
+                        items(myForums) { forum ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        scope.launch {
+                                            if (viewModel.resignForum(forum.name)) {
+                                                pendingThreadToJoin = null
+                                                when (val res = viewModel.joinForumIfNeeded(targetThread.forum)) {
+                                                    is JoinResult.Success -> {
+                                                        snackbarHostState.showSnackbar("Joined ${targetThread.forum}")
+                                                        onThreadClick(
+                                                            targetThread.forum,
+                                                            targetThread.topic,
+                                                            HtmlUtils.calculateTopicId(targetThread.forum, targetThread.topic),
+                                                            targetThread.rootId,
+                                                            targetThread.rootId
+                                                        )
+                                                    }
+                                                    else -> snackbarHostState.showSnackbar("Failed to join ${targetThread.forum} after resigning")
+                                                }
+                                            }
+                                        }
+                                    }
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(forum.name)
+                                Icon(Icons.Default.Delete, contentDescription = "Resign", tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { pendingThreadToJoin = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (showPostDialog) {
