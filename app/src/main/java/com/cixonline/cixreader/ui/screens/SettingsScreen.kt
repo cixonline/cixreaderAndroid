@@ -21,6 +21,7 @@ fun SettingsScreen(
 ) {
     var fontSizeMultiplier by remember { mutableStateOf(settingsManager.getFontSize()) }
     var themeMode by remember { mutableStateOf(settingsManager.getThemeMode()) }
+    var backgroundSyncEnabled by remember { mutableStateOf(settingsManager.isBackgroundSyncEnabled()) }
 
     Scaffold(
         topBar = {
@@ -134,6 +135,50 @@ fun SettingsScreen(
                             fontSize = MaterialTheme.typography.bodyMedium.fontSize * fontSizeMultiplier
                         ),
                         modifier = Modifier.padding(top = 16.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = "Sync",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Background Sync",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Text(
+                            text = "Periodically check for new messages in the background",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = backgroundSyncEnabled,
+                        onCheckedChange = {
+                            backgroundSyncEnabled = it
+                            settingsManager.saveBackgroundSyncEnabled(it)
+                        }
                     )
                 }
             }

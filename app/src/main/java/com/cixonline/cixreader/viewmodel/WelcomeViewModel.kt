@@ -33,6 +33,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.xmlpull.v1.XmlPullParserFactory
+import retrofit2.HttpException
 import java.io.StringReader
 
 data class InterestingThreadUI(
@@ -329,17 +330,19 @@ class WelcomeViewModel(
                         val topic = HtmlUtils.normalizeName(thread.topic ?: "")
                         val topicId = HtmlUtils.calculateTopicId(forum, topic)
                         
-                        // Use a valid message ID from the thread to call root.xml
-                        val msgIdToUse = if (thread.id != 0) thread.id else thread.effectiveRootId
-                        
-                        val rootId = if (msgIdToUse != 0) {
+                        // Optimize: Use rootId from thread if available, otherwise resolve via API
+                        val rootId = if (thread.rootId != 0) {
+                            thread.rootId
+                        } else if (thread.rootIdVariant != 0) {
+                            thread.rootIdVariant
+                        } else if (thread.id != 0) {
                             try {
-                                val rootResponse = api.getRootMessageId(HtmlUtils.cixEncode(forum), HtmlUtils.cixEncode(topic), msgIdToUse)
+                                val rootResponse = api.getRootMessageId(HtmlUtils.cixEncode(forum), HtmlUtils.cixEncode(topic), thread.id)
                                 val rootIdStr = extractStringFromXml(rootResponse.string()).trim()
-                                rootIdStr.toIntOrNull() ?: thread.effectiveRootId
+                                rootIdStr.toIntOrNull() ?: thread.id
                             } catch (e: Exception) {
-                                Log.e("WelcomeViewModel", "Failed to get root ID for $msgIdToUse, using effectiveRootId", e)
-                                thread.effectiveRootId
+                                Log.w("WelcomeViewModel", "Failed to get root ID for ${thread.id} in $forum/$topic, using id", e)
+                                thread.id
                             }
                         } else {
                             thread.effectiveRootId
@@ -374,6 +377,12 @@ class WelcomeViewModel(
                                 )
                                 messageDao.insert(newMessage)
                                 cachedRoot = newMessage
+                            } catch (e: HttpException) {
+                                if (e.code() == 400 || e.code() == 404) {
+                                    Log.w("WelcomeViewModel", "Root message $rootId not found in $forum/$topic (HTTP ${e.code()})")
+                                } else {
+                                    Log.e("WelcomeViewModel", "HTTP error fetching root message $rootId", e)
+                                }
                             } catch (e: Exception) { 
                                 Log.e("WelcomeViewModel", "Failed to fetch root message $rootId", e)
                             }
