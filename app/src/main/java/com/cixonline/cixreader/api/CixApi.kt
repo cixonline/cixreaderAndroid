@@ -85,7 +85,7 @@ interface CixApi {
         @Path("forum", encoded = true) forum: String
     ): ResponseBody
 
-    @GET("forums/{forum}/{topic}/{msgid}/markread.xml")
+    @GET("forums/{forum}/{topic}/{msgid}/true/markreadmessage.xml")
     suspend fun markRead(
         @Path("forum", encoded = true) forum: String,
         @Path("topic", encoded = true) topic: String,
