@@ -84,6 +84,23 @@ class TopicViewModel(
 
     init {
         viewModelScope.launch {
+            if (initialRootId != 0 || initialMessageId != 0) {
+                _isLoading.value = true
+                try {
+                    // Make sure we have the specific message and its immediate context
+                    repository.fetchMessageAndChildren(
+                        forumName, 
+                        topicName, 
+                        if (initialRootId != 0) initialRootId else initialMessageId, 
+                        topicId
+                    )
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    _isLoading.value = false
+                }
+            }
+
             repository.getMessagesForTopic(topicId).first().let { currentMessages ->
                 if (currentMessages.isEmpty()) {
                     refresh()

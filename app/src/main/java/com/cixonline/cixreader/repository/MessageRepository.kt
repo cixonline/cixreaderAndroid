@@ -32,37 +32,39 @@ class MessageRepository(
             val encodedForum = HtmlUtils.cixEncode(forum)
             val encodedTopic = HtmlUtils.cixEncode(topic)
             
+            // Fetch the latest messages for the topic.
+            // By default, since=null returns the most recent 100 messages.
             val resultSet = api.getMessages(encodedForum, encodedTopic, since = null)
-            val existingMessages = messageDao.getByTopic(topicId).first().associateBy { it.remoteId }
+            val apiMessages = resultSet.messages
             
-            val messages = resultSet.messages.map { apiMsg ->
-                val existing = existingMessages[apiMsg.id]
-                CIXMessage(
-                    id = existing?.id ?: 0,
-                    remoteId = apiMsg.id,
-                    author = HtmlUtils.decodeHtml(apiMsg.author ?: ""),
-                    body = HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(apiMsg.body ?: "")),
-                    date = DateUtils.parseCixDate(apiMsg.dateTime),
-                    commentId = apiMsg.replyTo,
-                    rootId = apiMsg.rootId,
-                    topicId = topicId,
-                    forumName = forum,
-                    topicName = topic,
-                    subject = HtmlUtils.decodeHtml(apiMsg.subject),
-                    unread = existing?.unread ?: true,
-                    priority = existing?.priority ?: false,
-                    starred = existing?.starred ?: false,
-                    readLocked = existing?.readLocked ?: false,
-                    ignored = existing?.ignored ?: false,
-                    readPending = existing?.readPending ?: false,
-                    postPending = existing?.postPending ?: false,
-                    starPending = existing?.starPending ?: false,
-                    withdrawPending = existing?.withdrawPending ?: false
-                )
-            }
-            
-            if (messages.isNotEmpty()) {
-                messageDao.insertAll(messages)
+            if (apiMessages.isNotEmpty()) {
+                val existingMessages = messageDao.getByTopic(topicId).first().associateBy { it.remoteId }
+                val messagesToInsert = apiMessages.map { apiMsg ->
+                    val existing = existingMessages[apiMsg.id]
+                    CIXMessage(
+                        id = existing?.id ?: 0,
+                        remoteId = apiMsg.id,
+                        author = HtmlUtils.decodeHtml(apiMsg.author ?: ""),
+                        body = HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(apiMsg.body ?: "")),
+                        date = DateUtils.parseCixDate(apiMsg.dateTime),
+                        commentId = apiMsg.replyTo,
+                        rootId = apiMsg.rootId,
+                        topicId = topicId,
+                        forumName = forum,
+                        topicName = topic,
+                        subject = HtmlUtils.decodeHtml(apiMsg.subject),
+                        unread = existing?.unread ?: true,
+                        priority = existing?.priority ?: false,
+                        starred = existing?.starred ?: false,
+                        readLocked = existing?.readLocked ?: false,
+                        ignored = existing?.ignored ?: false,
+                        readPending = existing?.readPending ?: false,
+                        postPending = existing?.postPending ?: false,
+                        starPending = existing?.starPending ?: false,
+                        withdrawPending = existing?.withdrawPending ?: false
+                    )
+                }
+                messageDao.insertAll(messagesToInsert)
             }
         } catch (e: Exception) {
             if (e.message?.contains("not a member", ignoreCase = true) == true) {
@@ -70,6 +72,41 @@ class MessageRepository(
             }
             Log.e(tag, "Refresh messages failed", e)
             throw e
+        }
+    }
+
+    suspend fun fetchMessageAndChildren(forum: String, topic: String, msgId: Int, topicId: Int) = withContext(Dispatchers.IO) {
+        try {
+            val encodedForum = HtmlUtils.cixEncode(forum)
+            val encodedTopic = HtmlUtils.cixEncode(topic)
+            
+            // 1. Fetch the specific message
+            val messageApi = api.getMessage(encodedForum, encodedTopic, msgId)
+            val existing = messageDao.getByRemoteId(msgId, topicId)
+            
+            val message = CIXMessage(
+                id = existing?.id ?: 0,
+                remoteId = messageApi.id,
+                author = HtmlUtils.decodeHtml(messageApi.author ?: ""),
+                body = HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(messageApi.body ?: "")),
+                date = DateUtils.parseCixDate(messageApi.dateTime),
+                commentId = messageApi.replyTo,
+                rootId = messageApi.rootId,
+                topicId = topicId,
+                forumName = forum,
+                topicName = topic,
+                subject = HtmlUtils.decodeHtml(messageApi.subject),
+                unread = existing?.unread ?: true
+            )
+            messageDao.insert(message)
+
+            // 2. Fetch children if they aren't likely to be in the recent 100
+            // Since there's no "get children" API, we rely on refreshMessages fetching enough context.
+            // If the thread is very deep or old, we might need a more aggressive sync strategy.
+            refreshMessages(forum, topic, topicId)
+            
+        } catch (e: Exception) {
+            Log.e(tag, "fetchMessageAndChildren failed for $msgId", e)
         }
     }
 
