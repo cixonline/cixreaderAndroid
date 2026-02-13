@@ -242,6 +242,9 @@ class MessageApi {
 
     @field:Element(name = "Topic", required = false)
     var topic: String? = null
+
+    @field:Element(name = "Status", required = false)
+    var status: String? = null
 }
 
 data class PostAttachment(

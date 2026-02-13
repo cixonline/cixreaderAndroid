@@ -34,6 +34,9 @@ class SettingsManager(context: Context) {
     private val _themeFlow = MutableStateFlow(getThemeMode())
     val themeFlow: StateFlow<ThemeMode> = _themeFlow.asStateFlow()
 
+    private val _backgroundSyncFlow = MutableStateFlow(isBackgroundSyncEnabled())
+    val backgroundSyncFlow: StateFlow<Boolean> = _backgroundSyncFlow.asStateFlow()
+
     fun saveCredentials(username: String, password: String) {
         sharedPreferences.edit()
             .putString("username", username)
@@ -83,5 +86,26 @@ class SettingsManager(context: Context) {
         } catch (e: Exception) {
             ThemeMode.SYSTEM
         }
+    }
+
+    fun saveBackgroundSyncEnabled(enabled: Boolean) {
+        sharedPreferences.edit()
+            .putBoolean("background_sync_enabled", enabled)
+            .apply()
+        _backgroundSyncFlow.value = enabled
+    }
+
+    fun isBackgroundSyncEnabled(): Boolean {
+        return sharedPreferences.getBoolean("background_sync_enabled", true)
+    }
+
+    fun saveLastSyncDate(date: String) {
+        sharedPreferences.edit()
+            .putString("last_sync_date", date)
+            .apply()
+    }
+
+    fun getLastSyncDate(): String? {
+        return sharedPreferences.getString("last_sync_date", null)
     }
 }

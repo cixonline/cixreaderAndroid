@@ -54,10 +54,11 @@ interface CixApi {
         @Query("since") since: String? = null
     ): MessageResultSet
 
-    @GET("forums/sync.xml")
+    @GET("user/sync.xml")
     suspend fun sync(
         @Query("count") count: Int = 100,
-        @Query("start") start: Int = 0
+        @Query("start") start: Int = 0,
+        @Query("since") since: String? = null
     ): MessageResultSet
 
     @GET("forums/{forum}/join.xml")

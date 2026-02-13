@@ -66,7 +66,7 @@ object DateUtils {
 
     /**
      * Formats a timestamp for the CIX API 'since' parameter.
-     * CIX usually expects dates in yyyy-MM-dd HH:mm:ss format for this.
+     * Format: 2010-11-03 00:00:00
      */
     fun formatApiDate(timestamp: Long): String {
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)

@@ -39,21 +39,33 @@ class MessageRepository(
             
             if (apiMessages.isNotEmpty()) {
                 val existingMessages = messageDao.getByTopic(topicId).first().associateBy { it.remoteId }
+                val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+                
                 val messagesToInsert = apiMessages.map { apiMsg ->
                     val existing = existingMessages[apiMsg.id]
+                    val messageDate = DateUtils.parseCixDate(apiMsg.dateTime)
+                    
+                    // Logic for read status:
+                    // 1. If Status is 'R' from the server, it's read.
+                    // 2. If the message is > 30 days old, it's read.
+                    // 3. Otherwise, keep existing local status or default to unread.
+                    val isReadFromServer = apiMsg.status?.equals("R", ignoreCase = true) == true
+                    val isOld = messageDate < thirtyDaysAgo
+                    val isUnread = if (isReadFromServer || isOld) false else (existing?.unread ?: true)
+
                     CIXMessage(
                         id = existing?.id ?: 0,
                         remoteId = apiMsg.id,
                         author = HtmlUtils.decodeHtml(apiMsg.author ?: ""),
                         body = HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(apiMsg.body ?: "")),
-                        date = DateUtils.parseCixDate(apiMsg.dateTime),
+                        date = messageDate,
                         commentId = apiMsg.replyTo,
                         rootId = apiMsg.rootId,
                         topicId = topicId,
                         forumName = forum,
                         topicName = topic,
                         subject = HtmlUtils.decodeHtml(apiMsg.subject),
-                        unread = existing?.unread ?: true,
+                        unread = isUnread,
                         priority = existing?.priority ?: false,
                         starred = existing?.starred ?: false,
                         readLocked = existing?.readLocked ?: false,
@@ -84,25 +96,30 @@ class MessageRepository(
             val messageApi = api.getMessage(encodedForum, encodedTopic, msgId)
             val existing = messageDao.getByRemoteId(msgId, topicId)
             
+            val messageDate = DateUtils.parseCixDate(messageApi.dateTime)
+            val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+            
+            val isReadFromServer = messageApi.status?.equals("R", ignoreCase = true) == true
+            val isOld = messageDate < thirtyDaysAgo
+            val isUnread = if (isReadFromServer || isOld) false else (existing?.unread ?: true)
+
             val message = CIXMessage(
                 id = existing?.id ?: 0,
                 remoteId = messageApi.id,
                 author = HtmlUtils.decodeHtml(messageApi.author ?: ""),
                 body = HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(messageApi.body ?: "")),
-                date = DateUtils.parseCixDate(messageApi.dateTime),
+                date = messageDate,
                 commentId = messageApi.replyTo,
                 rootId = messageApi.rootId,
                 topicId = topicId,
                 forumName = forum,
                 topicName = topic,
                 subject = HtmlUtils.decodeHtml(messageApi.subject),
-                unread = existing?.unread ?: true
+                unread = isUnread
             )
             messageDao.insert(message)
 
             // 2. Fetch children if they aren't likely to be in the recent 100
-            // Since there's no "get children" API, we rely on refreshMessages fetching enough context.
-            // If the thread is very deep or old, we might need a more aggressive sync strategy.
             refreshMessages(forum, topic, topicId)
             
         } catch (e: Exception) {

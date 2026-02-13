@@ -8,6 +8,7 @@ import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
+import com.cixonline.cixreader.utils.SettingsManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -16,7 +17,8 @@ import java.util.*
 class SyncRepository(
     private val api: CixApi,
     private val folderDao: FolderDao,
-    private val messageDao: MessageDao
+    private val messageDao: MessageDao,
+    private val settingsManager: SettingsManager
 ) {
     private val tag = "SyncRepository"
 
@@ -26,39 +28,52 @@ class SyncRepository(
             syncReadStatusToServer()
 
             // 2. Sync new messages from server
-            Log.d(tag, "Starting periodic sync via sync.xml")
+            Log.d(tag, "Starting periodic sync via user/sync.xml")
             
+            val lastSyncDate = settingsManager.getLastSyncDate()
             var start = 0
             val count = 100
             var fetchedTotal = 0
+            var newestMessageDate: Long = 0
             
             do {
-                val resultSet = api.sync(count = count, start = start)
+                val resultSet = api.sync(count = count, start = start, since = lastSyncDate)
                 val messages = resultSet.messages
                 
                 if (messages.isEmpty()) break
+                
+                val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
                 
                 val cixMessages = messages.map { apiMsg ->
                     val forum = HtmlUtils.normalizeName(apiMsg.forum)
                     val topic = HtmlUtils.normalizeName(apiMsg.topic)
                     val topicId = HtmlUtils.calculateTopicId(forum, topic)
+                    val messageDate = DateUtils.parseCixDate(apiMsg.dateTime)
                     
+                    if (messageDate > newestMessageDate) {
+                        newestMessageDate = messageDate
+                    }
+
                     // Preserve local state if message already exists
                     val existing = messageDao.getByRemoteId(apiMsg.id, topicId)
+
+                    val isReadFromServer = apiMsg.status?.equals("R", ignoreCase = true) == true
+                    val isOld = messageDate < thirtyDaysAgo
+                    val isUnread = if (isReadFromServer || isOld) false else (existing?.unread ?: true)
 
                     CIXMessage(
                         id = existing?.id ?: 0,
                         remoteId = apiMsg.id,
                         author = HtmlUtils.decodeHtml(apiMsg.author ?: ""),
                         body = HtmlUtils.decodeHtml(apiMsg.body ?: ""),
-                        date = DateUtils.parseCixDate(apiMsg.dateTime),
+                        date = messageDate,
                         commentId = apiMsg.replyTo,
                         rootId = apiMsg.rootId,
                         topicId = topicId,
                         forumName = forum,
                         topicName = topic,
                         subject = HtmlUtils.decodeHtml(apiMsg.subject),
-                        unread = existing?.unread ?: true,
+                        unread = isUnread,
                         starred = existing?.starred ?: false,
                         readPending = existing?.readPending ?: false
                     )
@@ -70,6 +85,10 @@ class SyncRepository(
                 start += count
                 
             } while (fetchedTotal >= count)
+
+            if (newestMessageDate > 0) {
+                settingsManager.saveLastSyncDate(DateUtils.formatApiDate(newestMessageDate))
+            }
 
             Log.d(tag, "Periodic sync completed")
         } catch (e: Exception) {
@@ -129,22 +148,29 @@ class SyncRepository(
             val encodedTopic = HtmlUtils.cixEncode(topicName)
             
             val resultSet = api.getMessages(encodedForum, encodedTopic, since = since)
+            val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
             
             val messages = resultSet.messages.map { apiMsg ->
                 val existing = messageDao.getByRemoteId(apiMsg.id, topicId)
+                val messageDate = DateUtils.parseCixDate(apiMsg.dateTime)
+                
+                val isReadFromServer = apiMsg.status?.equals("R", ignoreCase = true) == true
+                val isOld = messageDate < thirtyDaysAgo
+                val isUnread = if (isReadFromServer || isOld) false else (existing?.unread ?: true)
+
                 CIXMessage(
                     id = existing?.id ?: 0,
                     remoteId = apiMsg.id,
                     author = HtmlUtils.decodeHtml(apiMsg.author ?: ""),
                     body = HtmlUtils.decodeHtml(apiMsg.body ?: ""),
-                    date = DateUtils.parseCixDate(apiMsg.dateTime),
+                    date = messageDate,
                     commentId = apiMsg.replyTo,
                     rootId = apiMsg.rootId,
                     topicId = topicId,
                     forumName = forumName,
                     topicName = topicName,
                     subject = HtmlUtils.decodeHtml(apiMsg.subject),
-                    unread = existing?.unread ?: true,
+                    unread = isUnread,
                     starred = existing?.starred ?: false,
                     readPending = existing?.readPending ?: false
                 )
