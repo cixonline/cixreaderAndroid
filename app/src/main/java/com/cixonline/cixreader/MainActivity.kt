@@ -6,6 +6,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -23,9 +26,12 @@ import com.cixonline.cixreader.utils.SettingsManager
 import com.cixonline.cixreader.utils.ThemeMode
 import com.cixonline.cixreader.viewmodel.*
 import com.cixonline.cixreader.workers.SyncWorker
+import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
+    private lateinit var settingsManager: SettingsManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -33,9 +39,19 @@ class MainActivity : ComponentActivity() {
         val database = AppDatabase.getDatabase(this)
         val forumRepository = ForumRepository(NetworkClient.api, database.folderDao())
         val messageRepository = MessageRepository(NetworkClient.api, database.messageDao())
-        val settingsManager = SettingsManager(this)
+        settingsManager = SettingsManager(this)
 
-        setupBackgroundSync()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                settingsManager.backgroundSyncFlow.collect { enabled ->
+                    if (enabled) {
+                        SyncWorker.scheduleNextSync(this@MainActivity)
+                    } else {
+                        cancelBackgroundSync()
+                    }
+                }
+            }
+        }
 
         setContent {
             val fontSizeMultiplier by settingsManager.fontSizeFlow.collectAsState(initial = settingsManager.getFontSize())
@@ -250,23 +266,13 @@ class MainActivity : ComponentActivity() {
         triggerImmediateSync()
     }
 
-    private fun setupBackgroundSync() {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-
-        val syncRequest = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
-            .setConstraints(constraints)
-            .build()
-
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "CixBackgroundSync",
-            ExistingPeriodicWorkPolicy.KEEP,
-            syncRequest
-        )
+    private fun cancelBackgroundSync() {
+        WorkManager.getInstance(this).cancelUniqueWork("CixBackgroundSync")
     }
 
     private fun triggerImmediateSync() {
+        if (!settingsManager.isBackgroundSyncEnabled()) return
+
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()

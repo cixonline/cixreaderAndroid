@@ -245,6 +245,9 @@ class MessageApi {
 
     @field:Element(name = "Status", required = false)
     var status: String? = null
+
+    @field:Element(name = "Unread", required = false)
+    var unread: Boolean = false
 }
 
 data class PostAttachment(

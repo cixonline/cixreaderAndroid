@@ -9,6 +9,7 @@ import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
 import com.cixonline.cixreader.utils.SettingsManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -91,6 +92,8 @@ class SyncRepository(
             }
 
             Log.d(tag, "Periodic sync completed")
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(tag, "Periodic sync failed", e)
         }
@@ -128,10 +131,14 @@ class SyncRepository(
                     messageDao.insertAll(updated)
 
                     Log.d(tag, "Marked range $minId-$maxId as read in $forumName/$topicName")
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.e(tag, "Failed to mark range as read for $forumName/$topicName", e)
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(tag, "Error during read status sync", e)
         }
@@ -179,6 +186,8 @@ class SyncRepository(
             if (messages.isNotEmpty()) {
                 messageDao.insertAll(messages)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(tag, "Failed to refresh messages for $forumName/$topicName", e)
         }
@@ -228,6 +237,8 @@ class SyncRepository(
             }
             
             Log.d(tag, "Full sync completed")
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(tag, "Full sync failed", e)
         }
