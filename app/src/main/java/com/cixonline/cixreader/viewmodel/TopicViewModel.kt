@@ -84,9 +84,9 @@ class TopicViewModel(
 
     init {
         viewModelScope.launch {
-            if (initialRootId != 0 || initialMessageId != 0) {
-                _isLoading.value = true
-                try {
+            _isLoading.value = true
+            try {
+                if (initialRootId != 0 || initialMessageId != 0) {
                     // Make sure we have the specific message and its immediate context
                     repository.fetchMessageAndChildren(
                         forumName, 
@@ -94,17 +94,27 @@ class TopicViewModel(
                         if (initialRootId != 0) initialRootId else initialMessageId, 
                         topicId
                     )
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                } finally {
-                    _isLoading.value = false
+                } else {
+                    val firstUnreadId = repository.getFirstUnreadMessageId(forumName, topicName)
+                    if (firstUnreadId > 0) {
+                        repository.fetchThreadThenBackfill(forumName, topicName, firstUnreadId, topicId)
+                        _scrollToMessageId.value = firstUnreadId
+                    } else {
+                        // No unread, fetch most recent
+                        repository.refreshMessages(forumName, topicName, topicId)
+                        val currentMessages = repository.getMessagesForTopic(topicId).first()
+                        if (currentMessages.isNotEmpty()) {
+                            val mostRecent = currentMessages.maxByOrNull { it.date }
+                            if (mostRecent != null) {
+                                _scrollToMessageId.value = mostRecent.remoteId
+                            }
+                        }
+                    }
                 }
-            }
-
-            repository.getMessagesForTopic(topicId).first().let { currentMessages ->
-                if (currentMessages.isEmpty()) {
-                    refresh()
-                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isLoading.value = false
             }
         }
     }

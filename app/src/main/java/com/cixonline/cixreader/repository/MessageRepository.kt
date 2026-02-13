@@ -3,6 +3,7 @@ package com.cixonline.cixreader.repository
 import android.util.Log
 import com.cixonline.cixreader.api.CixApi
 import com.cixonline.cixreader.api.JsonNetworkClient
+import com.cixonline.cixreader.api.MessageApi
 import com.cixonline.cixreader.api.PostAttachment
 import com.cixonline.cixreader.api.PostMessage2Request
 import com.cixonline.cixreader.db.MessageDao
@@ -13,7 +14,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import org.xmlpull.v1.XmlPullParserFactory
 import retrofit2.HttpException
+import java.io.StringReader
 
 class NotAMemberException(val forumName: String) : Exception("Not a member of forum: $forumName")
 
@@ -38,45 +41,7 @@ class MessageRepository(
             val apiMessages = resultSet.messages
             
             if (apiMessages.isNotEmpty()) {
-                val existingMessages = messageDao.getByTopic(topicId).first().associateBy { it.remoteId }
-                val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
-                
-                val messagesToInsert = apiMessages.map { apiMsg ->
-                    val existing = existingMessages[apiMsg.id]
-                    val messageDate = DateUtils.parseCixDate(apiMsg.dateTime)
-                    
-                    // Logic for read status:
-                    // 1. If Status is 'R' from the server, it's read.
-                    // 2. If the message is > 30 days old, it's read.
-                    // 3. Otherwise, keep existing local status or default to unread.
-                    val isReadFromServer = apiMsg.status?.equals("R", ignoreCase = true) == true
-                    val isOld = messageDate < thirtyDaysAgo
-                    val isUnread = if (isReadFromServer || isOld) false else (existing?.unread ?: true)
-
-                    CIXMessage(
-                        id = existing?.id ?: 0,
-                        remoteId = apiMsg.id,
-                        author = HtmlUtils.decodeHtml(apiMsg.author ?: ""),
-                        body = HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(apiMsg.body ?: "")),
-                        date = messageDate,
-                        commentId = apiMsg.replyTo,
-                        rootId = apiMsg.rootId,
-                        topicId = topicId,
-                        forumName = forum,
-                        topicName = topic,
-                        subject = HtmlUtils.decodeHtml(apiMsg.subject),
-                        unread = isUnread,
-                        priority = existing?.priority ?: false,
-                        starred = existing?.starred ?: false,
-                        readLocked = existing?.readLocked ?: false,
-                        ignored = existing?.ignored ?: false,
-                        readPending = existing?.readPending ?: false,
-                        postPending = existing?.postPending ?: false,
-                        starPending = existing?.starPending ?: false,
-                        withdrawPending = existing?.withdrawPending ?: false
-                    )
-                }
-                messageDao.insertAll(messagesToInsert)
+                saveMessagesToDb(apiMessages, forum, topic, topicId)
             }
         } catch (e: Exception) {
             if (e.message?.contains("not a member", ignoreCase = true) == true) {
@@ -84,6 +49,92 @@ class MessageRepository(
             }
             Log.e(tag, "Refresh messages failed", e)
             throw e
+        }
+    }
+
+    private suspend fun saveMessagesToDb(apiMessages: List<MessageApi>, forum: String, topic: String, topicId: Int) {
+        val existingMessages = messageDao.getByTopic(topicId).first().associateBy { it.remoteId }
+        val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+        
+        val messagesToInsert = apiMessages.map { apiMsg ->
+            val existing = existingMessages[apiMsg.id]
+            val messageDate = DateUtils.parseCixDate(apiMsg.dateTime)
+            
+            val isReadFromServer = apiMsg.status?.equals("R", ignoreCase = true) == true
+            val isOld = messageDate < thirtyDaysAgo
+            val isUnread = if (isReadFromServer || isOld) false else (existing?.unread ?: true)
+
+            CIXMessage(
+                id = existing?.id ?: 0,
+                remoteId = apiMsg.id,
+                author = HtmlUtils.decodeHtml(apiMsg.author ?: ""),
+                body = HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(apiMsg.body ?: "")),
+                date = messageDate,
+                commentId = apiMsg.replyTo,
+                rootId = apiMsg.rootId,
+                topicId = topicId,
+                forumName = forum,
+                topicName = topic,
+                subject = HtmlUtils.decodeHtml(apiMsg.subject),
+                unread = isUnread,
+                priority = existing?.priority ?: false,
+                starred = existing?.starred ?: false,
+                readLocked = existing?.readLocked ?: false,
+                ignored = existing?.ignored ?: false,
+                readPending = existing?.readPending ?: false,
+                postPending = existing?.postPending ?: false,
+                starPending = existing?.starPending ?: false,
+                withdrawPending = existing?.withdrawPending ?: false
+            )
+        }
+        messageDao.insertAll(messagesToInsert)
+    }
+
+    suspend fun fetchThreadThenBackfill(forum: String, topic: String, msgId: Int, topicId: Int) = withContext(Dispatchers.IO) {
+        try {
+            val encodedForum = HtmlUtils.cixEncode(forum)
+            val encodedTopic = HtmlUtils.cixEncode(topic)
+            
+            // 1. Fetch the thread first to display it quickly
+            val threadSet = api.getThread(encodedForum, encodedTopic, msgId)
+            if (threadSet.messages.isNotEmpty()) {
+                saveMessagesToDb(threadSet.messages, forum, topic, topicId)
+            }
+
+            // 2. Backfill with the rest of the topic messages
+            refreshMessages(forum, topic, topicId)
+            
+        } catch (e: Exception) {
+            Log.e(tag, "fetchThreadThenBackfill failed for $msgId", e)
+        }
+    }
+
+    private fun extractIntFromXml(xml: String): Int {
+        return try {
+            val factory = XmlPullParserFactory.newInstance()
+            val parser = factory.newPullParser()
+            parser.setInput(StringReader(xml))
+            var eventType = parser.eventType
+            while (eventType != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                if (eventType == org.xmlpull.v1.XmlPullParser.TEXT) {
+                    return parser.text.toIntOrNull() ?: 0
+                }
+                eventType = parser.next()
+            }
+            0
+        } catch (e: Exception) {
+            0
+        }
+    }
+
+    suspend fun getFirstUnreadMessageId(forum: String, topic: String): Int = withContext(Dispatchers.IO) {
+        try {
+            val encodedForum = HtmlUtils.cixEncode(forum)
+            val encodedTopic = HtmlUtils.cixEncode(topic)
+            val response = api.getFirstUnread(encodedForum, encodedTopic)
+            extractIntFromXml(response.string())
+        } catch (e: Exception) {
+            0
         }
     }
 

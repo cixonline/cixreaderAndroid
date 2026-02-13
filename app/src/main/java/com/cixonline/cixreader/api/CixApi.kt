@@ -47,12 +47,25 @@ interface CixApi {
         @Path("msgid") msgId: Int
     ): ResponseBody
 
+    @GET("forums/{forum}/{topic}/{msgid}/thread.xml")
+    suspend fun getThread(
+        @Path("forum", encoded = true) forum: String,
+        @Path("topic", encoded = true) topic: String,
+        @Path("msgid") msgId: Int
+    ): MessageResultSet
+
     @GET("forums/{forum}/{topic}/allmessages.xml")
     suspend fun getMessages(
         @Path("forum", encoded = true) forum: String,
         @Path("topic", encoded = true) topic: String,
         @Query("since") since: String? = null
     ): MessageResultSet
+
+    @GET("forums/{forum}/{topic}/firstunread.xml")
+    suspend fun getFirstUnread(
+        @Path("forum", encoded = true) forum: String,
+        @Path("topic", encoded = true) topic: String
+    ): ResponseBody
 
     @GET("user/sync.xml")
     suspend fun sync(
