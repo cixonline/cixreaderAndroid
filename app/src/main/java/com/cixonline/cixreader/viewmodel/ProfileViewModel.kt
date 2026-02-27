@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.cixonline.cixreader.api.CixApi
+import com.cixonline.cixreader.api.Resume
+import com.cixonline.cixreader.api.SetProfileRequest
 import com.cixonline.cixreader.api.UserProfile
 import com.cixonline.cixreader.db.CachedProfileDao
 import com.cixonline.cixreader.models.CachedProfile
@@ -28,8 +30,8 @@ interface ProfileHost {
 }
 
 class ProfileViewModel(
-    api: CixApi,
-    cachedProfileDao: CachedProfileDao,
+    private val api: CixApi,
+    private val cachedProfileDao: CachedProfileDao,
     val username: String
 ) : ViewModel() {
     private val delegate = ProfileDelegate(api, cachedProfileDao)
@@ -40,6 +42,34 @@ class ProfileViewModel(
 
     init {
         delegate.showProfile(viewModelScope, username)
+    }
+
+    fun updateProfile(fullName: String?, email: String?, location: String?, about: String?, experience: String?, resume: String?) {
+        viewModelScope.launch {
+            try {
+                val profileRequest = SetProfileRequest(
+                    userName = username,
+                    fullName = fullName ?: "",
+                    email = email ?: "",
+                    location = location ?: "",
+                    about = about ?: "",
+                    experience = experience ?: ""
+                )
+                api.setProfile(profileRequest)
+                
+                if (resume != null) {
+                    val resumeObj = Resume().apply { 
+                        body = resume
+                    }
+                    api.setResume(resumeObj)
+                }
+
+                // Refresh profile after update
+                delegate.showProfile(viewModelScope, username, forceRefresh = true)
+            } catch (e: Exception) {
+                Log.e("ProfileViewModel", "Failed to update profile", e)
+            }
+        }
     }
 }
 
@@ -76,15 +106,12 @@ class ProfileDelegate(
 
     private val CACHE_EXPIRATION_MS = 24 * 60 * 60 * 1000L // 1 day
 
-    fun showProfile(scope: kotlinx.coroutines.CoroutineScope, user: String) {
+    fun showProfile(scope: kotlinx.coroutines.CoroutineScope, user: String, forceRefresh: Boolean = false) {
         scope.launch {
             _isLoading.value = true
-            _selectedProfile.value = null
-            _selectedResume.value = null
-            _selectedMugshotUrl.value = null
             
             try {
-                val cached = cachedProfileDao.getProfile(user)
+                val cached = if (forceRefresh) null else cachedProfileDao.getProfile(user)
                 val now = System.currentTimeMillis()
                 
                 if (cached != null && (now - cached.lastUpdated) < CACHE_EXPIRATION_MS) {
@@ -97,6 +124,7 @@ class ProfileDelegate(
                         lastOn = cached.lastOn
                         lastPost = cached.lastPost
                         about = cached.about
+                        experience = cached.experience
                     }
                     _selectedProfile.value = profile
                     _selectedResume.value = cached.resume
@@ -142,7 +170,6 @@ class ProfileDelegate(
                                     getMugshotUrl(user) ?: ""
                                 }
                             } else {
-                                // Likely binary image data already, use the mugshot.xml endpoint as the image source
                                 Log.d(tag, "Mugshot for $user is binary, using direct URL")
                                 getMugshotUrl(user) ?: ""
                             }
@@ -170,6 +197,7 @@ class ProfileDelegate(
                             about = profile.about,
                             resume = resume,
                             mugshotUrl = mugshotUrl,
+                            experience = profile.experience,
                             lastUpdated = System.currentTimeMillis()
                         )
                     )

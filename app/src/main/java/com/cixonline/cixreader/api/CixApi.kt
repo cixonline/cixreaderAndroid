@@ -24,8 +24,16 @@ interface CixApi {
     @GET("user/{user}/profile.xml")
     suspend fun getProfile(@Path("user") user: String): UserProfile
 
+    @Headers("Content-Type: application/xml")
+    @POST("user/setprofile.xml")
+    suspend fun setProfile(@Body request: SetProfileRequest): ResponseBody
+
     @GET("user/{user}/resume.xml")
     suspend fun getResume(@Path("user") user: String): ResponseBody
+
+    @Headers("Content-Type: application/xml")
+    @POST("user/setresume.xml")
+    suspend fun setResume(@Body request: Resume): ResponseBody
 
     @GET("user/{user}/mugshot.xml")
     suspend fun getMugshot(@Path("user") user: String): ResponseBody

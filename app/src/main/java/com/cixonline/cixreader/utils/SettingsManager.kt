@@ -37,11 +37,15 @@ class SettingsManager(context: Context) {
     private val _backgroundSyncFlow = MutableStateFlow(isBackgroundSyncEnabled())
     val backgroundSyncFlow: StateFlow<Boolean> = _backgroundSyncFlow.asStateFlow()
 
+    private val _usernameFlow = MutableStateFlow(sharedPreferences.getString("username", null))
+    val usernameFlow: StateFlow<String?> = _usernameFlow.asStateFlow()
+
     fun saveCredentials(username: String, password: String) {
         sharedPreferences.edit()
             .putString("username", username)
             .putString("password", password)
             .apply()
+        _usernameFlow.value = username
     }
 
     fun getCredentials(): Pair<String?, String?> {
@@ -59,6 +63,7 @@ class SettingsManager(context: Context) {
             .remove("username")
             .remove("password")
             .apply()
+        _usernameFlow.value = null
     }
 
     fun saveFontSize(size: Float) {

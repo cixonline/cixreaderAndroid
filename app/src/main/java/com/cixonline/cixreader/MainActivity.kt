@@ -56,6 +56,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val fontSizeMultiplier by settingsManager.fontSizeFlow.collectAsState(initial = settingsManager.getFontSize())
             val themeMode by settingsManager.themeFlow.collectAsState(initial = settingsManager.getThemeMode())
+            val currentUsername by settingsManager.usernameFlow.collectAsState()
             
             val useDarkTheme = when (themeMode) {
                 ThemeMode.LIGHT -> false
@@ -69,12 +70,14 @@ class MainActivity : ComponentActivity() {
             ) {
                 val navController = rememberNavController()
 
-                val (savedUser, savedPass) = settingsManager.getCredentials()
-                val startDestination = if (savedUser != null && savedPass != null) {
-                    NetworkClient.setCredentials(savedUser, savedPass)
-                    "welcome"
-                } else {
-                    "login"
+                val startDestination = remember {
+                    val (user, pass) = settingsManager.getCredentials()
+                    if (user != null && pass != null) {
+                        NetworkClient.setCredentials(user, pass)
+                        "welcome"
+                    } else {
+                        "login"
+                    }
                 }
 
                 val onLogout = {
@@ -123,7 +126,7 @@ class MainActivity : ComponentActivity() {
                         )
                         WelcomeScreen(
                             viewModel = welcomeViewModel,
-                            currentUsername = savedUser,
+                            currentUsername = currentUsername,
                             onExploreForums = {
                                 navController.navigate("forums")
                             },
@@ -149,7 +152,7 @@ class MainActivity : ComponentActivity() {
                         )
                         ForumListScreen(
                             viewModel = forumViewModel,
-                            currentUsername = savedUser,
+                            currentUsername = currentUsername,
                             onBackClick = { navController.popBackStack() },
                             onTopicClick = { forumName, topicName, topicId ->
                                 navController.navigate("thread/$forumName/$topicName/$topicId")
@@ -170,7 +173,7 @@ class MainActivity : ComponentActivity() {
                         )
                         DirectoryScreen(
                             viewModel = directoryViewModel,
-                            currentUsername = savedUser,
+                            currentUsername = currentUsername,
                             onBackClick = { navController.popBackStack() },
                             onForumJoined = { _ ->
                                 // Refresh forums list after joining
@@ -219,7 +222,7 @@ class MainActivity : ComponentActivity() {
                         TopicListScreen(
                             viewModel = viewModel,
                             forumName = forumName,
-                            currentUsername = savedUser,
+                            currentUsername = currentUsername,
                             onBackClick = { navController.popBackStack() },
                             onTopicClick = { topicName, topicId ->
                                 navController.navigate("thread/$forumName/$topicName/$topicId")
@@ -268,7 +271,7 @@ class MainActivity : ComponentActivity() {
                         )
                         ThreadScreen(
                             viewModel = viewModel,
-                            currentUsername = savedUser,
+                            currentUsername = currentUsername,
                             onBackClick = { navController.popBackStack() },
                             onLogout = onLogout,
                             onSettingsClick = onSettingsClick,

@@ -15,5 +15,6 @@ data class CachedProfile(
     val about: String?,
     val resume: String?,
     val mugshotUrl: String?,
+    val experience: String?,
     val lastUpdated: Long
 )

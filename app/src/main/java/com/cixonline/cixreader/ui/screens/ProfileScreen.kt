@@ -7,6 +7,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,6 +37,29 @@ fun ProfileScreen(
     val resume by viewModel.selectedResume.collectAsState()
     val mugshotUrl by viewModel.selectedMugshotUrl.collectAsState()
     val isLoading by viewModel.isProfileLoading.collectAsState()
+    
+    val currentLoggedInUser = NetworkClient.getUsername()
+    val isOwnProfile = viewModel.username.equals(currentLoggedInUser, ignoreCase = true)
+
+    var isEditing by remember { mutableStateOf(false) }
+    var editFullName by remember { mutableStateOf("") }
+    var editLocation by remember { mutableStateOf("") }
+    var editEmail by remember { mutableStateOf("") }
+    var editAbout by remember { mutableStateOf("") }
+    var editResume by remember { mutableStateOf("") }
+
+    LaunchedEffect(profile) {
+        profile?.let {
+            editFullName = it.fullName ?: ""
+            editLocation = it.location ?: ""
+            editEmail = it.email ?: ""
+            editAbout = it.about ?: ""
+        }
+    }
+    
+    LaunchedEffect(resume) {
+        editResume = resume ?: ""
+    }
 
     Scaffold(
         topBar = {
@@ -51,8 +76,36 @@ fun ProfileScreen(
                     navigationIconContentColor = Color.White
                 )
             )
+        },
+        floatingActionButton = {
+            if (isOwnProfile && profile != null) {
+                FloatingActionButton(
+                    onClick = {
+                        if (isEditing) {
+                            viewModel.updateProfile(
+                                fullName = editFullName,
+                                email = editEmail,
+                                location = editLocation,
+                                about = editAbout,
+                                experience = profile?.experience,
+                                resume = editResume
+                            )
+                            isEditing = false
+                        } else {
+                            isEditing = true
+                        }
+                    },
+                    containerColor = Color(0xFFD91B5C),
+                    contentColor = Color.White
+                ) {
+                    Icon(
+                        imageVector = if (isEditing) Icons.Default.Save else Icons.Default.Edit,
+                        contentDescription = if (isEditing) "Save" else "Edit"
+                    )
+                }
+            }
         }
-    ) {
+    ) { paddingValues ->
         if (isLoading && profile == null) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
@@ -65,7 +118,7 @@ fun ProfileScreen(
             val p = profile!!
             Column(
                 modifier = Modifier
-                    .padding(it)
+                    .padding(paddingValues)
                     .padding(24.dp)
                     .verticalScroll(rememberScrollState())
             ) {
@@ -80,7 +133,14 @@ fun ProfileScreen(
                             style = MaterialTheme.typography.headlineSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        if (!p.fullName.isNullOrBlank()) {
+                        if (isEditing) {
+                            OutlinedTextField(
+                                value = editFullName,
+                                onValueChange = { editFullName = it },
+                                label = { Text("Full Name") },
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                            )
+                        } else if (!p.fullName.isNullOrBlank()) {
                             Text(text = p.fullName!!, style = MaterialTheme.typography.titleMedium)
                         }
                     }
@@ -129,26 +189,57 @@ fun ProfileScreen(
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    p.location?.takeIf { it.isNotBlank() }?.let {
-                        ProfileRow(label = "Location", value = it)
-                    }
-                    p.email?.takeIf { it.isNotBlank() }?.let {
-                        ProfileRow(label = "Email", value = it)
-                    }
-                    p.firstOn?.takeIf { it.isNotBlank() }?.let {
-                        ProfileRow(label = "First On", value = it)
-                    }
-                    p.lastOn?.takeIf { it.isNotBlank() }?.let {
-                        ProfileRow(label = "Last On", value = it)
-                    }
-                    p.lastPost?.takeIf { it.isNotBlank() }?.let {
-                        ProfileRow(label = "Last Post", value = it)
-                    }
-                    p.about?.takeIf { it.isNotBlank() }?.let {
-                        ProfileRow(label = "About", value = it)
+                    if (isEditing) {
+                        OutlinedTextField(
+                            value = editLocation,
+                            onValueChange = { editLocation = it },
+                            label = { Text("Location") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editEmail,
+                            onValueChange = { editEmail = it },
+                            label = { Text("Email") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = editAbout,
+                            onValueChange = { editAbout = it },
+                            label = { Text("About") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 3
+                        )
+                    } else {
+                        p.location?.takeIf { it.isNotBlank() }?.let {
+                            ProfileRow(label = "Location", value = it)
+                        }
+                        p.email?.takeIf { it.isNotBlank() }?.let {
+                            ProfileRow(label = "Email", value = it)
+                        }
+                        p.firstOn?.takeIf { it.isNotBlank() }?.let {
+                            ProfileRow(label = "First On", value = it)
+                        }
+                        p.lastOn?.takeIf { it.isNotBlank() }?.let {
+                            ProfileRow(label = "Last On", value = it)
+                        }
+                        p.lastPost?.takeIf { it.isNotBlank() }?.let {
+                            ProfileRow(label = "Last Post", value = it)
+                        }
+                        p.about?.takeIf { it.isNotBlank() }?.let {
+                            ProfileRow(label = "About", value = it)
+                        }
                     }
 
-                    if (!resume.isNullOrBlank()) {
+                    if (isEditing) {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        OutlinedTextField(
+                            value = editResume,
+                            onValueChange = { editResume = it },
+                            label = { Text("Resume") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 5
+                        )
+                    } else if (!resume.isNullOrBlank()) {
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                         Text(
                             text = "Resume",
