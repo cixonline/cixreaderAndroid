@@ -45,13 +45,11 @@ fun WelcomeScreen(
     onThreadClick: (forum: String, topic: String, topicId: Int, rootId: Int, msgId: Int) -> Unit,
     onLogout: () -> Unit,
     onSettingsClick: () -> Unit,
-    onDraftsClick: () -> Unit
+    onDraftsClick: () -> Unit,
+    onProfileClick: (String) -> Unit
 ) {
     val threads by viewModel.interestingThreads.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val selectedProfile by viewModel.selectedProfile.collectAsState()
-    val selectedResume by viewModel.selectedResume.collectAsState()
-    val selectedMugshotUrl by viewModel.selectedMugshotUrl.collectAsState()
     var showMenu by remember { mutableStateOf(false) }
     var showPostDialog by remember { mutableStateOf(false) }
     var showVersionDialog by remember { mutableStateOf(false) }
@@ -115,7 +113,7 @@ fun WelcomeScreen(
                                 text = { Text("Profile") },
                                 onClick = {
                                     showMenu = false
-                                    currentUsername?.let { viewModel.showProfile(it) }
+                                    currentUsername?.let { onProfileClick(it) }
                                 }
                             )
                             DropdownMenuItem(
@@ -204,7 +202,7 @@ fun WelcomeScreen(
                                         }
                                     }
                                 },
-                                onAuthorClick = { viewModel.showProfile(thread.author) }
+                                onAuthorClick = { onProfileClick(thread.author) }
                             )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         }
@@ -457,15 +455,6 @@ fun WelcomeScreen(
                     Text("OK")
                 }
             }
-        )
-    }
-
-    selectedProfile?.let { profile ->
-        ProfileDialog(
-            profile = profile, 
-            resume = selectedResume,
-            mugshotUrl = selectedMugshotUrl,
-            onDismiss = { viewModel.dismissProfile() }
         )
     }
 }

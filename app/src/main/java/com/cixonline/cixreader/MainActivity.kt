@@ -135,7 +135,8 @@ class MainActivity : ComponentActivity() {
                             },
                             onLogout = onLogout,
                             onSettingsClick = onSettingsClick,
-                            onDraftsClick = onDraftsClick
+                            onDraftsClick = onDraftsClick,
+                            onProfileClick = onProfileClick
                         )
                     }
                     composable("forums") {

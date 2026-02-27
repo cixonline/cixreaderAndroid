@@ -11,23 +11,16 @@ import com.cixonline.cixreader.BuildConfig
 import com.cixonline.cixreader.api.CixApi
 import com.cixonline.cixreader.api.InterestingThreadApi
 import com.cixonline.cixreader.api.NetworkClient
-import com.cixonline.cixreader.api.UserProfile
-import com.cixonline.cixreader.db.MessageDao
-import com.cixonline.cixreader.db.FolderDao
-import com.cixonline.cixreader.db.DirForumDao
-import com.cixonline.cixreader.db.CachedProfileDao
-import com.cixonline.cixreader.db.DraftDao
-import com.cixonline.cixreader.models.CIXMessage
-import com.cixonline.cixreader.models.Folder
-import com.cixonline.cixreader.models.Draft
-import com.cixonline.cixreader.models.DirForum
-import com.cixonline.cixreader.api.WhoApi
 import com.cixonline.cixreader.api.PostAttachment
+import com.cixonline.cixreader.db.*
+import com.cixonline.cixreader.models.CIXMessage
+import com.cixonline.cixreader.models.DirForum
+import com.cixonline.cixreader.models.Draft
+import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
 import com.google.ai.client.generativeai.GenerativeModel
-import com.google.ai.client.generativeai.type.content
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.*
@@ -59,14 +52,8 @@ class WelcomeViewModel(
     private val messageRepository: MessageRepository,
     private val folderDao: FolderDao,
     private val dirForumDao: DirForumDao,
-    private val cachedProfileDao: CachedProfileDao,
     private val draftDao: DraftDao
-) : ViewModel(), ProfileHost {
-
-    private val profileDelegate = ProfileDelegate(api, cachedProfileDao)
-
-    private val _onlineUsers = MutableStateFlow<List<WhoApi>>(emptyList())
-    val onlineUsers: StateFlow<List<WhoApi>> = _onlineUsers
+) : ViewModel() {
 
     private val _interestingThreads = MutableStateFlow<List<InterestingThreadUI>>(emptyList())
     val interestingThreads: StateFlow<List<InterestingThreadUI>> = _interestingThreads
@@ -76,11 +63,6 @@ class WelcomeViewModel(
 
     private val _joinResult = MutableSharedFlow<JoinResult>()
     val joinResult: SharedFlow<JoinResult> = _joinResult.asSharedFlow()
-
-    override val selectedProfile: StateFlow<UserProfile?> = profileDelegate.selectedProfile
-    override val selectedResume: StateFlow<String?> = profileDelegate.selectedResume
-    override val selectedMugshotUrl: StateFlow<String?> = profileDelegate.selectedMugshotUrl
-    override val isProfileLoading: StateFlow<Boolean> = profileDelegate.isLoading
 
     val allForums: Flow<List<Folder>> = folderDao.getAll().map { folders ->
         folders.filter { it.isRootFolder }
@@ -512,15 +494,20 @@ class WelcomeViewModel(
     }
 
     suspend fun getDraftForContext(forum: String, topic: String): Draft? = draftDao.getDraft(forum, topic, 0)
-    override fun showProfile(user: String) = profileDelegate.showProfile(viewModelScope, user)
-    override fun dismissProfile() = profileDelegate.dismissProfile()
 }
 
-class WelcomeViewModelFactory(private val api: CixApi, private val messageDao: MessageDao, private val folderDao: FolderDao, private val dirForumDao: DirForumDao, private val cachedProfileDao: CachedProfileDao, private val draftDao: DraftDao) : ViewModelProvider.Factory {
+class WelcomeViewModelFactory(
+    private val api: CixApi,
+    private val messageDao: MessageDao,
+    private val folderDao: FolderDao,
+    private val dirForumDao: DirForumDao,
+    private val cachedProfileDao: CachedProfileDao,
+    private val draftDao: DraftDao) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WelcomeViewModel::class.java)) {
             val messageRepository = MessageRepository(api, messageDao)
-            return WelcomeViewModel(api, messageDao, messageRepository, folderDao, dirForumDao, cachedProfileDao, draftDao) as T
+            @Suppress("UNCHECKED_CAST")
+            return WelcomeViewModel(api, messageDao, messageRepository, folderDao, dirForumDao, draftDao) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
