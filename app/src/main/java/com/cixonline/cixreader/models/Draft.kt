@@ -10,5 +10,7 @@ data class Draft(
     val topicName: String,
     val replyToId: Int, // 0 if it's a new message, not a reply
     val body: String,
+    val attachmentUri: String? = null,
+    val attachmentName: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 )

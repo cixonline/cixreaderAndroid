@@ -44,7 +44,8 @@ fun WelcomeScreen(
     onDirectoryClick: () -> Unit,
     onThreadClick: (forum: String, topic: String, topicId: Int, rootId: Int, msgId: Int) -> Unit,
     onLogout: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onDraftsClick: () -> Unit
 ) {
     val threads by viewModel.interestingThreads.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -115,6 +116,13 @@ fun WelcomeScreen(
                                 onClick = {
                                     showMenu = false
                                     currentUsername?.let { viewModel.showProfile(it) }
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Drafts") },
+                                onClick = {
+                                    showMenu = false
+                                    onDraftsClick()
                                 }
                             )
                             DropdownMenuItem(

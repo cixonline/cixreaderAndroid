@@ -286,4 +286,22 @@ class MessageRepository(
             messageDao.update(updatedMessage)
         }
     }
+
+    suspend fun withdrawMessage(message: CIXMessage): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val encodedForum = HtmlUtils.cixEncode(message.forumName)
+            val encodedTopic = HtmlUtils.cixEncode(message.topicName)
+            val response = api.withdrawMessage(encodedForum, encodedTopic, message.remoteId)
+            val result = response.string()
+            
+            // Mark as withdrawn in local cache
+            val updatedMessage = message.copy(body = "<<withdrawn by author>>", unread = false)
+            messageDao.update(updatedMessage)
+
+            true
+        } catch (e: Exception) {
+            Log.e(tag, "Withdraw message failed", e)
+            false
+        }
+    }
 }

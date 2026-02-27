@@ -44,7 +44,8 @@ fun ForumListScreen(
     onTopicClick: (forumName: String, topicName: String, topicId: Int) -> Unit,
     onLogout: () -> Unit,
     onSettingsClick: () -> Unit,
-    onProfileClick: (String) -> Unit
+    onProfileClick: (String) -> Unit,
+    onDraftsClick: () -> Unit
 ) {
     val folders by viewModel.allFolders.collectAsState(initial = emptyList())
     val expandedForums by viewModel.expandedForums.collectAsState()
@@ -138,6 +139,13 @@ fun ForumListScreen(
                                     onClick = {
                                         showMenu = false
                                         currentUsername?.let { onProfileClick(it) }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Drafts") },
+                                    onClick = {
+                                        showMenu = false
+                                        onDraftsClick()
                                     }
                                 )
                                 DropdownMenuItem(

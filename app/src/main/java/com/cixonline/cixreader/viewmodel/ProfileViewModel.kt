@@ -2,6 +2,7 @@ package com.cixonline.cixreader.viewmodel
 
 import android.util.Log
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.cixonline.cixreader.api.CixApi
 import com.cixonline.cixreader.api.UserProfile
@@ -24,6 +25,36 @@ interface ProfileHost {
     val isProfileLoading: StateFlow<Boolean>
     fun showProfile(user: String)
     fun dismissProfile()
+}
+
+class ProfileViewModel(
+    api: CixApi,
+    cachedProfileDao: CachedProfileDao,
+    val username: String
+) : ViewModel() {
+    private val delegate = ProfileDelegate(api, cachedProfileDao)
+    val selectedProfile = delegate.selectedProfile
+    val selectedResume = delegate.selectedResume
+    val selectedMugshotUrl = delegate.selectedMugshotUrl
+    val isProfileLoading = delegate.isLoading
+
+    init {
+        delegate.showProfile(viewModelScope, username)
+    }
+}
+
+class ProfileViewModelFactory(
+    private val api: CixApi,
+    private val cachedProfileDao: CachedProfileDao,
+    private val username: String
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(ProfileViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return ProfileViewModel(api, cachedProfileDao, username) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
+    }
 }
 
 class ProfileDelegate(

@@ -35,7 +35,8 @@ fun DirectoryScreen(
     onForumJoined: (String) -> Unit,
     onLogout: () -> Unit,
     onSettingsClick: () -> Unit,
-    onProfileClick: (String) -> Unit
+    onProfileClick: (String) -> Unit,
+    onDraftsClick: () -> Unit
 ) {
     val forums by viewModel.forums.collectAsState()
     val joinedForumNames by viewModel.joinedForumNames.collectAsState()
@@ -123,6 +124,13 @@ fun DirectoryScreen(
                                 onClick = {
                                     showMenu = false
                                     currentUsername?.let { onProfileClick(it) }
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Drafts") },
+                                onClick = {
+                                    showMenu = false
+                                    onDraftsClick()
                                 }
                             )
                             DropdownMenuItem(

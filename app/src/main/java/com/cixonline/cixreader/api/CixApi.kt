@@ -110,4 +110,11 @@ interface CixApi {
 
     @GET("directory/{category}/forums.xml")
     suspend fun getForumsInCategory(@Path("category", encoded = true) category: String): DirListings
+
+    @GET("forums/{forum}/{topic}/{msgid}/withdraw.xml")
+    suspend fun withdrawMessage(
+        @Path("forum", encoded = true) forum: String,
+        @Path("topic", encoded = true) topic: String,
+        @Path("msgid") msgId: Int
+    ): ResponseBody
 }

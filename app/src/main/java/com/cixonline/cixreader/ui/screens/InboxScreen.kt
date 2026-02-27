@@ -14,7 +14,8 @@ import androidx.compose.ui.graphics.Color
 fun InboxScreen(
     onBackClick: () -> Unit,
     onLogout: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onDraftsClick: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -36,6 +37,13 @@ fun InboxScreen(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false }
                         ) {
+                            DropdownMenuItem(
+                                text = { Text("Drafts") },
+                                onClick = {
+                                    showMenu = false
+                                    onDraftsClick()
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Settings") },
                                 onClick = {

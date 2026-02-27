@@ -28,7 +28,8 @@ fun TopicScreen(
     onBackClick: () -> Unit,
     onTitleClick: (forumName: String) -> Unit,
     onLogout: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onDraftsClick: () -> Unit
 ) {
     val messages by viewModel.messages.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
@@ -119,6 +120,13 @@ fun TopicScreen(
                                 onClick = {
                                     showMenu = false
                                     // Implementation for Mark Topic Read
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Drafts") },
+                                onClick = {
+                                    showMenu = false
+                                    onDraftsClick()
                                 }
                             )
                             DropdownMenuItem(

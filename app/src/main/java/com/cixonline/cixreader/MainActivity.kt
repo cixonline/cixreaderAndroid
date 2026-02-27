@@ -88,6 +88,14 @@ class MainActivity : ComponentActivity() {
                     navController.navigate("settings")
                 }
 
+                val onDraftsClick = {
+                    navController.navigate("drafts")
+                }
+
+                val onProfileClick: (String) -> Unit = { username ->
+                    navController.navigate("profile/$username")
+                }
+
                 NavHost(navController = navController, startDestination = startDestination) {
                     composable("login") {
                         val loginViewModel: LoginViewModel = viewModel(
@@ -126,7 +134,8 @@ class MainActivity : ComponentActivity() {
                                 navController.navigate("thread/$forum/$topic/$topicId?rootId=$rootId&msgId=$msgId")
                             },
                             onLogout = onLogout,
-                            onSettingsClick = onSettingsClick
+                            onSettingsClick = onSettingsClick,
+                            onDraftsClick = onDraftsClick
                         )
                     }
                     composable("forums") {
@@ -146,7 +155,8 @@ class MainActivity : ComponentActivity() {
                             },
                             onLogout = onLogout,
                             onSettingsClick = onSettingsClick,
-                            onProfileClick = { _ -> }
+                            onProfileClick = onProfileClick,
+                            onDraftsClick = onDraftsClick
                         )
                     }
                     composable("directory") {
@@ -169,15 +179,28 @@ class MainActivity : ComponentActivity() {
                             },
                             onLogout = onLogout,
                             onSettingsClick = onSettingsClick,
-                            onProfileClick = { _ ->
-                                // Just a dummy for now as DirectoryScreen expects it
-                            }
+                            onProfileClick = onProfileClick,
+                            onDraftsClick = onDraftsClick
                         )
                     }
                     composable("settings") {
                         SettingsScreen(
                             settingsManager = settingsManager,
                             onBackClick = { navController.popBackStack() }
+                        )
+                    }
+                    composable("drafts") {
+                        val draftsViewModel: DraftsViewModel = viewModel(
+                            factory = DraftsViewModelFactory(
+                                database.draftDao(),
+                                messageRepository
+                            )
+                        )
+                        DraftsScreen(
+                            viewModel = draftsViewModel,
+                            onBackClick = { navController.popBackStack() },
+                            onLogout = onLogout,
+                            onSettingsClick = onSettingsClick
                         )
                     }
                     composable(
@@ -202,7 +225,8 @@ class MainActivity : ComponentActivity() {
                             },
                             onLogout = onLogout,
                             onSettingsClick = onSettingsClick,
-                            onProfileClick = { _ -> }
+                            onProfileClick = onProfileClick,
+                            onDraftsClick = onDraftsClick
                         )
                     }
                     composable(
@@ -253,7 +277,28 @@ class MainActivity : ComponentActivity() {
                             },
                             onNavigateToDirectory = {
                                 navController.navigate("directory")
-                            }
+                            },
+                            onDraftsClick = onDraftsClick,
+                            onProfileClick = onProfileClick
+                        )
+                    }
+                    composable(
+                        route = "profile/{username}",
+                        arguments = listOf(
+                            navArgument("username") { type = NavType.StringType }
+                        )
+                    ) { backStackEntry ->
+                        val username = backStackEntry.arguments?.getString("username") ?: ""
+                        val viewModel: ProfileViewModel = viewModel(
+                            factory = ProfileViewModelFactory(
+                                api = NetworkClient.api,
+                                cachedProfileDao = database.cachedProfileDao(),
+                                username = username
+                            )
+                        )
+                        ProfileScreen(
+                            viewModel = viewModel,
+                            onBackClick = { navController.popBackStack() }
                         )
                     }
                 }

@@ -48,6 +48,7 @@ import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.CIXMessage
+import com.cixonline.cixreader.models.Draft
 import com.cixonline.cixreader.viewmodel.NextUnreadItem
 import com.cixonline.cixreader.viewmodel.TopicViewModel
 import com.cixonline.cixreader.utils.SettingsManager
@@ -71,13 +72,12 @@ fun ThreadScreen(
     onSettingsClick: () -> Unit,
     settingsManager: SettingsManager,
     onNavigateToThread: (forum: String, topic: String, topicId: Int, rootId: Int, msgId: Int) -> Unit,
-    onNavigateToDirectory: () -> Unit
+    onNavigateToDirectory: () -> Unit,
+    onDraftsClick: () -> Unit,
+    onProfileClick: (String) -> Unit
 ) {
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val selectedProfile by viewModel.selectedProfile.collectAsState()
-    val selectedResume by viewModel.selectedResume.collectAsState()
-    val selectedMugshotUrl by viewModel.selectedMugshotUrl.collectAsState()
     val scrollToMessageId by viewModel.scrollToMessageId.collectAsState()
     val context = LocalContext.current
 
@@ -85,7 +85,7 @@ fun ThreadScreen(
     var selectedMessage by remember { mutableStateOf<CIXMessage?>(null) }
     var showMenu by remember { mutableStateOf(false) }
     var showReplyPane by remember { mutableStateOf(false) }
-    var replyInitialText by remember { mutableStateOf("") }
+    var initialDraft by remember { mutableStateOf<Draft?>(null) }
     var showNoMoreUnreadDialog by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
@@ -133,7 +133,7 @@ fun ThreadScreen(
 
     LaunchedEffect(showReplyPane, selectedMessage) {
         if (showReplyPane && selectedMessage != null) {
-            replyInitialText = viewModel.getDraft(selectedMessage!!.remoteId)?.body ?: ""
+            initialDraft = viewModel.getDraft(selectedMessage!!.remoteId)
         }
     }
 
@@ -202,7 +202,14 @@ fun ThreadScreen(
                                 text = { Text("Profile") },
                                 onClick = {
                                     showMenu = false
-                                    currentUsername?.let { viewModel.showProfile(it) }
+                                    currentUsername?.let { onProfileClick(it) }
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Drafts") },
+                                onClick = {
+                                    showMenu = false
+                                    onDraftsClick()
                                 }
                             )
                             DropdownMenuItem(
@@ -260,6 +267,7 @@ fun ThreadScreen(
                     if (selectedMessage != null) {
                         MessageActionBar(
                             message = selectedMessage!!,
+                            currentUsername = currentUsername,
                             replyActive = showReplyPane,
                             onReplyClick = { showReplyPane = !showReplyPane },
                             onNextUnreadClick = {
@@ -288,7 +296,8 @@ fun ThreadScreen(
                                     }
                                 }
                             },
-                            onAuthorClick = { viewModel.showProfile(selectedMessage!!.author) }
+                            onAuthorClick = { onProfileClick(selectedMessage!!.author) },
+                            onWithdrawClick = { viewModel.withdrawMessage(selectedMessage!!) }
                         )
                     } else {
                         HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outlineVariant)
@@ -329,7 +338,9 @@ fun ThreadScreen(
                         Box(modifier = Modifier.height(200.dp)) {
                             ReplyPane(
                                 replyTo = selectedMessage!!,
-                                initialText = replyInitialText,
+                                initialText = initialDraft?.body ?: "",
+                                initialAttachmentUri = initialDraft?.attachmentUri?.let { Uri.parse(it) },
+                                initialAttachmentName = initialDraft?.attachmentName,
                                 onCancel = { showReplyPane = false },
                                 onPost = { body, uri, name ->
                                     coroutineScope.launch {
@@ -338,8 +349,8 @@ fun ThreadScreen(
                                         }
                                     }
                                 },
-                                onSaveDraft = { body ->
-                                    viewModel.saveDraft(selectedMessage!!.remoteId, body)
+                                onSaveDraft = { body, uri, name ->
+                                    viewModel.saveDraft(selectedMessage!!.remoteId, body, uri, name)
                                     showReplyPane = false
                                 }
                             )
@@ -354,15 +365,6 @@ fun ThreadScreen(
                 }
             }
         }
-    }
-
-    selectedProfile?.let { profile ->
-        ProfileDialog(
-            profile = profile, 
-            resume = selectedResume,
-            mugshotUrl = selectedMugshotUrl,
-            onDismiss = { viewModel.dismissProfile() }
-        )
     }
 }
 
@@ -580,13 +582,37 @@ fun ThreadRow(
 @Composable
 fun MessageActionBar(
     message: CIXMessage,
+    currentUsername: String?,
     replyActive: Boolean,
     onReplyClick: () -> Unit,
     onNextUnreadClick: () -> Unit,
-    onAuthorClick: () -> Unit
+    onAuthorClick: () -> Unit,
+    onWithdrawClick: () -> Unit
 ) {
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy HH:mm", Locale.getDefault()) }
     val dateString = remember(message.date) { dateFormat.format(Date(message.date)) }
+    var showWithdrawConfirm by remember { mutableStateOf(false) }
+
+    if (showWithdrawConfirm) {
+        AlertDialog(
+            onDismissRequest = { showWithdrawConfirm = false },
+            title = { Text("Withdraw Message") },
+            text = { Text("Are you sure you want to withdraw this message? This action cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = { 
+                    showWithdrawConfirm = false
+                    onWithdrawClick()
+                }) {
+                    Text("Withdraw", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWithdrawConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     Surface(
         color = Color(0xFFD91B5C),
@@ -620,6 +646,15 @@ fun MessageActionBar(
                 )
             }
             Row {
+                if (currentUsername != null && message.author.equals(currentUsername, ignoreCase = true) && !message.isWithdrawn()) {
+                    IconButton(onClick = { showWithdrawConfirm = true }) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Withdraw",
+                            tint = Color.White
+                        )
+                    }
+                }
                 IconButton(onClick = onReplyClick) {
                     Icon(
                         if (replyActive) Icons.Default.Close else Icons.AutoMirrored.Filled.Reply,
@@ -765,13 +800,15 @@ fun AudioPlayer(url: String) {
 fun ReplyPane(
     replyTo: CIXMessage,
     initialText: String = "",
+    initialAttachmentUri: Uri? = null,
+    initialAttachmentName: String? = null,
     onCancel: () -> Unit,
     onPost: (String, Uri?, String?) -> Unit,
-    onSaveDraft: (String) -> Unit
+    onSaveDraft: (String, Uri?, String?) -> Unit
 ) {
     var text by remember(initialText) { mutableStateOf(initialText) }
-    var attachmentUri by remember { mutableStateOf<Uri?>(null) }
-    var attachmentName by remember { mutableStateOf<String?>(null) }
+    var attachmentUri by remember(initialAttachmentUri) { mutableStateOf<Uri?>(initialAttachmentUri) }
+    var attachmentName by remember(initialAttachmentName) { mutableStateOf<String?>(initialAttachmentName) }
     var showCancelConfirm by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -800,7 +837,7 @@ fun ReplyPane(
             dismissButton = {
                 Row {
                     TextButton(onClick = { 
-                        onSaveDraft(text)
+                        onSaveDraft(text, attachmentUri, attachmentName)
                         showCancelConfirm = false
                     }) {
                         Text("Save Draft")
@@ -839,15 +876,21 @@ fun ReplyPane(
                     }
                     if (attachmentName != null) {
                         Text(text = attachmentName!!, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 100.dp))
+                        IconButton(onClick = {
+                            attachmentUri = null
+                            attachmentName = null
+                        }) {
+                            Icon(Icons.Default.Close, contentDescription = "Remove attachment", modifier = Modifier.size(16.dp))
+                        }
                     }
                     TextButton(onClick = {
-                        if (text.isNotBlank() && text != initialText) {
+                        if ((text.isNotBlank() && text != initialText) || attachmentUri != initialAttachmentUri) {
                             showCancelConfirm = true
                         } else {
                             onCancel()
                         }
                     }) { Text("Cancel") }
-                    TextButton(onClick = { onSaveDraft(text) }, enabled = text.isNotBlank()) { Text("Draft") }
+                    TextButton(onClick = { onSaveDraft(text, attachmentUri, attachmentName) }, enabled = text.isNotBlank()) { Text("Draft") }
                     Button(onClick = { onPost(text, attachmentUri, attachmentName) }, enabled = text.isNotBlank()) { Text("Post") }
                 }
             }

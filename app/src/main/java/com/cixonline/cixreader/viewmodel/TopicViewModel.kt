@@ -268,13 +268,15 @@ class TopicViewModel(
         return success
     }
 
-    fun saveDraft(replyToId: Int, body: String) {
+    fun saveDraft(replyToId: Int, body: String, attachmentUri: Uri? = null, attachmentName: String? = null) {
         viewModelScope.launch {
             val draft = Draft(
                 forumName = forumName,
                 topicName = topicName,
                 replyToId = replyToId,
-                body = body
+                body = body,
+                attachmentUri = attachmentUri?.toString(),
+                attachmentName = attachmentName
             )
             draftDao.insertDraft(draft)
         }
@@ -312,6 +314,16 @@ class TopicViewModel(
     fun markAsRead(message: CIXMessage) {
         viewModelScope.launch {
             repository.markAsRead(message)
+        }
+    }
+
+    fun withdrawMessage(message: CIXMessage) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            if (repository.withdrawMessage(message)) {
+                refresh()
+            }
+            _isLoading.value = false
         }
     }
 

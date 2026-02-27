@@ -35,7 +35,8 @@ fun TopicListScreen(
     onTopicClick: (topicName: String, topicId: Int) -> Unit,
     onLogout: () -> Unit,
     onSettingsClick: () -> Unit,
-    onProfileClick: (String) -> Unit
+    onProfileClick: (String) -> Unit,
+    onDraftsClick: () -> Unit
 ) {
     val topics by viewModel.topics.collectAsState(initial = emptyList())
     var showMenu by remember { mutableStateOf(false) }
@@ -86,6 +87,13 @@ fun TopicListScreen(
                                 onClick = {
                                     showMenu = false
                                     currentUsername?.let { onProfileClick(it) }
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Drafts") },
+                                onClick = {
+                                    showMenu = false
+                                    onDraftsClick()
                                 }
                             )
                             DropdownMenuItem(
