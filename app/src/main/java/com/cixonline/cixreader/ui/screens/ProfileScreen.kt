@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -84,7 +85,7 @@ fun ProfileScreen(
                         }
                     }
 
-                    val imageModel = mugshotUrl ?: p.userName?.let { ProfileDelegate.getMugshotUrl(it) }
+                    val imageModel = mugshotUrl
 
                     if (imageModel != null) {
                         var state by remember { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
@@ -164,5 +165,18 @@ fun ProfileScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ProfileRow(label: String, value: String) {
+    Row {
+        Text(
+            text = "$label: ",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(text = value, style = MaterialTheme.typography.bodyMedium)
     }
 }

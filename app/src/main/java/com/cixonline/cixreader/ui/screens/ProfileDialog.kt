@@ -105,23 +105,35 @@ fun ProfileDialog(
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
                 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    profile.location?.takeIf { it.isNotBlank() }?.let {
-                        ProfileRow(label = "Location", value = it)
+                    profile.location?.let {
+                        if (it.isNotBlank()) {
+                            ProfileRow(label = "Location", value = it)
+                        }
                     }
-                    profile.email?.takeIf { it.isNotBlank() }?.let {
-                        ProfileRow(label = "Email", value = it)
+                    profile.email?.let {
+                        if (it.isNotBlank()) {
+                            ProfileRow(label = "Email", value = it)
+                        }
                     }
-                    profile.firstOn?.takeIf { it.isNotBlank() }?.let {
-                        ProfileRow(label = "First On", value = it)
+                    profile.firstOn?.let {
+                        if (it.isNotBlank()) {
+                            ProfileRow(label = "First On", value = it)
+                        }
                     }
-                    profile.lastOn?.takeIf { it.isNotBlank() }?.let {
-                        ProfileRow(label = "Last On", value = it)
+                    profile.lastOn?.let {
+                        if (it.isNotBlank()) {
+                            ProfileRow(label = "Last On", value = it)
+                        }
                     }
-                    profile.lastPost?.takeIf { it.isNotBlank() }?.let {
-                        ProfileRow(label = "Last Post", value = it)
+                    profile.lastPost?.let {
+                        if (it.isNotBlank()) {
+                            ProfileRow(label = "Last Post", value = it)
+                        }
                     }
-                    profile.about?.takeIf { it.isNotBlank() }?.let {
-                        ProfileRow(label = "About", value = it)
+                    profile.about?.let {
+                        if (it.isNotBlank()) {
+                            ProfileRow(label = "About", value = it)
+                        }
                     }
                     
                     if (!resume.isNullOrBlank()) {
@@ -151,7 +163,7 @@ fun ProfileDialog(
 }
 
 @Composable
-fun ProfileRow(label: String, value: String) {
+private fun ProfileRow(label: String, value: String) {
     Column {
         Text(text = label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
         Text(text = value, style = MaterialTheme.typography.bodyMedium)
