@@ -52,26 +52,26 @@ class UserProfile {
 }
 
 @Root(name = "ProfileSmallSet", strict = false)
-@Namespace(reference = "http://schemas.datacontract.org/2004/07/CIXPayloads")
-@Order(elements = ["UserName", "FullName", "EMail", "Location", "Experience", "About"])
+@Namespace(reference = "http://tempuri.org/")
+@Order(elements = ["About", "EMail", "Experience", "FullName", "Location", "UserName"])
 class SetProfileRequest @JvmOverloads constructor(
-    @field:Element(name = "UserName", required = false)
-    var userName: String? = null,
+    @field:Element(name = "About", required = false)
+    var about: String? = null,
 
-    @field:Element(name = "FullName", required = false)
-    var fullName: String? = null,
-    
     @field:Element(name = "EMail", required = false)
     var email: String? = null,
-    
-    @field:Element(name = "Location", required = false)
-    var location: String? = null,
 
     @field:Element(name = "Experience", required = false)
     var experience: String? = null,
 
-    @field:Element(name = "About", required = false)
-    var about: String? = null
+    @field:Element(name = "FullName", required = false)
+    var fullName: String? = null,
+
+    @field:Element(name = "Location", required = false)
+    var location: String? = null,
+
+    @field:Element(name = "UserName", required = false)
+    var userName: String? = null
 )
 
 @Root(name = "Mugshot", strict = false)
@@ -205,7 +205,7 @@ class UserForumTopic2 {
     @field:Element(name = "Priority", required = false)
     var priority: String? = null
 
-    @field:Element(name = "Topic", required = null)
+    @field:Element(name = "Topic", required = false)
     var topic: String? = null
 
     @field:Element(name = "UnRead", required = false)
