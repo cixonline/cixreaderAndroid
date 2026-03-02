@@ -61,7 +61,7 @@ fun ProfileDialog(
                         }
                     }
                     
-                    val imageModel = mugshotUrl ?: profile.userName?.let { ProfileDelegate.getMugshotUrl(it) }
+                    val imageModel = mugshotUrl ?: profile.userName?.let { ProfileDelegate.getMugshotXmlUrl(it) }
                     
                     if (imageModel != null) {
                         var state by remember { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }

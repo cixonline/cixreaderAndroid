@@ -1,10 +1,13 @@
 package com.cixonline.cixreader.api
 
+import okhttp3.MultipartBody
 import okhttp3.ResponseBody
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Headers
+import retrofit2.http.Multipart
 import retrofit2.http.POST
+import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -31,12 +34,15 @@ interface CixApi {
     @GET("user/{user}/resume.xml")
     suspend fun getResume(@Path("user") user: String): ResponseBody
 
-    @Headers("Content-Type: application/xml")
     @POST("user/setresume.xml")
-    suspend fun setResume(@Body request: Resume): ResponseBody
+    suspend fun setResume(@Body resume: String): ResponseBody
 
     @GET("user/{user}/mugshot.xml")
-    suspend fun getMugshot(@Path("user") user: String): ResponseBody
+    suspend fun getMugshotXml(@Path("user") user: String): ResponseBody
+
+    @Multipart
+    @POST("user/setmugshot.xml")
+    suspend fun setMugshot(@Part image: MultipartBody.Part): ResponseBody
 
     @GET("user/alltopics.xml")
     suspend fun getAllTopics(@Query("maxResults") maxResults: Int = 5000): UserForumTopicResultSet2

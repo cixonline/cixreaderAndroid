@@ -1,11 +1,13 @@
 package com.cixonline.cixreader.viewmodel
 
+import android.content.Context
+import android.net.Uri
 import android.util.Log
+import android.webkit.MimeTypeMap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.cixonline.cixreader.api.CixApi
-import com.cixonline.cixreader.api.Resume
 import com.cixonline.cixreader.api.SetProfileRequest
 import com.cixonline.cixreader.api.UserProfile
 import com.cixonline.cixreader.db.CachedProfileDao
@@ -16,8 +18,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
+import java.io.File
+import java.io.FileOutputStream
 import java.io.StringReader
 
 interface ProfileHost {
@@ -44,24 +51,38 @@ class ProfileViewModel(
         delegate.showProfile(viewModelScope, username)
     }
 
+    fun refresh() {
+        delegate.showProfile(viewModelScope, username, forceRefresh = true)
+    }
+
     fun updateProfile(fullName: String?, email: String?, location: String?, about: String?, experience: String?, resume: String?) {
         viewModelScope.launch {
             try {
+                // Split full name into first and last name as expected by the new API model
+                val names = (fullName ?: "").trim().split(Regex("\\s+"), 2)
+                val firstName = names.getOrNull(0) ?: ""
+                val lastName = names.getOrNull(1) ?: ""
+
+                // Get current profile to preserve dates if needed, or default to current date format if empty
+                val currentProfile = selectedProfile.value
+                
                 val profileRequest = SetProfileRequest(
-                    userName = username,
-                    fullName = fullName ?: "",
+                    uname = username,
+                    fname = firstName,
+                    sname = lastName,
                     email = email ?: "",
                     location = location ?: "",
-                    about = about ?: "",
-                    experience = experience ?: ""
+                    // These fields are in the contract but we'll leave them blank or use current values
+                    firstOn = currentProfile?.firstOn ?: "",
+                    lastOn = currentProfile?.lastOn ?: "",
+                    lastPost = currentProfile?.lastPost ?: "",
+                    sex = "" // Not currently collected in UI
                 )
                 api.setProfile(profileRequest)
                 
                 if (resume != null) {
-                    val resumeObj = Resume().apply { 
-                        body = resume
-                    }
-                    api.setResume(resumeObj)
+                    // The server expects the raw resume string, not an XML-wrapped object
+                    api.setResume(resume)
                 }
 
                 // Refresh profile after update
@@ -69,6 +90,49 @@ class ProfileViewModel(
             } catch (e: Exception) {
                 Log.e("ProfileViewModel", "Failed to update profile", e)
             }
+        }
+    }
+
+    fun uploadMugshot(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+                val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType) ?: "jpg"
+                val file = uriToFile(context, uri, extension) ?: return@launch
+                
+                val requestFile = file.asRequestBody(mimeType.toMediaTypeOrNull())
+                // The API parameter name in CixApi is "image", so the multipart form data part name must match.
+                val body = MultipartBody.Part.createFormData("image", file.name, requestFile)
+                
+                // Pre-emptively clear mugshot to show loading state/reset UI
+                delegate.clearMugshot()
+                
+                val response = api.setMugshot(body)
+                Log.d("ProfileViewModel", "Mugshot upload response: ${response.string()}")
+                
+                // Wait a short moment for the server to process the image update
+                kotlinx.coroutines.delay(1000)
+                
+                // Refresh to show new image
+                delegate.showProfile(viewModelScope, username, forceRefresh = true)
+            } catch (e: Exception) {
+                Log.e("ProfileViewModel", "Failed to upload mugshot", e)
+            }
+        }
+    }
+
+    private fun uriToFile(context: Context, uri: Uri, extension: String): File? {
+        return try {
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+            val file = File(context.cacheDir, "mugshot_upload.$extension")
+            val outputStream = FileOutputStream(file)
+            inputStream.copyTo(outputStream)
+            inputStream.close()
+            outputStream.close()
+            file
+        } catch (e: Exception) {
+            Log.e("ProfileViewModel", "Error converting Uri to File", e)
+            null
         }
     }
 }
@@ -106,6 +170,10 @@ class ProfileDelegate(
 
     private val CACHE_EXPIRATION_MS = 24 * 60 * 60 * 1000L // 1 day
 
+    fun clearMugshot() {
+        _selectedMugshotUrl.value = null
+    }
+
     fun showProfile(scope: kotlinx.coroutines.CoroutineScope, user: String, forceRefresh: Boolean = false) {
         scope.launch {
             _isLoading.value = true
@@ -128,7 +196,8 @@ class ProfileDelegate(
                     }
                     _selectedProfile.value = profile
                     _selectedResume.value = cached.resume
-                    _selectedMugshotUrl.value = cached.mugshotUrl
+                    // Ensure we have a mugshot URL even if it was null in cache
+                    _selectedMugshotUrl.value = cached.mugshotUrl ?: getMugshotXmlUrl(user)
                     _isLoading.value = false
                     return@launch
                 }
@@ -153,34 +222,9 @@ class ProfileDelegate(
                             null
                         }
                     }
-                    val mugshotJob = async {
-                        try {
-                            val response = api.getMugshot(user)
-                            val contentType = response.contentType()?.toString()
-                            
-                            if (contentType?.contains("xml") == true) {
-                                val xml = response.string()
-                                val imageMatch = Regex("<Image[^>]*>(.*?)</Image>", RegexOption.DOT_MATCHES_ALL).find(xml)
-                                val url = imageMatch?.groupValues?.get(1)
-                                if (!url.isNullOrBlank()) {
-                                    val cleanedUrl = HtmlUtils.cleanCixUrls(url)
-                                    Log.d(tag, "Mugshot URL for $user from XML: $cleanedUrl")
-                                    cleanedUrl
-                                } else {
-                                    getMugshotUrl(user) ?: ""
-                                }
-                            } else {
-                                Log.d(tag, "Mugshot for $user is binary, using direct URL")
-                                getMugshotUrl(user) ?: ""
-                            }
-                        } catch (e: Exception) {
-                            Log.e(tag, "Failed to fetch mugshot for $user, falling back to direct URL", e)
-                            getMugshotUrl(user) ?: ""
-                        }
-                    }
-
+                    
                     val resume = resumeJob.await()
-                    val mugshotUrl = mugshotJob.await()
+                    val mugshotUrl = getMugshotXmlUrl(user)
                     
                     _selectedResume.value = resume
                     _selectedMugshotUrl.value = mugshotUrl
@@ -204,6 +248,10 @@ class ProfileDelegate(
                 }
             } catch (e: Exception) {
                 Log.e(tag, "showProfile failed for $user", e)
+                // Even on error, try to set a default mugshot URL if we have a user
+                if (_selectedMugshotUrl.value == null) {
+                    _selectedMugshotUrl.value = getMugshotXmlUrl(user)
+                }
             } finally {
                 _isLoading.value = false
             }
@@ -248,7 +296,7 @@ class ProfileDelegate(
     }
 
     companion object {
-        fun getMugshotUrl(userName: String?): String? {
+        fun getMugshotXmlUrl(userName: String?): String? {
             if (userName.isNullOrBlank()) return null
             return "https://api.cixonline.com/v2.0/cix.svc/user/$userName/mugshot.xml"
         }

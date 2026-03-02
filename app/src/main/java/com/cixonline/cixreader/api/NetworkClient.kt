@@ -1,5 +1,8 @@
 package com.cixonline.cixreader.api
 
+import android.os.Build
+import android.util.Log
+import com.cixonline.cixreader.BuildConfig
 import com.google.gson.GsonBuilder
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
@@ -12,11 +15,11 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 import coil.ImageLoader
 import coil.decode.BitmapFactoryDecoder
+import coil.util.DebugLogger
 import okhttp3.Interceptor
-import org.simpleframework.xml.core.Persister
-import org.simpleframework.xml.convert.AnnotationStrategy
 
 object NetworkClient {
+    private const val TAG = "NetworkClient"
     private const val BASE_URL = "https://api.cixonline.com/v2.0/cix.svc/"
     
     @Volatile
@@ -27,7 +30,6 @@ object NetworkClient {
     fun setCredentials(user: String, pass: String) {
         username = user
         password = pass
-        // Reset imageLoader if credentials change
         synchronized(this) {
             imageLoader = null
         }
@@ -37,30 +39,31 @@ object NetworkClient {
 
     private val authInterceptor = Interceptor { chain ->
         val request = chain.request()
-        val currentUsername = username
-        val currentPassword = password
-        
         val builder = request.newBuilder()
-        if (currentUsername.isNotEmpty() && currentPassword.isNotEmpty()) {
-            builder.header("Authorization", Credentials.basic(currentUsername, currentPassword))
+        if (username.isNotEmpty() && password.isNotEmpty()) {
+            builder.header("Authorization", Credentials.basic(username, password))
         }
-        
+        // Set User-Agent as requested
+        builder.header("User-Agent", "cixreaderAndroid-${BuildConfig.VERSION_NAME}")
         chain.proceed(builder.build())
     }
 
-    private val mugshotContentTypeInterceptor = Interceptor { chain ->
-        val response = chain.proceed(chain.request())
-        val url = chain.request().url.toString()
-        // Force image content type for mugshots and potential image attachments from CIX
-        if (url.contains("/mugshot") || (url.contains("download.aspx") && (url.lowercase().contains(".jpg") || url.lowercase().contains(".png") || url.lowercase().contains(".jpeg") || url.lowercase().contains(".gif")))) {
+    /**
+     * Specifically handles the mugshot.xml endpoint which returns an image stream 
+     * but often with an XML content-type header.
+     */
+    private val mugshotInterceptor = Interceptor { chain ->
+        val request = chain.request()
+        val response = chain.proceed(request)
+        val url = request.url.toString()
+
+        if (url.contains("/mugshot.xml") && response.isSuccessful) {
             val contentType = response.header("Content-Type")
-            if (contentType == null || !contentType.startsWith("image/")) {
-                val body = response.body
-                if (body != null) {
-                    return@Interceptor response.newBuilder()
-                        .header("Content-Type", "image/jpeg")
-                        .build()
-                }
+            // If it's not already an image type, force it so Coil can decode it
+            if (contentType?.startsWith("image/") != true) {
+                return@Interceptor response.newBuilder()
+                    .header("Content-Type", "image/jpeg")
+                    .build()
             }
         }
         response
@@ -68,35 +71,27 @@ object NetworkClient {
 
     val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            // Strictly enforce HTTP/1.1 to avoid HTTP/2 StreamResetException (CANCEL)
-            // Some servers reset HTTP/2 streams for large POST bodies.
             .protocols(listOf(Protocol.HTTP_1_1))
             .connectTimeout(90, TimeUnit.SECONDS)
             .readTimeout(90, TimeUnit.SECONDS)
-            .writeTimeout(120, TimeUnit.SECONDS) // Extra time for large attachment uploads
+            .writeTimeout(120, TimeUnit.SECONDS)
             .addInterceptor(authInterceptor)
-            .addInterceptor(mugshotContentTypeInterceptor)
+            .addInterceptor(mugshotInterceptor)
             .addInterceptor(HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BODY
+                level = HttpLoggingInterceptor.Level.HEADERS
             })
             .build()
     }
 
     val api: CixApi by lazy {
-        // Use AnnotationStrategy to prevent SimpleXML from adding 'class' attributes to elements
-        val serializer = Persister(AnnotationStrategy())
-
-        val gson = GsonBuilder()
-            .setLenient()
-            .create()
+        val serializer = org.simpleframework.xml.core.Persister(org.simpleframework.xml.convert.AnnotationStrategy())
+        val gson = GsonBuilder().setLenient().create()
 
         Retrofit.Builder()
             .baseUrl(BASE_URL)
             .client(okHttpClient)
             .addConverterFactory(ScalarsConverterFactory.create())
-            // SimpleXml first to handle all the XML-annotated models (most of the API)
             .addConverterFactory(SimpleXmlConverterFactory.create(serializer))
-            // Gson next to handle models without XML annotations (like PostMessage2Request)
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
             .create(CixApi::class.java)
@@ -108,12 +103,12 @@ object NetworkClient {
         return imageLoader ?: synchronized(this) {
             imageLoader ?: ImageLoader.Builder(context.applicationContext)
                 .okHttpClient(okHttpClient)
-                .crossfade(true)
                 .components {
                     add(BitmapFactoryDecoder.Factory())
                 }
-                // Disable hardware bitmaps to avoid "unimplemented" errors on some devices
+                .crossfade(false)
                 .allowHardware(false)
+                .logger(DebugLogger())
                 .build().also { imageLoader = it }
         }
     }

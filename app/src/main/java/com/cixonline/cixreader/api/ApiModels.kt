@@ -51,27 +51,44 @@ class UserProfile {
     var lastOn: String? = null
 }
 
-@Root(name = "ProfileSmallSet", strict = false)
-@Namespace(reference = "http://tempuri.org/")
-@Order(elements = ["About", "EMail", "Experience", "FullName", "Location", "UserName"])
+@Root(name = "ProfileSet", strict = false)
+@Namespace(reference = "http://cixonline.com")
+@Order(elements = ["Email", "FirstOn", "Fname", "LastOn", "LastPost", "Location", "Sex", "Sname", "Uname"])
 class SetProfileRequest @JvmOverloads constructor(
-    @field:Element(name = "About", required = false)
-    var about: String? = null,
-
-    @field:Element(name = "EMail", required = false)
+    @field:Element(name = "Email", required = false)
     var email: String? = null,
 
-    @field:Element(name = "Experience", required = false)
-    var experience: String? = null,
+    @field:Element(name = "FirstOn", required = false)
+    var firstOn: String? = null,
 
-    @field:Element(name = "FullName", required = false)
-    var fullName: String? = null,
+    @field:Element(name = "Fname", required = false)
+    var fname: String? = null,
+
+    @field:Element(name = "LastOn", required = false)
+    var lastOn: String? = null,
+
+    @field:Element(name = "LastPost", required = false)
+    var lastPost: String? = null,
 
     @field:Element(name = "Location", required = false)
     var location: String? = null,
 
-    @field:Element(name = "UserName", required = false)
-    var userName: String? = null
+    @field:Element(name = "Sex", required = false)
+    var sex: String? = null,
+
+    @field:Element(name = "Sname", required = false)
+    var sname: String? = null,
+
+    @field:Element(name = "Uname", required = false)
+    var uname: String? = null
+)
+
+@Root(name = "ResumeSet", strict = false)
+@Namespace(reference = "http://cixonline.com")
+@Order(elements = ["String"])
+class SetResumeRequest @JvmOverloads constructor(
+    @field:Element(name = "String", required = false)
+    var String: String? = null
 )
 
 @Root(name = "Mugshot", strict = false)
@@ -86,9 +103,6 @@ class Mugshot {
 class Resume {
     @field:Element(name = "Body", required = false)
     var body: String? = null
-
-    @field:Text(required = false)
-    var text: String? = null
 }
 
 @Root(name = "ForumResultSet", strict = false)
