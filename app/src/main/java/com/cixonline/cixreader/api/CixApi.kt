@@ -1,6 +1,7 @@
 package com.cixonline.cixreader.api
 
 import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -40,9 +41,16 @@ interface CixApi {
     @GET("user/{user}/mugshot.xml")
     suspend fun getMugshotXml(@Path("user") user: String): ResponseBody
 
-    @Multipart
+    /**
+     * Documentation states mugshot should be posted as a stream of JPEG, GIF or PNG data.
+     * CIX strictly requires the image to be no larger than 100x100 pixels.
+     */
     @POST("user/setmugshot.xml")
-    suspend fun setMugshot(@Part image: MultipartBody.Part): ResponseBody
+    suspend fun setMugshotRaw(@Body body: RequestBody): ResponseBody
+
+    @Headers("Content-Type: application/xml")
+    @POST("user/setmugshot.xml")
+    suspend fun setMugshot(@Body request: MugshotSetRequest): ResponseBody
 
     @GET("user/alltopics.xml")
     suspend fun getAllTopics(@Query("maxResults") maxResults: Int = 5000): UserForumTopicResultSet2

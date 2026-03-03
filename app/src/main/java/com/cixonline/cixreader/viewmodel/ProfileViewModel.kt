@@ -1,13 +1,16 @@
 package com.cixonline.cixreader.viewmodel
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.util.Base64
 import android.util.Log
-import android.webkit.MimeTypeMap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.cixonline.cixreader.api.CixApi
+import com.cixonline.cixreader.api.MugshotSetRequest
 import com.cixonline.cixreader.api.SetProfileRequest
 import com.cixonline.cixreader.api.UserProfile
 import com.cixonline.cixreader.db.CachedProfileDao
@@ -19,10 +22,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
-import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.StringReader
@@ -47,6 +50,9 @@ class ProfileViewModel(
     val selectedMugshotUrl = delegate.selectedMugshotUrl
     val isProfileLoading = delegate.isLoading
 
+    private val _pendingMugshotUri = MutableStateFlow<Uri?>(null)
+    val pendingMugshotUri: StateFlow<Uri?> = _pendingMugshotUri
+
     init {
         delegate.showProfile(viewModelScope, username)
     }
@@ -55,15 +61,28 @@ class ProfileViewModel(
         delegate.showProfile(viewModelScope, username, forceRefresh = true)
     }
 
-    fun updateProfile(fullName: String?, email: String?, location: String?, about: String?, experience: String?, resume: String?) {
+    fun setPendingMugshot(context: Context, uri: Uri?) {
+        if (uri == null) {
+            _pendingMugshotUri.value = null
+            return
+        }
+        val file = uriToFile(context, uri, "jpg")
+        if (file != null) {
+            _pendingMugshotUri.value = Uri.fromFile(file)
+        }
+    }
+
+    fun clearPendingMugshot() {
+        _pendingMugshotUri.value = null
+    }
+
+    fun updateProfile(context: Context, fullName: String?, email: String?, location: String?, about: String?, experience: String?, resume: String?) {
         viewModelScope.launch {
             try {
-                // Split full name into first and last name as expected by the new API model
                 val names = (fullName ?: "").trim().split(Regex("\\s+"), 2)
                 val firstName = names.getOrNull(0) ?: ""
                 val lastName = names.getOrNull(1) ?: ""
 
-                // Get current profile to preserve dates if needed, or default to current date format if empty
                 val currentProfile = selectedProfile.value
                 
                 val profileRequest = SetProfileRequest(
@@ -72,20 +91,26 @@ class ProfileViewModel(
                     sname = lastName,
                     email = email ?: "",
                     location = location ?: "",
-                    // These fields are in the contract but we'll leave them blank or use current values
                     firstOn = currentProfile?.firstOn ?: "",
                     lastOn = currentProfile?.lastOn ?: "",
                     lastPost = currentProfile?.lastPost ?: "",
-                    sex = "" // Not currently collected in UI
+                    sex = ""
                 )
                 api.setProfile(profileRequest)
                 
                 if (resume != null) {
-                    // The server expects the raw resume string, not an XML-wrapped object
                     api.setResume(resume)
                 }
 
-                // Refresh profile after update
+                _pendingMugshotUri.value?.let { uri ->
+                    try {
+                        uploadMugshotInternal(context, uri)
+                        _pendingMugshotUri.value = null
+                    } catch (e: Exception) {
+                        Log.e("ProfileViewModel", "Mugshot upload failed", e)
+                    }
+                }
+
                 delegate.showProfile(viewModelScope, username, forceRefresh = true)
             } catch (e: Exception) {
                 Log.e("ProfileViewModel", "Failed to update profile", e)
@@ -93,38 +118,79 @@ class ProfileViewModel(
         }
     }
 
-    fun uploadMugshot(context: Context, uri: Uri) {
-        viewModelScope.launch {
-            try {
-                val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
-                val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType) ?: "jpg"
-                val file = uriToFile(context, uri, extension) ?: return@launch
-                
-                val requestFile = file.asRequestBody(mimeType.toMediaTypeOrNull())
-                // The API parameter name in CixApi is "image", so the multipart form data part name must match.
-                val body = MultipartBody.Part.createFormData("image", file.name, requestFile)
-                
-                // Pre-emptively clear mugshot to show loading state/reset UI
-                delegate.clearMugshot()
-                
-                val response = api.setMugshot(body)
-                Log.d("ProfileViewModel", "Mugshot upload response: ${response.string()}")
-                
-                // Wait a short moment for the server to process the image update
-                kotlinx.coroutines.delay(1000)
-                
-                // Refresh to show new image
-                delegate.showProfile(viewModelScope, username, forceRefresh = true)
-            } catch (e: Exception) {
-                Log.e("ProfileViewModel", "Failed to upload mugshot", e)
+    private suspend fun uploadMugshotInternal(context: Context, uri: Uri) {
+        val inputStream = context.contentResolver.openInputStream(uri) ?: return
+        val originalBytes = inputStream.readBytes()
+        inputStream.close()
+        
+        // Based on Mugshot.cs, maximum mugshot dimensions are 100x100
+        val bytes = try {
+            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(originalBytes, 0, originalBytes.size, options)
+            
+            val maxSide = 100
+            val bitmap = if (options.outWidth > maxSide || options.outHeight > maxSide) {
+                val scale = Math.max(options.outWidth / maxSide, options.outHeight / maxSide)
+                val decodeOptions = BitmapFactory.Options().apply { inSampleSize = scale }
+                BitmapFactory.decodeByteArray(originalBytes, 0, originalBytes.size, decodeOptions)
+            } else {
+                BitmapFactory.decodeByteArray(originalBytes, 0, originalBytes.size)
             }
+
+            if (bitmap != null) {
+                // Resize to exactly 100x100 or maintain aspect ratio within 100x100
+                val scaledBitmap = if (bitmap.width > maxSide || bitmap.height > maxSide) {
+                    val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
+                    var width = maxSide
+                    var height = maxSide
+                    if (ratio > 1) {
+                        height = (maxSide / ratio).toInt()
+                    } else {
+                        width = (maxSide * ratio).toInt()
+                    }
+                    Bitmap.createScaledBitmap(bitmap, width, height, true)
+                } else {
+                    bitmap
+                }
+
+                val out = ByteArrayOutputStream()
+                scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                val result = out.toByteArray()
+                if (scaledBitmap != bitmap) scaledBitmap.recycle()
+                bitmap.recycle()
+                result
+            } else originalBytes
+        } catch (e: Exception) {
+            Log.e("ProfileViewModel", "Error resizing image", e)
+            originalBytes
         }
+        
+        Log.d("ProfileViewModel", "Uploading mugshot as MugshotSet XML to user/setmugshot.xml (${bytes.size} bytes)")
+        
+        try {
+            val encodedData = Base64.encodeToString(bytes, Base64.NO_WRAP)
+            val request = MugshotSetRequest(
+                filename = "${username}.jpg",
+                encodedData = encodedData
+            )
+            val response = api.setMugshot(request)
+            Log.d("ProfileViewModel", "Mugshot upload response: ${response.string()}")
+        } catch (e: Exception) {
+            Log.e("ProfileViewModel", "Mugshot upload failed using XML, trying raw", e)
+            // Fallback to raw if XML fails, though the error suggest XML is what's expected
+            val requestBody = bytes.toRequestBody("image/jpeg".toMediaTypeOrNull())
+            val response = api.setMugshotRaw(requestBody)
+            Log.d("ProfileViewModel", "Mugshot raw upload response: ${response.string()}")
+        }
+        
+        // Wait a bit for the server to update
+        kotlinx.coroutines.delay(1000)
     }
 
     private fun uriToFile(context: Context, uri: Uri, extension: String): File? {
         return try {
             val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-            val file = File(context.cacheDir, "mugshot_upload.$extension")
+            val file = File(context.cacheDir, "mugshot_pending.$extension")
             val outputStream = FileOutputStream(file)
             inputStream.copyTo(outputStream)
             inputStream.close()
@@ -168,16 +234,11 @@ class ProfileDelegate(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
-    private val CACHE_EXPIRATION_MS = 24 * 60 * 60 * 1000L // 1 day
-
-    fun clearMugshot() {
-        _selectedMugshotUrl.value = null
-    }
+    private val CACHE_EXPIRATION_MS = 24 * 60 * 60 * 1000L
 
     fun showProfile(scope: kotlinx.coroutines.CoroutineScope, user: String, forceRefresh: Boolean = false) {
         scope.launch {
             _isLoading.value = true
-            
             try {
                 val cached = if (forceRefresh) null else cachedProfileDao.getProfile(user)
                 val now = System.currentTimeMillis()
@@ -196,7 +257,6 @@ class ProfileDelegate(
                     }
                     _selectedProfile.value = profile
                     _selectedResume.value = cached.resume
-                    // Ensure we have a mugshot URL even if it was null in cache
                     _selectedMugshotUrl.value = cached.mugshotUrl ?: getMugshotXmlUrl(user)
                     _isLoading.value = false
                     return@launch
@@ -218,7 +278,6 @@ class ProfileDelegate(
                                 HtmlUtils.decodeHtml(rawContent).trim()
                             } else null
                         } catch (e: Exception) {
-                            Log.e(tag, "Failed to fetch resume for $user", e)
                             null
                         }
                     }
@@ -248,7 +307,6 @@ class ProfileDelegate(
                 }
             } catch (e: Exception) {
                 Log.e(tag, "showProfile failed for $user", e)
-                // Even on error, try to set a default mugshot URL if we have a user
                 if (_selectedMugshotUrl.value == null) {
                     _selectedMugshotUrl.value = getMugshotXmlUrl(user)
                 }

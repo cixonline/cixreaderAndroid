@@ -65,6 +65,7 @@ fun ProfileScreen(
     val profile by viewModel.selectedProfile.collectAsState()
     val resume by viewModel.selectedResume.collectAsState()
     val mugshotUrl by viewModel.selectedMugshotUrl.collectAsState()
+    val pendingMugshotUri by viewModel.pendingMugshotUri.collectAsState()
     val isLoading by viewModel.isProfileLoading.collectAsState()
     
     val currentLoggedInUser = NetworkClient.getUsername()
@@ -84,14 +85,14 @@ fun ProfileScreen(
     val photoLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let { viewModel.uploadMugshot(context, it) }
+        uri?.let { viewModel.setPendingMugshot(context, it) }
     }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = TakePictureWithGrant()
     ) { success ->
         if (success) {
-            tempCameraUri?.let { viewModel.uploadMugshot(context, it) }
+            tempCameraUri?.let { viewModel.setPendingMugshot(context, it) }
         }
     }
 
@@ -169,6 +170,7 @@ fun ProfileScreen(
                     onClick = {
                         if (isEditing) {
                             viewModel.updateProfile(
+                                context = context,
                                 fullName = editFullName,
                                 email = editEmail,
                                 location = editLocation,
@@ -236,8 +238,8 @@ fun ProfileScreen(
                             }
                         }
 
-                        // Use key(mugshotUrl) to force complete reset of AsyncImage when URL changes
-                        key(mugshotUrl) {
+                        // Use key(mugshotUrl, pendingMugshotUri) to force complete reset of AsyncImage when URL or pending image changes
+                        key(mugshotUrl, pendingMugshotUri) {
                             Box(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
@@ -248,12 +250,13 @@ fun ProfileScreen(
                                         } else Modifier
                                     )
                             ) {
-                                if (mugshotUrl != null) {
+                                val displayImage = pendingMugshotUri ?: mugshotUrl
+                                if (displayImage != null) {
                                     var state by remember { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
 
                                     AsyncImage(
                                         model = ImageRequest.Builder(LocalContext.current)
-                                            .data(mugshotUrl)
+                                            .data(displayImage)
                                             .placeholder(R.drawable.cix_logo)
                                             .error(R.drawable.cix_logo)
                                             .diskCachePolicy(CachePolicy.ENABLED)
