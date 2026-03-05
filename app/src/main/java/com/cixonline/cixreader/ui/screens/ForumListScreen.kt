@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.cixonline.cixreader.BuildConfig
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.viewmodel.ForumViewModel
@@ -51,6 +52,7 @@ fun ForumListScreen(
     val expandedForums by viewModel.expandedForums.collectAsState()
     val showOnlyUnread by viewModel.showOnlyUnread.collectAsState()
     var showMenu by remember { mutableStateOf(false) }
+    var showVersionDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     
@@ -71,12 +73,12 @@ fun ForumListScreen(
                         Image(
                             painter = painterResource(id = R.drawable.cix_logo),
                             contentDescription = null,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(64.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text( text = "My Forums",
                               color = Color.White.copy(alpha = 0.7f),
-                              style= MaterialTheme.typography.labelMedium
+                              style= MaterialTheme.typography.labelLarge
                         )
                     }
                 },
@@ -153,6 +155,13 @@ fun ForumListScreen(
                                     onClick = {
                                         showMenu = false
                                         onSettingsClick()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Version") },
+                                    onClick = {
+                                        showMenu = false
+                                        showVersionDialog = true
                                     }
                                 )
                                 DropdownMenuItem(
@@ -333,6 +342,24 @@ fun ForumListScreen(
                 }
             }
         }
+    }
+
+    if (showVersionDialog) {
+        AlertDialog(
+            onDismissRequest = { showVersionDialog = false },
+            title = { Text("App Information") },
+            text = {
+                Column {
+                    Text("Version: ${BuildConfig.VERSION_NAME}")
+                    Text("Build Date: ${BuildConfig.BUILD_TIME}")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showVersionDialog = false }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 }
 

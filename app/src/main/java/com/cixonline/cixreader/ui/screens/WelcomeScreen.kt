@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -81,12 +82,21 @@ fun WelcomeScreen(
                         Image(
                             painter = painterResource(id = R.drawable.cix_logo),
                             contentDescription = null,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(64.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text( text = "Reader",
                               color = Color.White.copy(alpha = 0.7f),
-                              style= MaterialTheme.typography.labelMedium
+                              style= MaterialTheme.typography.labelLarge
+                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = { /* Home Icon - Current Screen */ }) {
+                        Icon(
+                            imageVector = Icons.Default.Home,
+                            contentDescription = "Home",
+                            tint = Color.White
                         )
                     }
                 },

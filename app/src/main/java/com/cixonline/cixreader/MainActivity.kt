@@ -190,7 +190,10 @@ class MainActivity : ComponentActivity() {
                     composable("settings") {
                         SettingsScreen(
                             settingsManager = settingsManager,
-                            onBackClick = { navController.popBackStack() }
+                            onBackClick = { navController.popBackStack() },
+                            onLogout = onLogout,
+                            onDraftsClick = onDraftsClick,
+                            onProfileClick = onProfileClick
                         )
                     }
                     composable("drafts") {
@@ -204,7 +207,8 @@ class MainActivity : ComponentActivity() {
                             viewModel = draftsViewModel,
                             onBackClick = { navController.popBackStack() },
                             onLogout = onLogout,
-                            onSettingsClick = onSettingsClick
+                            onSettingsClick = onSettingsClick,
+                            onProfileClick = onProfileClick
                         )
                     }
                     composable(
@@ -302,7 +306,10 @@ class MainActivity : ComponentActivity() {
                         )
                         ProfileScreen(
                             viewModel = viewModel,
-                            onBackClick = { navController.popBackStack() }
+                            onBackClick = { navController.popBackStack() },
+                            onLogout = onLogout,
+                            onSettingsClick = onSettingsClick,
+                            onDraftsClick = onDraftsClick
                         )
                     }
                 }

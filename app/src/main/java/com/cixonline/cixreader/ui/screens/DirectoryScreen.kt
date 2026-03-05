@@ -1,5 +1,6 @@
 package com.cixonline.cixreader.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,11 +18,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.cixonline.cixreader.BuildConfig
+import com.cixonline.cixreader.R
 import com.cixonline.cixreader.api.DirListing
 import com.cixonline.cixreader.viewmodel.DirectoryViewModel
 import kotlinx.coroutines.launch
@@ -45,6 +49,7 @@ fun DirectoryScreen(
     
     var isSearching by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+    var showVersionDialog by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -90,7 +95,18 @@ fun DirectoryScreen(
                             )
                         )
                     } else {
-                        Text("Directory")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Image(
+                                painter = painterResource(id = R.drawable.cix_logo),
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text( text = "Reader",
+                                  color = Color.White.copy(alpha = 0.7f),
+                                  style= MaterialTheme.typography.labelLarge
+                            )
+                        }
                     }
                 },
                 navigationIcon = {
@@ -138,6 +154,13 @@ fun DirectoryScreen(
                                 onClick = {
                                     showMenu = false
                                     onSettingsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Version") },
+                                onClick = {
+                                    showMenu = false
+                                    showVersionDialog = true
                                 }
                             )
                             DropdownMenuItem(
@@ -225,6 +248,24 @@ fun DirectoryScreen(
                 }
             }
         }
+    }
+
+    if (showVersionDialog) {
+        AlertDialog(
+            onDismissRequest = { showVersionDialog = false },
+            title = { Text("App Information") },
+            text = {
+                Column {
+                    Text("Version: ${BuildConfig.VERSION_NAME}")
+                    Text("Build Date: ${BuildConfig.BUILD_TIME}")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showVersionDialog = false }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 }
 

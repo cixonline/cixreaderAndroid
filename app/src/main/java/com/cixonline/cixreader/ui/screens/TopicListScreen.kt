@@ -21,6 +21,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.cixonline.cixreader.BuildConfig
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.viewmodel.TopicListViewModel
@@ -40,6 +41,7 @@ fun TopicListScreen(
 ) {
     val topics by viewModel.topics.collectAsState(initial = emptyList())
     var showMenu by remember { mutableStateOf(false) }
+    var showVersionDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
     LaunchedEffect(Unit) {
@@ -101,6 +103,13 @@ fun TopicListScreen(
                                 onClick = {
                                     showMenu = false
                                     onSettingsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Version") },
+                                onClick = {
+                                    showMenu = false
+                                    showVersionDialog = true
                                 }
                             )
                             DropdownMenuItem(
@@ -166,6 +175,24 @@ fun TopicListScreen(
                 }
             }
         }
+    }
+
+    if (showVersionDialog) {
+        AlertDialog(
+            onDismissRequest = { showVersionDialog = false },
+            title = { Text("App Information") },
+            text = {
+                Column {
+                    Text("Version: ${BuildConfig.VERSION_NAME}")
+                    Text("Build Date: ${BuildConfig.BUILD_TIME}")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showVersionDialog = false }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 }
 

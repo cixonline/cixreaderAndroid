@@ -49,7 +49,7 @@ fun LoginScreen(
                 Image(
                     painter = painterResource(id = R.drawable.cix_logo),
                     contentDescription = "CIX Logo",
-                    modifier = Modifier.size(64.dp)
+                    modifier = Modifier.size(128.dp)
                 )
 
             }

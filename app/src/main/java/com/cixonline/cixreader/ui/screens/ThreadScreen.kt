@@ -46,6 +46,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
+import com.cixonline.cixreader.BuildConfig
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.Draft
@@ -87,6 +88,7 @@ fun ThreadScreen(
     var showReplyPane by remember { mutableStateOf(false) }
     var initialDraft by remember { mutableStateOf<Draft?>(null) }
     var showNoMoreUnreadDialog by remember { mutableStateOf(false) }
+    var showVersionDialog by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -166,7 +168,7 @@ fun ThreadScreen(
                         Image(
                             painter = painterResource(id = R.drawable.cix_logo),
                             contentDescription = null,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(64.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
@@ -217,6 +219,13 @@ fun ThreadScreen(
                                 onClick = {
                                     showMenu = false
                                     onSettingsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Version") },
+                                onClick = {
+                                    showMenu = false
+                                    showVersionDialog = true
                                 }
                             )
                             DropdownMenuItem(
@@ -365,6 +374,24 @@ fun ThreadScreen(
                 }
             }
         }
+    }
+
+    if (showVersionDialog) {
+        AlertDialog(
+            onDismissRequest = { showVersionDialog = false },
+            title = { Text("App Information") },
+            text = {
+                Column {
+                    Text("Version: ${BuildConfig.VERSION_NAME}")
+                    Text("Build Date: ${BuildConfig.BUILD_TIME}")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showVersionDialog = false }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 }
 

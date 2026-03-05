@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
@@ -60,7 +61,10 @@ private class TakePictureWithGrant : ActivityResultContracts.TakePicture() {
 @Composable
 fun ProfileScreen(
     viewModel: ProfileViewModel,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onLogout: () -> Unit,
+    onSettingsClick: () -> Unit,
+    onDraftsClick: () -> Unit
 ) {
     val context = LocalContext.current
     val profile by viewModel.selectedProfile.collectAsState()
@@ -81,6 +85,7 @@ fun ProfileScreen(
     var editResume by remember { mutableStateOf("") }
 
     var showImageSourceDialog by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
     // Use rememberSaveable for the Uri to survive activity recreation
     var tempCameraUri by rememberSaveable { mutableStateOf<Uri?>(null) }
 
@@ -163,16 +168,63 @@ fun ProfileScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(profile?.userName ?: "Profile") },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(id = R.drawable.cix_logo),
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text( text = "Profile",
+                            color = Color.White.copy(alpha = 0.7f),
+                            style= MaterialTheme.typography.labelLarge
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = {
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Drafts") },
+                                onClick = {
+                                    showMenu = false
+                                    onDraftsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Settings") },
+                                onClick = {
+                                    showMenu = false
+                                    onSettingsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Logout") },
+                                onClick = {
+                                    showMenu = false
+                                    onLogout()
+                                }
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color(0xFFD91B5C),
                     titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White
+                    navigationIconContentColor = Color.White,
+                    actionIconContentColor = Color.White
                 )
             )
         },
@@ -204,7 +256,8 @@ fun ProfileScreen(
                     )
                 }
             }
-        }
+        },
+        contentWindowInsets = WindowInsets.ime.union(WindowInsets.systemBars)
     ) { paddingValues ->
         if (isLoading && profile == null) {
             Box(modifier = Modifier.padding(paddingValues).fillMaxSize(), contentAlignment = Alignment.Center) {

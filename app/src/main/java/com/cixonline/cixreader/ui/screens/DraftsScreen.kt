@@ -3,6 +3,7 @@ package com.cixonline.cixreader.ui.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,9 +21,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.cixonline.cixreader.BuildConfig
+import com.cixonline.cixreader.R
+import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.models.Draft
 import com.cixonline.cixreader.viewmodel.DraftsViewModel
 import kotlinx.coroutines.launch
@@ -33,21 +38,40 @@ fun DraftsScreen(
     viewModel: DraftsViewModel,
     onBackClick: () -> Unit,
     onLogout: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onProfileClick: (String) -> Unit
 ) {
-    val drafts by viewModel.drafts.collectAsState(initial = emptyList())
+    val drafts by viewModel.drafts.collectAsState(initial = emptyList<Draft>())
     val isPosting by viewModel.isPosting.collectAsState()
     var showMenu by remember { mutableStateOf(false) }
+    var showVersionDialog by remember { mutableStateOf(false) }
     var editingDraft by remember { mutableStateOf<Draft?>(null) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    val currentUsername = NetworkClient.getUsername()
 
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Drafts") },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(id = R.drawable.cix_logo),
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                "Drafts",
+                                color = Color.White.copy(alpha = 0.7f),
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -63,10 +87,31 @@ fun DraftsScreen(
                             onDismissRequest = { showMenu = false }
                         ) {
                             DropdownMenuItem(
+                                text = { Text("Profile") },
+                                onClick = {
+                                    showMenu = false
+                                    currentUsername?.let { onProfileClick(it) }
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Drafts") },
+                                onClick = {
+                                    showMenu = false
+                                    // Already here
+                                }
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Settings") },
                                 onClick = {
                                     showMenu = false
                                     onSettingsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Version") },
+                                onClick = {
+                                    showMenu = false
+                                    showVersionDialog = true
                                 }
                             )
                             DropdownMenuItem(
@@ -130,6 +175,24 @@ fun DraftsScreen(
             onSave = { updatedDraft ->
                 viewModel.saveDraft(updatedDraft)
                 editingDraft = null
+            }
+        )
+    }
+
+    if (showVersionDialog) {
+        AlertDialog(
+            onDismissRequest = { showVersionDialog = false },
+            title = { Text("App Information") },
+            text = {
+                Column {
+                    Text("Version: ${BuildConfig.VERSION_NAME}")
+                    Text("Build Date: ${BuildConfig.BUILD_TIME}")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showVersionDialog = false }) {
+                    Text("OK")
+                }
             }
         )
     }

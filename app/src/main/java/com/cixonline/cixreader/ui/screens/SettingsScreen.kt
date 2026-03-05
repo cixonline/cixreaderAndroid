@@ -1,15 +1,21 @@
 package com.cixonline.cixreader.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import com.cixonline.cixreader.BuildConfig
+import com.cixonline.cixreader.R
+import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.utils.SettingsManager
 import com.cixonline.cixreader.utils.ThemeMode
 
@@ -17,25 +23,93 @@ import com.cixonline.cixreader.utils.ThemeMode
 @Composable
 fun SettingsScreen(
     settingsManager: SettingsManager,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onLogout: () -> Unit,
+    onDraftsClick: () -> Unit,
+    onProfileClick: (String) -> Unit
 ) {
     var fontSizeMultiplier by remember { mutableStateOf(settingsManager.getFontSize()) }
     var themeMode by remember { mutableStateOf(settingsManager.getThemeMode()) }
     var backgroundSyncEnabled by remember { mutableStateOf(settingsManager.isBackgroundSyncEnabled()) }
+    var showMenu by remember { mutableStateOf(false) }
+    var showVersionDialog by remember { mutableStateOf(false) }
+    val currentUsername = NetworkClient.getUsername()
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(id = R.drawable.cix_logo),
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Settings",
+                            color = Color.White.copy(alpha = 0.7f),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = {
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Profile") },
+                                onClick = {
+                                    showMenu = false
+                                    currentUsername?.let { onProfileClick(it) }
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Drafts") },
+                                onClick = {
+                                    showMenu = false
+                                    onDraftsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Settings") },
+                                onClick = {
+                                    showMenu = false
+                                    // Already here
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Version") },
+                                onClick = {
+                                    showMenu = false
+                                    showVersionDialog = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Logout") },
+                                onClick = {
+                                    showMenu = false
+                                    onLogout()
+                                }
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color(0xFFD91B5C),
                     titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White
+                    navigationIconContentColor = Color.White,
+                    actionIconContentColor = Color.White
                 )
             )
         }
@@ -183,6 +257,24 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    if (showVersionDialog) {
+        AlertDialog(
+            onDismissRequest = { showVersionDialog = false },
+            title = { Text("App Information") },
+            text = {
+                Column {
+                    Text("Version: ${BuildConfig.VERSION_NAME}")
+                    Text("Build Date: ${BuildConfig.BUILD_TIME}")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showVersionDialog = false }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 }
 
