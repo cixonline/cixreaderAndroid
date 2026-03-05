@@ -38,6 +38,7 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.api.NetworkClient
+import com.cixonline.cixreader.ui.components.MugshotEditor
 import com.cixonline.cixreader.viewmodel.ProfileViewModel
 import java.io.File
 
@@ -66,6 +67,7 @@ fun ProfileScreen(
     val resume by viewModel.selectedResume.collectAsState()
     val mugshotUrl by viewModel.selectedMugshotUrl.collectAsState()
     val pendingMugshotUri by viewModel.pendingMugshotUri.collectAsState()
+    val pendingMugshotBitmap by viewModel.pendingMugshotBitmap.collectAsState()
     val isLoading by viewModel.isProfileLoading.collectAsState()
     
     val currentLoggedInUser = NetworkClient.getUsername()
@@ -144,6 +146,16 @@ fun ProfileScreen(
                 TextButton(onClick = { showImageSourceDialog = false }) {
                     Text("Cancel")
                 }
+            }
+        )
+    }
+
+    pendingMugshotUri?.let { uri ->
+        MugshotEditor(
+            uri = uri,
+            onDismiss = { viewModel.clearPendingMugshot() },
+            onConfirm = { bitmap ->
+                viewModel.setPendingMugshotBitmap(bitmap)
             }
         )
     }
@@ -238,8 +250,8 @@ fun ProfileScreen(
                             }
                         }
 
-                        // Use key(mugshotUrl, pendingMugshotUri) to force complete reset of AsyncImage when URL or pending image changes
-                        key(mugshotUrl, pendingMugshotUri) {
+                        // Use key(mugshotUrl, pendingMugshotUri, pendingMugshotBitmap) to force complete reset of AsyncImage when URL or pending image changes
+                        key(mugshotUrl, pendingMugshotUri, pendingMugshotBitmap) {
                             Box(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
@@ -250,7 +262,7 @@ fun ProfileScreen(
                                         } else Modifier
                                     )
                             ) {
-                                val displayImage = pendingMugshotUri ?: mugshotUrl
+                                val displayImage = pendingMugshotBitmap ?: pendingMugshotUri ?: mugshotUrl
                                 if (displayImage != null) {
                                     var state by remember { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
 

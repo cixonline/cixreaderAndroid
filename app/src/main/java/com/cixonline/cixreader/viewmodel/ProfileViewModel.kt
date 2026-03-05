@@ -50,6 +50,9 @@ class ProfileViewModel(
 
     private val _pendingMugshotUri = MutableStateFlow<Uri?>(null)
     val pendingMugshotUri: StateFlow<Uri?> = _pendingMugshotUri
+    
+    private val _pendingMugshotBitmap = MutableStateFlow<Bitmap?>(null)
+    val pendingMugshotBitmap: StateFlow<Bitmap?> = _pendingMugshotBitmap
 
     init {
         delegate.showProfile(viewModelScope, username)
@@ -64,14 +67,18 @@ class ProfileViewModel(
             _pendingMugshotUri.value = null
             return
         }
-        val file = uriToFile(context, uri, "jpg")
-        if (file != null) {
-            _pendingMugshotUri.value = Uri.fromFile(file)
-        }
+        _pendingMugshotUri.value = uri
+    }
+    
+    fun setPendingMugshotBitmap(bitmap: Bitmap?) {
+        _pendingMugshotBitmap.value = bitmap
+        // When a bitmap is set via editor, we clear the raw URI as the bitmap is the "final" version to upload
+        _pendingMugshotUri.value = null
     }
 
     fun clearPendingMugshot() {
         _pendingMugshotUri.value = null
+        _pendingMugshotBitmap.value = null
     }
 
     fun updateProfile(context: Context, fullName: String?, email: String?, location: String?, about: String?, experience: String?, resume: String?) {
@@ -100,7 +107,14 @@ class ProfileViewModel(
                     api.setResume(resume)
                 }
 
-                _pendingMugshotUri.value?.let { uri ->
+                _pendingMugshotBitmap.value?.let { bitmap ->
+                    try {
+                        uploadMugshotBitmapInternal(bitmap)
+                        _pendingMugshotBitmap.value = null
+                    } catch (e: Exception) {
+                        Log.e("ProfileViewModel", "Mugshot bitmap upload failed", e)
+                    }
+                } ?: _pendingMugshotUri.value?.let { uri ->
                     try {
                         uploadMugshotInternal(context, uri)
                         _pendingMugshotUri.value = null
@@ -113,6 +127,22 @@ class ProfileViewModel(
             } catch (e: Exception) {
                 Log.e("ProfileViewModel", "Failed to update profile", e)
             }
+        }
+    }
+
+    private suspend fun uploadMugshotBitmapInternal(bitmap: Bitmap) {
+        val out = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+        val bytes = out.toByteArray()
+        
+        Log.d("ProfileViewModel", "Uploading edited mugshot bytes as PNG (${bytes.size} bytes)")
+        
+        try {
+            val requestBody = bytes.toRequestBody("image/png".toMediaTypeOrNull())
+            val response = api.setMugshot(requestBody)
+            Log.d("ProfileViewModel", "Mugshot upload response: ${response.string()}")
+        } catch (e: Exception) {
+            Log.e("ProfileViewModel", "Mugshot upload failed", e)
         }
     }
 
@@ -150,17 +180,12 @@ class ProfileViewModel(
                 }
 
                 val out = ByteArrayOutputStream()
-                // Convert to PNG as requested
                 scaledBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                 val result = out.toByteArray()
                 if (scaledBitmap != bitmap) scaledBitmap.recycle()
                 bitmap.recycle()
                 result
-            } else {
-                // If bitmap decoding failed, we can't really convert to PNG easily here
-                // but let's try to decode and re-encode anyway if it's potentially a JPG
-                originalBytes
-            }
+            } else originalBytes
         } catch (e: Exception) {
             Log.e("ProfileViewModel", "Error resizing or converting image", e)
             originalBytes
@@ -169,7 +194,6 @@ class ProfileViewModel(
         Log.d("ProfileViewModel", "Uploading raw mugshot bytes as PNG to user/setmugshot.xml (${bytes.size} bytes)")
         
         try {
-            // Updated content type to image/png
             val requestBody = bytes.toRequestBody("image/png".toMediaTypeOrNull())
             val response = api.setMugshot(requestBody)
             Log.d("ProfileViewModel", "Mugshot upload response: ${response.string()}")
