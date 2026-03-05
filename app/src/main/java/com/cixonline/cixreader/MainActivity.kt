@@ -9,28 +9,21 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavType
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
-import androidx.work.*
 import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.db.AppDatabase
 import com.cixonline.cixreader.repository.ForumRepository
 import com.cixonline.cixreader.repository.MessageRepository
-import com.cixonline.cixreader.ui.screens.*
+import com.cixonline.cixreader.ui.AppNavHost
 import com.cixonline.cixreader.ui.theme.CIXReaderTheme
 import com.cixonline.cixreader.utils.SettingsManager
+import com.cixonline.cixreader.utils.SyncManager
 import com.cixonline.cixreader.utils.ThemeMode
-import com.cixonline.cixreader.viewmodel.*
-import com.cixonline.cixreader.workers.SyncWorker
 import kotlinx.coroutines.launch
-import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
     private lateinit var settingsManager: SettingsManager
+    private lateinit var syncManager: SyncManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,307 +33,73 @@ class MainActivity : ComponentActivity() {
         val forumRepository = ForumRepository(NetworkClient.api, database.folderDao())
         val messageRepository = MessageRepository(NetworkClient.api, database.messageDao())
         settingsManager = SettingsManager(this)
+        syncManager = SyncManager(this, settingsManager)
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 settingsManager.backgroundSyncFlow.collect { enabled ->
-                    if (enabled) {
-                        SyncWorker.scheduleNextSync(this@MainActivity)
-                    } else {
-                        cancelBackgroundSync()
-                    }
+                    syncManager.handleSyncStateChange(enabled)
                 }
             }
         }
 
         setContent {
-            val fontSizeMultiplier by settingsManager.fontSizeFlow.collectAsState(initial = settingsManager.getFontSize())
-            val themeMode by settingsManager.themeFlow.collectAsState(initial = settingsManager.getThemeMode())
-            val currentUsername by settingsManager.usernameFlow.collectAsState()
-            
-            val useDarkTheme = when (themeMode) {
-                ThemeMode.LIGHT -> false
-                ThemeMode.DARK -> true
-                ThemeMode.SYSTEM -> isSystemInDarkTheme()
-            }
-            
-            CIXReaderTheme(
-                darkTheme = useDarkTheme,
-                fontSizeMultiplier = fontSizeMultiplier
-            ) {
-                val navController = rememberNavController()
-
-                val startDestination = remember {
-                    val (user, pass) = settingsManager.getCredentials()
-                    if (user != null && pass != null) {
-                        NetworkClient.setCredentials(user, pass)
-                        "welcome"
-                    } else {
-                        "login"
-                    }
-                }
-
-                val onLogout = {
-                    settingsManager.clearCredentials()
-                    navController.navigate("login") {
-                        popUpTo(0) { inclusive = true }
-                    }
-                }
-                
-                val onSettingsClick = {
-                    navController.navigate("settings")
-                }
-
-                val onDraftsClick = {
-                    navController.navigate("drafts")
-                }
-
-                val onProfileClick: (String) -> Unit = { username ->
-                    navController.navigate("profile/$username")
-                }
-
-                NavHost(navController = navController, startDestination = startDestination) {
-                    composable("login") {
-                        val loginViewModel: LoginViewModel = viewModel(
-                            factory = LoginViewModelFactory(settingsManager)
-                        )
-                        LoginScreen(
-                            viewModel = loginViewModel,
-                            onLoginSuccess = {
-                                navController.navigate("welcome") {
-                                    popUpTo("login") { inclusive = true }
-                                }
-                            }
-                        )
-                    }
-                    composable("welcome") {
-                        val welcomeViewModel: WelcomeViewModel = viewModel(
-                            factory = WelcomeViewModelFactory(
-                                api = NetworkClient.api, 
-                                messageDao = database.messageDao(), 
-                                folderDao = database.folderDao(),
-                                dirForumDao = database.dirForumDao(),
-                                cachedProfileDao = database.cachedProfileDao(),
-                                draftDao = database.draftDao()
-                            )
-                        )
-                        WelcomeScreen(
-                            viewModel = welcomeViewModel,
-                            currentUsername = currentUsername,
-                            onExploreForums = {
-                                navController.navigate("forums")
-                            },
-                            onDirectoryClick = {
-                                navController.navigate("directory")
-                            },
-                            onThreadClick = { forum, topic, topicId, rootId, msgId ->
-                                navController.navigate("thread/$forum/$topic/$topicId?rootId=$rootId&msgId=$msgId")
-                            },
-                            onLogout = onLogout,
-                            onSettingsClick = onSettingsClick,
-                            onDraftsClick = onDraftsClick,
-                            onProfileClick = onProfileClick
-                        )
-                    }
-                    composable("forums") {
-                        val forumViewModel: ForumViewModel = viewModel(
-                            factory = ForumViewModelFactory(
-                                api = NetworkClient.api,
-                                repository = forumRepository,
-                                cachedProfileDao = database.cachedProfileDao()
-                            )
-                        )
-                        ForumListScreen(
-                            viewModel = forumViewModel,
-                            currentUsername = currentUsername,
-                            onBackClick = { navController.popBackStack() },
-                            onTopicClick = { forumName, topicName, topicId ->
-                                navController.navigate("thread/$forumName/$topicName/$topicId")
-                            },
-                            onLogout = onLogout,
-                            onSettingsClick = onSettingsClick,
-                            onProfileClick = onProfileClick,
-                            onDraftsClick = onDraftsClick
-                        )
-                    }
-                    composable("directory") {
-                        val directoryViewModel: DirectoryViewModel = viewModel(
-                            factory = DirectoryViewModelFactory(
-                                NetworkClient.api, 
-                                database.dirForumDao(), 
-                                database.folderDao()
-                            )
-                        )
-                        DirectoryScreen(
-                            viewModel = directoryViewModel,
-                            currentUsername = currentUsername,
-                            onBackClick = { navController.popBackStack() },
-                            onForumJoined = { _ ->
-                                // Refresh forums list after joining
-                                navController.navigate("forums") {
-                                    popUpTo("welcome")
-                                }
-                            },
-                            onLogout = onLogout,
-                            onSettingsClick = onSettingsClick,
-                            onProfileClick = onProfileClick,
-                            onDraftsClick = onDraftsClick
-                        )
-                    }
-                    composable("settings") {
-                        SettingsScreen(
-                            settingsManager = settingsManager,
-                            onBackClick = { navController.popBackStack() },
-                            onLogout = onLogout,
-                            onDraftsClick = onDraftsClick,
-                            onProfileClick = onProfileClick
-                        )
-                    }
-                    composable("drafts") {
-                        val draftsViewModel: DraftsViewModel = viewModel(
-                            factory = DraftsViewModelFactory(
-                                database.draftDao(),
-                                messageRepository
-                            )
-                        )
-                        DraftsScreen(
-                            viewModel = draftsViewModel,
-                            onBackClick = { navController.popBackStack() },
-                            onLogout = onLogout,
-                            onSettingsClick = onSettingsClick,
-                            onProfileClick = onProfileClick
-                        )
-                    }
-                    composable(
-                        route = "topics/{forumName}/{forumId}",
-                        arguments = listOf(
-                            navArgument("forumName") { type = NavType.StringType },
-                            navArgument("forumId") { type = NavType.IntType }
-                        )
-                    ) { backStackEntry ->
-                        val forumName = backStackEntry.arguments?.getString("forumName") ?: ""
-                        val forumId = backStackEntry.arguments?.getInt("forumId") ?: 0
-                        val viewModel: TopicListViewModel = viewModel(
-                            factory = TopicListViewModelFactory(forumRepository, forumName, forumId)
-                        )
-                        TopicListScreen(
-                            viewModel = viewModel,
-                            forumName = forumName,
-                            currentUsername = currentUsername,
-                            onBackClick = { navController.popBackStack() },
-                            onTopicClick = { topicName, topicId ->
-                                navController.navigate("thread/$forumName/$topicName/$topicId")
-                            },
-                            onLogout = onLogout,
-                            onSettingsClick = onSettingsClick,
-                            onProfileClick = onProfileClick,
-                            onDraftsClick = onDraftsClick
-                        )
-                    }
-                    composable(
-                        route = "thread/{forumName}/{topicName}/{topicId}?rootId={rootId}&msgId={msgId}",
-                        arguments = listOf(
-                            navArgument("forumName") { type = NavType.StringType },
-                            navArgument("topicName") { type = NavType.StringType },
-                            navArgument("topicId") { type = NavType.IntType },
-                            navArgument("rootId") { 
-                                type = NavType.IntType
-                                defaultValue = 0
-                            },
-                            navArgument("msgId") { 
-                                type = NavType.IntType
-                                defaultValue = 0
-                            }
-                        )
-                    ) { backStackEntry ->
-                        val forumNameArg = backStackEntry.arguments?.getString("forumName") ?: ""
-                        val topicNameArg = backStackEntry.arguments?.getString("topicName") ?: ""
-                        val topicIdArg = backStackEntry.arguments?.getInt("topicId") ?: 0
-                        val rootIdArg = backStackEntry.arguments?.getInt("rootId") ?: 0
-                        val msgIdArg = backStackEntry.arguments?.getInt("msgId") ?: 0
-                        
-                        val viewModel: TopicViewModel = viewModel(
-                            factory = TopicViewModelFactory(
-                                api = NetworkClient.api,
-                                repository = messageRepository, 
-                                cachedProfileDao = database.cachedProfileDao(),
-                                draftDao = database.draftDao(),
-                                folderDao = database.folderDao(),
-                                forumName = forumNameArg,
-                                topicName = topicNameArg,
-                                topicId = topicIdArg,
-                                initialMessageId = msgIdArg,
-                                initialRootId = rootIdArg
-                            )
-                        )
-                        ThreadScreen(
-                            viewModel = viewModel,
-                            currentUsername = currentUsername,
-                            onBackClick = { navController.popBackStack() },
-                            onLogout = onLogout,
-                            onSettingsClick = onSettingsClick,
-                            settingsManager = settingsManager,
-                            onNavigateToThread = { f, t, tId, rId, mId ->
-                                navController.navigate("thread/$f/$t/$tId?rootId=$rId&msgId=$mId")
-                            },
-                            onNavigateToDirectory = {
-                                navController.navigate("directory")
-                            },
-                            onDraftsClick = onDraftsClick,
-                            onProfileClick = onProfileClick
-                        )
-                    }
-                    composable(
-                        route = "profile/{username}",
-                        arguments = listOf(
-                            navArgument("username") { type = NavType.StringType }
-                        )
-                    ) { backStackEntry ->
-                        val username = backStackEntry.arguments?.getString("username") ?: ""
-                        val viewModel: ProfileViewModel = viewModel(
-                            factory = ProfileViewModelFactory(
-                                api = NetworkClient.api,
-                                cachedProfileDao = database.cachedProfileDao(),
-                                username = username
-                            )
-                        )
-                        ProfileScreen(
-                            viewModel = viewModel,
-                            onBackClick = { navController.popBackStack() },
-                            onLogout = onLogout,
-                            onSettingsClick = onSettingsClick,
-                            onDraftsClick = onDraftsClick
-                        )
-                    }
-                }
-            }
+            MainContent(
+                settingsManager = settingsManager,
+                database = database,
+                forumRepository = forumRepository,
+                messageRepository = messageRepository
+            )
         }
     }
 
     override fun onStart() {
         super.onStart()
-        triggerImmediateSync()
+        syncManager.triggerImmediateSync()
     }
+}
 
-    private fun cancelBackgroundSync() {
-        WorkManager.getInstance(this).cancelUniqueWork("CixBackgroundSync")
+@Composable
+fun MainContent(
+    settingsManager: SettingsManager,
+    database: AppDatabase,
+    forumRepository: ForumRepository,
+    messageRepository: MessageRepository
+) {
+    val fontSizeMultiplier by settingsManager.fontSizeFlow.collectAsState(initial = settingsManager.getFontSize())
+    val themeMode by settingsManager.themeFlow.collectAsState(initial = settingsManager.getThemeMode())
+    val currentUsername by settingsManager.usernameFlow.collectAsState()
+    
+    val useDarkTheme = when (themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
     }
+    
+    CIXReaderTheme(
+        darkTheme = useDarkTheme,
+        fontSizeMultiplier = fontSizeMultiplier
+    ) {
+        val navController = rememberNavController()
 
-    private fun triggerImmediateSync() {
-        if (!settingsManager.isBackgroundSyncEnabled()) return
+        val startDestination = remember {
+            val (user, pass) = settingsManager.getCredentials()
+            if (user != null && pass != null) {
+                NetworkClient.setCredentials(user, pass)
+                "welcome"
+            } else {
+                "login"
+            }
+        }
 
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-
-        val syncRequest = OneTimeWorkRequestBuilder<SyncWorker>()
-            .setConstraints(constraints)
-            .build()
-
-        WorkManager.getInstance(this).enqueueUniqueWork(
-            "CixImmediateSync",
-            ExistingWorkPolicy.REPLACE,
-            syncRequest
+        AppNavHost(
+            navController = navController,
+            startDestination = startDestination,
+            settingsManager = settingsManager,
+            database = database,
+            forumRepository = forumRepository,
+            messageRepository = messageRepository,
+            currentUsername = currentUsername
         )
     }
 }
