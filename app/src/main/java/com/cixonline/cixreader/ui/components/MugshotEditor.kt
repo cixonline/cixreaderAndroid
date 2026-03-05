@@ -9,6 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,6 +24,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -31,6 +34,7 @@ import coil.request.ImageRequest
 import coil.size.Size
 import com.cixonline.cixreader.api.NetworkClient
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MugshotEditor(
     uri: Uri,
@@ -47,30 +51,64 @@ fun MugshotEditor(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = Color.Black
         ) {
             Column(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally
+                modifier = Modifier
+                    .fillMaxSize()
+                    .systemBarsPadding() // Ensures controls are visible around notch/status bar
             ) {
-                Text(
-                    "Crop Profile Picture",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = Color.White,
-                    modifier = Modifier.padding(16.dp)
-                )
-                
+                // Header Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color.White)
+                    }
+                    
+                    Text(
+                        "Crop Mugshot",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                    
+                    Button(
+                        onClick = {
+                            Log.d("MugshotEditor", "Save clicked. imageSize=$imageSize, containerSize=$containerSize")
+                            val croppedBitmap = createCroppedBitmap(
+                                context, uri, scale, offset, containerSize, imageSize
+                            )
+                            if (croppedBitmap != null) {
+                                Log.d("MugshotEditor", "Crop successful: ${croppedBitmap.width}x${croppedBitmap.height}")
+                                onConfirm(croppedBitmap)
+                            } else {
+                                Log.e("MugshotEditor", "Crop failed")
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD91B5C))
+                    ) {
+                        Text("SAVE", fontWeight = FontWeight.Bold)
+                    }
+                }
+
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
-                    // This represents the circular frame (visual representation of 100x100 crop)
+                    // This represents the circular frame
                     Box(
                         modifier = Modifier
                             .size(280.dp) 
@@ -109,39 +147,19 @@ fun MugshotEditor(
                                 )
                         )
                     }
-                    
-                    // Instructional text
-                    Text(
-                        "Pinch to zoom, drag to move",
-                        color = Color.White.copy(alpha = 0.7f),
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp)
-                    )
                 }
                 
-                Row(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                        .padding(bottom = 32.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    TextButton(onClick = onDismiss, colors = ButtonDefaults.textButtonColors(contentColor = Color.White)) {
-                        Text("Cancel")
-                    }
-                    Button(
-                        onClick = {
-                            val croppedBitmap = createCroppedBitmap(
-                                context, uri, scale, offset, containerSize, imageSize
-                            )
-                            if (croppedBitmap != null) {
-                                onConfirm(croppedBitmap)
-                            }
-                            onDismiss()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD91B5C))
-                    ) {
-                        Text("Set Mugshot")
-                    }
+                    Text(
+                        "Pinch to zoom, drag to frame within the circle",
+                        color = Color.White.copy(alpha = 0.7f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
         }
@@ -156,6 +174,8 @@ private fun createCroppedBitmap(
     containerSize: IntSize,
     imageSize: IntSize
 ): Bitmap? {
+    if (imageSize.width <= 0 || imageSize.height <= 0 || containerSize.width <= 0) return null
+    
     return try {
         val inputStream = context.contentResolver.openInputStream(uri) ?: return null
         val originalBitmap = BitmapFactory.decodeStream(inputStream)
@@ -163,43 +183,36 @@ private fun createCroppedBitmap(
 
         if (originalBitmap == null) return null
 
-        // Calculate the crop based on the UI transformations
-        // containerSize is the 280dp box.
-        // offset is translation in pixels.
-        // scale is the zoom factor.
-        
-        // We want a 100x100 resulting bitmap.
         val targetSize = 100
         val result = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(result)
         
         val matrix = Matrix()
         
-        // 1. Initial fit: AsyncImage uses ContentScale.Fit in a square box.
-        // Find the scale used to fit original image into containerSize
+        // 1. Calculate how the image fits in the UI container (ContentScale.Fit)
         val fitScale = if (imageSize.width > imageSize.height) {
             containerSize.width.toFloat() / imageSize.width.toFloat()
         } else {
             containerSize.height.toFloat() / imageSize.height.toFloat()
         }
         
+        // 2. Apply transformations to match the UI view
+        // Start with the initial fit scale
+        matrix.postScale(fitScale, fitScale)
+        
+        // Center the scaled image in the container
         val startX = (containerSize.width - imageSize.width * fitScale) / 2f
         val startY = (containerSize.height - imageSize.height * fitScale) / 2f
-        
-        // 2. Apply transformations relative to the 100x100 target
-        // The UI container is much larger than 100px, so we scale down.
-        val uiToTargetScale = targetSize.toFloat() / containerSize.width.toFloat()
-        
-        // Apply initial centering
         matrix.postTranslate(startX, startY)
         
-        // Apply user scale (centered on container)
+        // Apply user zoom (centered on the container)
         matrix.postScale(scale, scale, containerSize.width / 2f, containerSize.height / 2f)
         
-        // Apply user offset
+        // Apply user pan
         matrix.postTranslate(offset.x, offset.y)
         
-        // Scale everything down to the target 100x100 size
+        // 3. Finally, scale everything down to the target 100x100 size
+        val uiToTargetScale = targetSize.toFloat() / containerSize.width.toFloat()
         matrix.postScale(uiToTargetScale, uiToTargetScale)
 
         canvas.drawBitmap(originalBitmap, matrix, android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))

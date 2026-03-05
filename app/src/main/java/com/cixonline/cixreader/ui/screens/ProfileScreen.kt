@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -32,25 +33,23 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.request.CachePolicy
 import coil.request.ImageRequest
+import coil.size.Size
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.ui.components.MugshotEditor
 import com.cixonline.cixreader.viewmodel.ProfileViewModel
 import java.io.File
 
-/**
- * Custom TakePicture contract to explicitly grant URI permissions, 
- * as required for Android 18+ compatibility.
- */
 private class TakePictureWithGrant : ActivityResultContracts.TakePicture() {
     override fun createIntent(context: Context, input: Uri): Intent {
         return super.createIntent(context, input).apply {
-            // Explicitly set ClipData and grant permissions to avoid implicit grant warnings/errors in future Android versions
             clipData = ClipData.newRawUri(null, input)
             addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
@@ -85,6 +84,7 @@ fun ProfileScreen(
     var editResume by remember { mutableStateOf("") }
 
     var showImageSourceDialog by remember { mutableStateOf(false) }
+    var showFullImage by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     // Use rememberSaveable for the Uri to survive activity recreation
     var tempCameraUri by rememberSaveable { mutableStateOf<Uri?>(null) }
@@ -153,6 +153,40 @@ fun ProfileScreen(
                 }
             }
         )
+    }
+
+    if (showFullImage) {
+        val displayImage = pendingMugshotBitmap ?: pendingMugshotUri ?: mugshotUrl
+        if (displayImage != null) {
+            Dialog(
+                onDismissRequest = { showFullImage = false },
+                properties = DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = Color.Black
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(displayImage)
+                                .crossfade(true)
+                                .build(),
+                            imageLoader = NetworkClient.getImageLoader(LocalContext.current),
+                            contentDescription = "Full Mugshot",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
+                        )
+                        IconButton(
+                            onClick = { showFullImage = false },
+                            modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pendingMugshotUri?.let { uri ->
@@ -312,7 +346,9 @@ fun ProfileScreen(
                                     .then(
                                         if (isOwnProfile && isEditing) {
                                             Modifier.clickable { showImageSourceDialog = true }
-                                        } else Modifier
+                                        } else {
+                                            Modifier.clickable { showFullImage = true }
+                                        }
                                     )
                             ) {
                                 val displayImage = pendingMugshotBitmap ?: pendingMugshotUri ?: mugshotUrl
@@ -324,6 +360,7 @@ fun ProfileScreen(
                                             .data(displayImage)
                                             .placeholder(R.drawable.cix_logo)
                                             .error(R.drawable.cix_logo)
+                                            .size(Size.ORIGINAL) // Prevents Coil from downsampling before scaling
                                             .diskCachePolicy(CachePolicy.ENABLED)
                                             .memoryCachePolicy(CachePolicy.ENABLED)
                                             .crossfade(true)
@@ -334,7 +371,7 @@ fun ProfileScreen(
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .clip(CircleShape),
-                                        contentScale = ContentScale.Crop
+                                        contentScale = ContentScale.Fit // Changed from Crop to Fit to ensure whole image is visible
                                     )
 
                                     if (state is AsyncImagePainter.State.Loading) {

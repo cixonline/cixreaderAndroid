@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.xmlpull.v1.XmlPullParser
@@ -63,16 +64,11 @@ class ProfileViewModel(
     }
 
     fun setPendingMugshot(context: Context, uri: Uri?) {
-        if (uri == null) {
-            _pendingMugshotUri.value = null
-            return
-        }
         _pendingMugshotUri.value = uri
     }
     
     fun setPendingMugshotBitmap(bitmap: Bitmap?) {
         _pendingMugshotBitmap.value = bitmap
-        // When a bitmap is set via editor, we clear the raw URI as the bitmap is the "final" version to upload
         _pendingMugshotUri.value = null
     }
 
@@ -132,91 +128,44 @@ class ProfileViewModel(
 
     private suspend fun uploadMugshotBitmapInternal(bitmap: Bitmap) {
         val out = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+        val finalBitmap = if (bitmap.width != 100 || bitmap.height != 100) {
+             Bitmap.createScaledBitmap(bitmap, 100, 100, true)
+        } else bitmap
+
+        finalBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         val bytes = out.toByteArray()
-        
-        Log.d("ProfileViewModel", "Uploading edited mugshot bytes as PNG (${bytes.size} bytes)")
         
         try {
             val requestBody = bytes.toRequestBody("image/png".toMediaTypeOrNull())
-            val response = api.setMugshot(requestBody)
-            Log.d("ProfileViewModel", "Mugshot upload response: ${response.string()}")
-        } catch (e: Exception) {
-            Log.e("ProfileViewModel", "Mugshot upload failed", e)
+            api.setMugshot(requestBody)
+        } finally {
+            if (finalBitmap != bitmap) finalBitmap.recycle()
         }
     }
 
     private suspend fun uploadMugshotInternal(context: Context, uri: Uri) {
         val inputStream = context.contentResolver.openInputStream(uri) ?: return
-        val originalBytes = inputStream.readBytes()
+        val bytes = inputStream.readBytes()
         inputStream.close()
         
-        val bytes = try {
-            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(originalBytes, 0, originalBytes.size, options)
-            
-            val maxSide = 100
-            val bitmap = if (options.outWidth > maxSide || options.outHeight > maxSide) {
-                val scale = Math.max(options.outWidth / maxSide, options.outHeight / maxSide)
-                val decodeOptions = BitmapFactory.Options().apply { inSampleSize = scale }
-                BitmapFactory.decodeByteArray(originalBytes, 0, originalBytes.size, decodeOptions)
-            } else {
-                BitmapFactory.decodeByteArray(originalBytes, 0, originalBytes.size)
-            }
-
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        
+        val maxSide = 100
+        if (options.outWidth > maxSide || options.outHeight > maxSide) {
+            val scale = Math.max(options.outWidth / maxSide, options.outHeight / maxSide)
+            val decodeOptions = BitmapFactory.Options().apply { inSampleSize = scale }
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
             if (bitmap != null) {
-                val scaledBitmap = if (bitmap.width > maxSide || bitmap.height > maxSide) {
-                    val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
-                    var width = maxSide
-                    var height = maxSide
-                    if (ratio > 1) {
-                        height = (maxSide / ratio).toInt()
-                    } else {
-                        width = (maxSide * ratio).toInt()
-                    }
-                    Bitmap.createScaledBitmap(bitmap, width, height, true)
-                } else {
-                    bitmap
-                }
-
                 val out = ByteArrayOutputStream()
-                scaledBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-                val result = out.toByteArray()
-                if (scaledBitmap != bitmap) scaledBitmap.recycle()
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                val resizedBytes = out.toByteArray()
+                api.setMugshot(resizedBytes.toRequestBody("image/png".toMediaTypeOrNull()))
                 bitmap.recycle()
-                result
-            } else originalBytes
-        } catch (e: Exception) {
-            Log.e("ProfileViewModel", "Error resizing or converting image", e)
-            originalBytes
+                return
+            }
         }
-        
-        Log.d("ProfileViewModel", "Uploading raw mugshot bytes as PNG to user/setmugshot.xml (${bytes.size} bytes)")
-        
-        try {
-            val requestBody = bytes.toRequestBody("image/png".toMediaTypeOrNull())
-            val response = api.setMugshot(requestBody)
-            Log.d("ProfileViewModel", "Mugshot upload response: ${response.string()}")
-        } catch (e: Exception) {
-            Log.e("ProfileViewModel", "Mugshot upload failed", e)
-        }
-        
-        kotlinx.coroutines.delay(1000)
-    }
-
-    private fun uriToFile(context: Context, uri: Uri, extension: String): File? {
-        return try {
-            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-            val file = File(context.cacheDir, "mugshot_pending.$extension")
-            val outputStream = FileOutputStream(file)
-            inputStream.copyTo(outputStream)
-            inputStream.close()
-            outputStream.close()
-            file
-        } catch (e: Exception) {
-            Log.e("ProfileViewModel", "Error converting Uri to File", e)
-            null
-        }
+        api.setMugshot(bytes.toRequestBody("image/png".toMediaTypeOrNull()))
     }
 }
 
@@ -256,6 +205,7 @@ class ProfileDelegate(
     fun showProfile(scope: kotlinx.coroutines.CoroutineScope, user: String, forceRefresh: Boolean = false) {
         scope.launch {
             _isLoading.value = true
+            
             try {
                 val cached = if (forceRefresh) null else cachedProfileDao.getProfile(user)
                 val now = System.currentTimeMillis()
@@ -280,34 +230,27 @@ class ProfileDelegate(
                 }
 
                 val profile = api.getProfile(user)
-                if (profile.userName.isNullOrBlank()) {
-                    profile.userName = user
-                }
+                val serverUser = profile.userName?.takeIf { it.isNotBlank() } ?: user
+                if (profile.userName.isNullOrBlank()) profile.userName = serverUser
                 _selectedProfile.value = profile
+                
+                // Ensure the mugshot URL is set
+                _selectedMugshotUrl.value = getMugshotXmlUrl(serverUser)
 
                 coroutineScope {
                     val resumeJob = async {
                         try {
-                            val response = api.getResume(user)
-                            val xml = response.string()
-                            val rawContent = extractRawContent(xml)
-                            if (!rawContent.isNullOrBlank()) {
-                                HtmlUtils.decodeHtml(rawContent).trim()
-                            } else null
-                        } catch (e: Exception) {
-                            null
-                        }
+                            val response = api.getResume(serverUser)
+                            extractRawContent(response.string())?.let { HtmlUtils.decodeHtml(it).trim() }
+                        } catch (e: Exception) { null }
                     }
                     
                     val resume = resumeJob.await()
-                    val mugshotUrl = getMugshotXmlUrl(user)
-                    
                     _selectedResume.value = resume
-                    _selectedMugshotUrl.value = mugshotUrl
 
                     cachedProfileDao.insertProfile(
                         CachedProfile(
-                            userName = user,
+                            userName = serverUser,
                             fullName = profile.fullName,
                             location = profile.location,
                             email = profile.email,
@@ -316,7 +259,7 @@ class ProfileDelegate(
                             lastPost = profile.lastPost,
                             about = profile.about,
                             resume = resume,
-                            mugshotUrl = mugshotUrl,
+                            mugshotUrl = _selectedMugshotUrl.value,
                             experience = profile.experience,
                             lastUpdated = System.currentTimeMillis()
                         )
@@ -324,6 +267,7 @@ class ProfileDelegate(
                 }
             } catch (e: Exception) {
                 Log.e(tag, "showProfile failed for $user", e)
+                // Fallback URL if everything else fails
                 if (_selectedMugshotUrl.value == null) {
                     _selectedMugshotUrl.value = getMugshotXmlUrl(user)
                 }
@@ -336,32 +280,9 @@ class ProfileDelegate(
     private fun extractRawContent(xml: String): String? {
         val trimmedXml = xml.trim()
         if (!trimmedXml.startsWith("<")) return trimmedXml
-        val bodyMatch = Regex("<Body[^>]*>(.*?)</Body>", RegexOption.DOT_MATCHES_ALL).find(xml)
-        if (bodyMatch != null) return bodyMatch.groupValues[1]
-        val resumeMatch = Regex("<Resume[^>]*>(.*?)</Resume>", RegexOption.DOT_MATCHES_ALL).find(xml)
-        if (resumeMatch != null) return resumeMatch.groupValues[1]
-        
-        return try {
-            val factory = XmlPullParserFactory.newInstance()
-            factory.isNamespaceAware = false
-            val parser = factory.newPullParser()
-            parser.setInput(StringReader(xml))
-            var eventType = parser.eventType
-            val sb = StringBuilder()
-            while (eventType != XmlPullParser.END_DOCUMENT) {
-                if (eventType == XmlPullParser.TEXT) sb.append(parser.text)
-                else if (eventType == XmlPullParser.START_TAG) {
-                    val name = parser.name.lowercase()
-                    if (name == "br") sb.append("\n")
-                    else if (name == "p" || name == "div") sb.append("\n\n")
-                }
-                eventType = parser.next()
-            }
-            val result = sb.toString().trim()
-            if (result.isNotEmpty()) result else null
-        } catch (e: Exception) {
-            xml.replace(Regex("<[^>]*>"), " ").trim().replace(Regex(" +"), " ")
-        }
+        Regex("<Body[^>]*>(.*?)</Body>", RegexOption.DOT_MATCHES_ALL).find(xml)?.let { return it.groupValues[1] }
+        Regex("<Resume[^>]*>(.*?)</Resume>", RegexOption.DOT_MATCHES_ALL).find(xml)?.let { return it.groupValues[1] }
+        return null
     }
 
     fun dismissProfile() {
