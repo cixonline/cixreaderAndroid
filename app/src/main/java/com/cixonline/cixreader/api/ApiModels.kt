@@ -98,17 +98,6 @@ class Mugshot {
     var image: String? = null
 }
 
-@Root(name = "MugshotSet", strict = false)
-@Namespace(reference = "http://cixonline.com")
-@Order(elements = ["Filename", "EncodedData"])
-class MugshotSetRequest @JvmOverloads constructor(
-    @field:Element(name = "Filename", required = false)
-    var filename: String? = null,
-
-    @field:Element(name = "EncodedData", required = false)
-    var encodedData: String? = null
-)
-
 data class MugshotSetRequestJson(
     @SerializedName("Image")
     var image: String? = null

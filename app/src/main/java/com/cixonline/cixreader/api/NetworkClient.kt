@@ -44,7 +44,7 @@ object NetworkClient {
             builder.header("Authorization", Credentials.basic(username, password))
         }
         // Set User-Agent as requested
-        builder.header("User-Agent", "cixreaderAndroid-${BuildConfig.VERSION_NAME}")
+        builder.header("User-Agent", "crA-${BuildConfig.VERSION_NAME}")
         chain.proceed(builder.build())
     }
 

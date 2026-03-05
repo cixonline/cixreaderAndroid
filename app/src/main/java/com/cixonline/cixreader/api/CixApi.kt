@@ -46,11 +46,7 @@ interface CixApi {
      * CIX strictly requires the image to be no larger than 100x100 pixels.
      */
     @POST("user/setmugshot.xml")
-    suspend fun setMugshotRaw(@Body body: RequestBody): ResponseBody
-
-    @Headers("Content-Type: application/xml")
-    @POST("user/setmugshot.xml")
-    suspend fun setMugshot(@Body request: MugshotSetRequest): ResponseBody
+    suspend fun setMugshot(@Body body: RequestBody): ResponseBody
 
     @GET("user/alltopics.xml")
     suspend fun getAllTopics(@Query("maxResults") maxResults: Int = 5000): UserForumTopicResultSet2

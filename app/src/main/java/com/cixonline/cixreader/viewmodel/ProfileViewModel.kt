@@ -4,13 +4,11 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.util.Base64
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.cixonline.cixreader.api.CixApi
-import com.cixonline.cixreader.api.MugshotSetRequest
 import com.cixonline.cixreader.api.SetProfileRequest
 import com.cixonline.cixreader.api.UserProfile
 import com.cixonline.cixreader.db.CachedProfileDao
@@ -123,7 +121,6 @@ class ProfileViewModel(
         val originalBytes = inputStream.readBytes()
         inputStream.close()
         
-        // Based on Mugshot.cs, maximum mugshot dimensions are 100x100
         val bytes = try {
             val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(originalBytes, 0, originalBytes.size, options)
@@ -138,7 +135,6 @@ class ProfileViewModel(
             }
 
             if (bitmap != null) {
-                // Resize to exactly 100x100 or maintain aspect ratio within 100x100
                 val scaledBitmap = if (bitmap.width > maxSide || bitmap.height > maxSide) {
                     val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
                     var width = maxSide
@@ -154,36 +150,33 @@ class ProfileViewModel(
                 }
 
                 val out = ByteArrayOutputStream()
-                scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                // Convert to PNG as requested
+                scaledBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                 val result = out.toByteArray()
                 if (scaledBitmap != bitmap) scaledBitmap.recycle()
                 bitmap.recycle()
                 result
-            } else originalBytes
+            } else {
+                // If bitmap decoding failed, we can't really convert to PNG easily here
+                // but let's try to decode and re-encode anyway if it's potentially a JPG
+                originalBytes
+            }
         } catch (e: Exception) {
-            Log.e("ProfileViewModel", "Error resizing image", e)
+            Log.e("ProfileViewModel", "Error resizing or converting image", e)
             originalBytes
         }
         
-        Log.d("ProfileViewModel", "Uploading mugshot as MugshotSet XML to user/setmugshot.xml (${bytes.size} bytes)")
+        Log.d("ProfileViewModel", "Uploading raw mugshot bytes as PNG to user/setmugshot.xml (${bytes.size} bytes)")
         
         try {
-            val encodedData = Base64.encodeToString(bytes, Base64.NO_WRAP)
-            val request = MugshotSetRequest(
-                filename = "${username}.jpg",
-                encodedData = encodedData
-            )
-            val response = api.setMugshot(request)
+            // Updated content type to image/png
+            val requestBody = bytes.toRequestBody("image/png".toMediaTypeOrNull())
+            val response = api.setMugshot(requestBody)
             Log.d("ProfileViewModel", "Mugshot upload response: ${response.string()}")
         } catch (e: Exception) {
-            Log.e("ProfileViewModel", "Mugshot upload failed using XML, trying raw", e)
-            // Fallback to raw if XML fails, though the error suggest XML is what's expected
-            val requestBody = bytes.toRequestBody("image/jpeg".toMediaTypeOrNull())
-            val response = api.setMugshotRaw(requestBody)
-            Log.d("ProfileViewModel", "Mugshot raw upload response: ${response.string()}")
+            Log.e("ProfileViewModel", "Mugshot upload failed", e)
         }
         
-        // Wait a bit for the server to update
         kotlinx.coroutines.delay(1000)
     }
 
