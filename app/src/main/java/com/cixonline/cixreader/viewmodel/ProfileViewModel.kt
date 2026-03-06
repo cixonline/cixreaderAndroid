@@ -56,7 +56,8 @@ class ProfileViewModel(
     val pendingMugshotBitmap: StateFlow<Bitmap?> = _pendingMugshotBitmap
 
     init {
-        delegate.showProfile(viewModelScope, username)
+        // Force refresh on every page load to ensure fresh data and mugshot
+        refresh()
     }
 
     fun refresh() {
@@ -190,6 +191,7 @@ class ProfileDelegate(
     private val api: CixApi,
     private val cachedProfileDao: CachedProfileDao
 ) {
+    private val tag = "ProfileDelegate"
     private val _selectedProfile = MutableStateFlow<UserProfile?>(null)
     val selectedProfile: StateFlow<UserProfile?> = _selectedProfile
 

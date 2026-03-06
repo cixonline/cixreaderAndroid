@@ -83,7 +83,10 @@ class TopicViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     private val roots = messages.map { list ->
-        list.filter { it.isRoot }.sortedByDescending { it.date }
+        val ids = list.map { it.remoteId }.toSet()
+        // Include actual roots (commentId == 0) and pseudo-roots (parent not in list)
+        // Sort by date descending to match UI order (newest thread first)
+        list.filter { it.commentId == 0 || !ids.contains(it.commentId) }.sortedByDescending { it.date }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
@@ -138,50 +141,142 @@ class TopicViewModel(
     suspend fun findNextUnreadItem(currentMessageId: Int?): NextUnreadItem {
         val allMessages = messages.value
         val tree = messageTree.value
+        val currentRoots = roots.value
         
         if (currentMessageId != null) {
             val currentMsg = allMessages.find { it.remoteId == currentMessageId }
             if (currentMsg != null) {
-                // Perform tree-based traversal within the current conversation
-                val nextInThread = findNextUnreadInThread(currentMsg, allMessages, tree)
+                // 1. Try to find the next unread message in the current thread tree (DFS)
+                val nextInThread = findNextInThread(currentMsg, allMessages, tree)
                 if (nextInThread != null) {
                     return NextUnreadItem.Message(nextInThread)
                 }
+                
+                // 2. Thread exhausted. Move to next unread thread root in this topic
+                val localRoot = findLocalRoot(currentMsg, allMessages)
+                val currentRootIndex = currentRoots.indexOfFirst { it.remoteId == localRoot.remoteId }
+                if (currentRootIndex != -1) {
+                    for (i in (currentRootIndex + 1) until currentRoots.size) {
+                        val nextRoot = currentRoots[i]
+                        if (nextRoot.unread) return NextUnreadItem.Message(nextRoot)
+                        
+                        // Check for unread within that next thread root's tree
+                        val firstUnreadInNextThread = findFirstUnreadInSubtree(nextRoot, tree)
+                        if (firstUnreadInNextThread != null) return NextUnreadItem.Message(firstUnreadInNextThread)
+                    }
+                }
+            }
+        } else {
+            // Find the very first unread message in the topic (visual order)
+            for (root in currentRoots) {
+                if (root.unread) return NextUnreadItem.Message(root)
+                val unread = findFirstUnreadInSubtree(root, tree)
+                if (unread != null) return NextUnreadItem.Message(unread)
             }
         }
 
-        // When current thread is exhausted, do NOT automatically jump. 
-        // Return NoMoreUnread to let the user know they've reached the end of this branch.
-        return NextUnreadItem.NoMoreUnread
+        // 3. No more unread in current topic. Search other topics/forums.
+        return findNextUnreadOutsideTopic()
     }
 
-    private fun findNextUnreadInThread(current: CIXMessage, allMessages: List<CIXMessage>, tree: Map<Int, List<CIXMessage>>): CIXMessage? {
-        // 1. Check direct comments (children), most recent unread first
-        // CIX messages are usually chronological, so we take the "most recent" unread comment
-        val children = tree[current.remoteId]?.sortedByDescending { it.date } ?: emptyList()
-        for (child in children) {
-            if (child.unread) return child
-        }
+    private fun findNextInThread(current: CIXMessage, allMessages: List<CIXMessage>, tree: Map<Int, List<CIXMessage>>): CIXMessage? {
+        // A. Check subtree of current message (DFS)
+        findFirstUnreadInSubtree(current, tree)?.let { return it }
         
-        // 2. Backtrack up the tree to parent and find next most recent sibling
+        // B. Backtrack up the tree to find the next oldest sibling
         var node = current
-        while (node.commentId != 0) {
+        val rootOfCurrentThread = findLocalRoot(current, allMessages)
+        
+        while (node.remoteId != rootOfCurrentThread.remoteId) {
             val parentId = node.commentId
-            // Siblings are all comments to the same parent
-            val siblings = tree[parentId]?.sortedByDescending { it.date } ?: emptyList()
+            val siblings = tree[parentId]?.sortedBy { it.date } ?: emptyList()
             val myIndex = siblings.indexOfFirst { it.remoteId == node.remoteId }
             
             if (myIndex != -1) {
-                // Search for the next sibling in order (siblings are sorted by descending date)
                 for (i in (myIndex + 1) until siblings.size) {
-                    if (siblings[i].unread) return siblings[i]
+                    val sibling = siblings[i]
+                    if (sibling.unread) return sibling
+                    
+                    // If sibling is read, check its subtree
+                    val unreadInSiblingBranch = findFirstUnreadInSubtree(sibling, tree)
+                    if (unreadInSiblingBranch != null) return unreadInSiblingBranch
                 }
             }
-            // Move up to parent and continue search
+            // Move up to parent
             node = allMessages.find { it.remoteId == parentId } ?: break
         }
-        
         return null
+    }
+
+    private fun findFirstUnreadInSubtree(root: CIXMessage, tree: Map<Int, List<CIXMessage>>): CIXMessage? {
+        val children = tree[root.remoteId]?.sortedBy { it.date } ?: return null
+        for (child in children) {
+            if (child.unread) return child
+            val unread = findFirstUnreadInSubtree(child, tree)
+            if (unread != null) return unread
+        }
+        return null
+    }
+
+    private fun findLocalRoot(msg: CIXMessage, allMessages: List<CIXMessage>): CIXMessage {
+        val ids = allMessages.map { it.remoteId }.toSet()
+        val msgMap = allMessages.associateBy { it.remoteId }
+        var current = msg
+        // Trace back until we hit a real root (commentId=0) or a pseudo-root (parent not in view)
+        while (current.commentId != 0 && ids.contains(current.commentId)) {
+            current = msgMap[current.commentId]!!
+        }
+        return current
+    }
+
+    private suspend fun findNextUnreadOutsideTopic(): NextUnreadItem {
+        val allFolders = folderDao.getAll().first()
+        val currentForum = allFolders.find { it.isRootFolder && it.name.equals(forumName, ignoreCase = true) }
+        
+        if (currentForum != null) {
+            val forumTopics = allFolders.filter { it.parentId == currentForum.id }.sortedBy { it.index }
+            val currentTopicIndex = forumTopics.indexOfFirst { it.id == topicId }
+            if (currentTopicIndex != -1) {
+                // Check next topics in current forum
+                for (i in (currentTopicIndex + 1) until forumTopics.size) {
+                    if (forumTopics[i].unread > 0) return NextUnreadItem.Topic(forumName, forumTopics[i].name, forumTopics[i].id)
+                }
+            }
+        }
+
+        // Check next forums
+        val allForums = allFolders.filter { it.isRootFolder }.sortedBy { it.index }
+        val currentForumIndex = allForums.indexOfFirst { it.name.equals(forumName, ignoreCase = true) }
+        if (currentForumIndex != -1) {
+            for (i in (currentForumIndex + 1) until allForums.size) {
+                if (allForums[i].unread > 0) {
+                    allFolders.find { it.parentId == allForums[i].id && it.unread > 0 }?.let {
+                        return NextUnreadItem.Topic(allForums[i].name, it.name, it.id)
+                    }
+                }
+            }
+            // Wrap around to start of forums
+            for (i in 0 until currentForumIndex) {
+                if (allForums[i].unread > 0) {
+                    allFolders.find { it.parentId == allForums[i].id && it.unread > 0 }?.let {
+                        return NextUnreadItem.Topic(allForums[i].name, it.name, it.id)
+                    }
+                }
+            }
+        }
+
+        // Finally, check earlier topics in current forum (wrap around)
+        if (currentForum != null) {
+            val forumTopics = allFolders.filter { it.parentId == currentForum.id }.sortedBy { it.index }
+            val currentTopicIndex = forumTopics.indexOfFirst { it.id == topicId }
+            if (currentTopicIndex != -1) {
+                for (i in 0 until currentTopicIndex) {
+                    if (forumTopics[i].unread > 0) return NextUnreadItem.Topic(forumName, forumTopics[i].name, forumTopics[i].id)
+                }
+            }
+        }
+
+        return NextUnreadItem.NoMoreUnread
     }
 
     suspend fun postReply(
@@ -192,7 +287,6 @@ class TopicViewModel(
         attachmentName: String?
     ): Boolean {
         _isLoading.value = true
-        
         val attachments = if (attachmentUri != null && attachmentName != null) {
             try {
                 context.contentResolver.openInputStream(attachmentUri)?.use { inputStream ->
@@ -232,9 +326,7 @@ class TopicViewModel(
         }
     }
 
-    suspend fun getDraft(replyToId: Int): Draft? {
-        return draftDao.getDraft(forumName, topicName, replyToId)
-    }
+    suspend fun getDraft(replyToId: Int): Draft? = draftDao.getDraft(forumName, topicName, replyToId)
 
     fun joinForum(forum: String) {
         viewModelScope.launch {
@@ -247,47 +339,23 @@ class TopicViewModel(
         }
     }
 
-    fun dismissJoinDialog() {
-        _showJoinDialog.value = null
+    fun dismissJoinDialog() = run { _showJoinDialog.value = null }
+
+    fun onSearchQueryChange(newQuery: String) = run { _searchQuery.value = newQuery }
+
+    fun toggleStar(message: CIXMessage) = viewModelScope.launch { repository.toggleStar(message) }
+
+    fun markAsRead(message: CIXMessage) = viewModelScope.launch { repository.markAsRead(message) }
+
+    fun withdrawMessage(message: CIXMessage) = viewModelScope.launch {
+        _isLoading.value = true
+        if (repository.withdrawMessage(message)) refresh()
+        _isLoading.value = false
     }
 
-    fun onSearchQueryChange(newQuery: String) {
-        _searchQuery.value = newQuery
-    }
-
-    fun toggleStar(message: CIXMessage) {
-        viewModelScope.launch {
-            repository.toggleStar(message)
-        }
-    }
-
-    fun markAsRead(message: CIXMessage) {
-        viewModelScope.launch {
-            repository.markAsRead(message)
-        }
-    }
-
-    fun withdrawMessage(message: CIXMessage) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            if (repository.withdrawMessage(message)) {
-                refresh()
-            }
-            _isLoading.value = false
-        }
-    }
-
-    override fun showProfile(user: String) {
-        profileDelegate.showProfile(viewModelScope, user)
-    }
-
-    override fun dismissProfile() {
-        profileDelegate.dismissProfile()
-    }
-
-    fun onScrollToMessageComplete() {
-        _scrollToMessageId.value = null
-    }
+    override fun showProfile(user: String) = profileDelegate.showProfile(viewModelScope, user)
+    override fun dismissProfile() = profileDelegate.dismissProfile()
+    fun onScrollToMessageComplete() = run { _scrollToMessageId.value = null }
 }
 
 class TopicViewModelFactory(

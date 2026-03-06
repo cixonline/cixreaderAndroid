@@ -170,6 +170,8 @@ fun ProfileScreen(
                         AsyncImage(
                             model = ImageRequest.Builder(LocalContext.current)
                                 .data(displayImage)
+                                .diskCachePolicy(CachePolicy.DISABLED)
+                                .memoryCachePolicy(CachePolicy.DISABLED)
                                 .crossfade(true)
                                 .build(),
                             imageLoader = NetworkClient.getImageLoader(LocalContext.current),
@@ -361,8 +363,8 @@ fun ProfileScreen(
                                             .placeholder(R.drawable.cix_logo)
                                             .error(R.drawable.cix_logo)
                                             .size(Size.ORIGINAL) // Prevents Coil from downsampling before scaling
-                                            .diskCachePolicy(CachePolicy.ENABLED)
-                                            .memoryCachePolicy(CachePolicy.ENABLED)
+                                            .diskCachePolicy(CachePolicy.DISABLED) // Force re-download from server
+                                            .memoryCachePolicy(CachePolicy.DISABLED) // Force re-download from server
                                             .crossfade(true)
                                             .build(),
                                         imageLoader = NetworkClient.getImageLoader(LocalContext.current),
