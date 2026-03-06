@@ -3,7 +3,6 @@ package com.cixonline.cixreader.viewmodel
 import android.content.Context
 import android.net.Uri
 import android.util.Base64
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -16,10 +15,8 @@ import com.cixonline.cixreader.db.DraftDao
 import com.cixonline.cixreader.db.FolderDao
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.Draft
-import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.repository.NotAMemberException
-import com.cixonline.cixreader.utils.HtmlUtils
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -78,20 +75,8 @@ class TopicViewModel(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val messageTree = messages.map { list ->
-        list.groupBy { it.commentId }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
-
-    private val roots = messages.map { list ->
-        val ids = list.map { it.remoteId }.toSet()
-        // Include actual roots (commentId == 0) and pseudo-roots (parent not in list)
-        // Sort by date descending to match UI order (newest thread first)
-        list.filter { it.commentId == 0 || !ids.contains(it.commentId) }.sortedByDescending { it.date }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
     init {
         viewModelScope.launch {
-            // Check local cache first
             val currentMessages = repository.getMessagesForTopic(topicId).first()
             if (currentMessages.isEmpty() || initialRootId != 0 || initialMessageId != 0) {
                 _isLoading.value = true
@@ -104,19 +89,12 @@ class TopicViewModel(
                             topicId
                         )
                     } else {
-                        // Only fetch if cache is empty
                         val firstUnreadId = repository.getFirstUnreadMessageId(forumName, topicName)
                         if (firstUnreadId > 0) {
                             repository.fetchThreadThenBackfill(forumName, topicName, firstUnreadId, topicId)
                             _scrollToMessageId.value = firstUnreadId
                         } else {
                             repository.refreshMessages(forumName, topicName, topicId)
-                            val messagesAfterRefresh = repository.getMessagesForTopic(topicId).first()
-                            if (messagesAfterRefresh.isNotEmpty()) {
-                                messagesAfterRefresh.maxByOrNull { it.date }?.let { mostRecent ->
-                                    _scrollToMessageId.value = mostRecent.remoteId
-                                }
-                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -145,93 +123,36 @@ class TopicViewModel(
 
     suspend fun findNextUnreadItem(currentMessageId: Int?): NextUnreadItem {
         val allMessages = messages.value
-        val tree = messageTree.value
-        val currentRoots = roots.value
-        
+        if (allMessages.isEmpty()) return NextUnreadItem.NoMoreUnread
+
+        // 1. Reconstruct the visual order sequence used by ThreadScreen
+        val tree = allMessages.groupBy { it.commentId }
+        val ids = allMessages.map { it.remoteId }.toSet()
+        val currentRoots = allMessages.filter { it.commentId == 0 || !ids.contains(it.commentId) }
+            .sortedByDescending { it.date }
+
+        val visualSequence = mutableListOf<CIXMessage>()
+        fun walk(m: CIXMessage) {
+            visualSequence.add(m)
+            tree[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it) }
+        }
+        currentRoots.forEach { walk(it) }
+
+        // 2. Find the next unread message in this visual order
         if (currentMessageId != null) {
-            val currentMsg = allMessages.find { it.remoteId == currentMessageId }
-            if (currentMsg != null) {
-                // 1. Try to find the next unread message in the current thread tree (DFS)
-                val nextInThread = findNextInThread(currentMsg, allMessages, tree)
-                if (nextInThread != null) {
-                    return NextUnreadItem.Message(nextInThread)
-                }
-                
-                // 2. Thread exhausted. Move to next unread thread root in this topic
-                val localRoot = findLocalRoot(currentMsg, allMessages)
-                val currentRootIndex = currentRoots.indexOfFirst { it.remoteId == localRoot.remoteId }
-                if (currentRootIndex != -1) {
-                    for (i in (currentRootIndex + 1) until currentRoots.size) {
-                        val nextRoot = currentRoots[i]
-                        if (nextRoot.unread) return NextUnreadItem.Message(nextRoot)
-                        
-                        // Check for unread within that next thread root's tree
-                        val firstUnreadInNextThread = findFirstUnreadInSubtree(nextRoot, tree)
-                        if (firstUnreadInNextThread != null) return NextUnreadItem.Message(firstUnreadInNextThread)
-                    }
+            val currentIndex = visualSequence.indexOfFirst { it.remoteId == currentMessageId }
+            if (currentIndex != -1) {
+                for (i in (currentIndex + 1) until visualSequence.size) {
+                    if (visualSequence[i].unread) return NextUnreadItem.Message(visualSequence[i])
                 }
             }
         } else {
-            // Find the very first unread message in the topic (visual order)
-            for (root in currentRoots) {
-                if (root.unread) return NextUnreadItem.Message(root)
-                val unread = findFirstUnreadInSubtree(root, tree)
-                if (unread != null) return NextUnreadItem.Message(unread)
-            }
+            // Find the very first unread message in visual sequence
+            visualSequence.find { it.unread }?.let { return NextUnreadItem.Message(it) }
         }
 
         // 3. No more unread in current topic. Search other topics/forums.
         return findNextUnreadOutsideTopic()
-    }
-
-    private fun findNextInThread(current: CIXMessage, allMessages: List<CIXMessage>, tree: Map<Int, List<CIXMessage>>): CIXMessage? {
-        // A. Check subtree of current message (DFS)
-        findFirstUnreadInSubtree(current, tree)?.let { return it }
-        
-        // B. Backtrack up the tree to find the next oldest sibling
-        var node = current
-        val rootOfCurrentThread = findLocalRoot(current, allMessages)
-        
-        while (node.remoteId != rootOfCurrentThread.remoteId) {
-            val parentId = node.commentId
-            val siblings = tree[parentId]?.sortedBy { it.date } ?: emptyList()
-            val myIndex = siblings.indexOfFirst { it.remoteId == node.remoteId }
-            
-            if (myIndex != -1) {
-                for (i in (myIndex + 1) until siblings.size) {
-                    val sibling = siblings[i]
-                    if (sibling.unread) return sibling
-                    
-                    // If sibling is read, check its subtree
-                    val unreadInSiblingBranch = findFirstUnreadInSubtree(sibling, tree)
-                    if (unreadInSiblingBranch != null) return unreadInSiblingBranch
-                }
-            }
-            // Move up to parent
-            node = allMessages.find { it.remoteId == parentId } ?: break
-        }
-        return null
-    }
-
-    private fun findFirstUnreadInSubtree(root: CIXMessage, tree: Map<Int, List<CIXMessage>>): CIXMessage? {
-        val children = tree[root.remoteId]?.sortedBy { it.date } ?: return null
-        for (child in children) {
-            if (child.unread) return child
-            val unread = findFirstUnreadInSubtree(child, tree)
-            if (unread != null) return unread
-        }
-        return null
-    }
-
-    private fun findLocalRoot(msg: CIXMessage, allMessages: List<CIXMessage>): CIXMessage {
-        val ids = allMessages.map { it.remoteId }.toSet()
-        val msgMap = allMessages.associateBy { it.remoteId }
-        var current = msg
-        // Trace back until we hit a real root (commentId=0) or a pseudo-root (parent not in view)
-        while (current.commentId != 0 && ids.contains(current.commentId)) {
-            current = msgMap[current.commentId]!!
-        }
-        return current
     }
 
     private suspend fun findNextUnreadOutsideTopic(): NextUnreadItem {
@@ -242,14 +163,12 @@ class TopicViewModel(
             val forumTopics = allFolders.filter { it.parentId == currentForum.id }.sortedBy { it.index }
             val currentTopicIndex = forumTopics.indexOfFirst { it.id == topicId }
             if (currentTopicIndex != -1) {
-                // Check next topics in current forum
                 for (i in (currentTopicIndex + 1) until forumTopics.size) {
                     if (forumTopics[i].unread > 0) return NextUnreadItem.Topic(forumName, forumTopics[i].name, forumTopics[i].id)
                 }
             }
         }
 
-        // Check next forums
         val allForums = allFolders.filter { it.isRootFolder }.sortedBy { it.index }
         val currentForumIndex = allForums.indexOfFirst { it.name.equals(forumName, ignoreCase = true) }
         if (currentForumIndex != -1) {
@@ -260,7 +179,6 @@ class TopicViewModel(
                     }
                 }
             }
-            // Wrap around to start of forums
             for (i in 0 until currentForumIndex) {
                 if (allForums[i].unread > 0) {
                     allFolders.find { it.parentId == allForums[i].id && it.unread > 0 }?.let {
@@ -270,7 +188,6 @@ class TopicViewModel(
             }
         }
 
-        // Finally, check earlier topics in current forum (wrap around)
         if (currentForum != null) {
             val forumTopics = allFolders.filter { it.parentId == currentForum.id }.sortedBy { it.index }
             val currentTopicIndex = forumTopics.indexOfFirst { it.id == topicId }
