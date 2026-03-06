@@ -29,8 +29,6 @@ class SyncRepository(
             syncReadStatusToServer()
 
             // 2. Sync new messages from server
-            Log.d(tag, "Starting periodic sync via user/sync.xml")
-            
             val lastSyncDate = settingsManager.getLastSyncDate()
             var currentSince = lastSyncDate
             val maxResults = 5000
@@ -93,7 +91,6 @@ class SyncRepository(
                 settingsManager.saveLastSyncDate(DateUtils.formatApiDate(newestMessageDate))
             }
 
-            Log.d(tag, "Periodic sync completed")
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -107,8 +104,6 @@ class SyncRepository(
             val pending = messageDao.getReadPendingMessages()
             if (pending.isEmpty()) return
 
-            Log.d(tag, "Syncing ${pending.size} read status updates to server")
-
             for (msg in pending) {
                 try {
                     val encodedForum = HtmlUtils.cixEncode(msg.forumName)
@@ -120,7 +115,6 @@ class SyncRepository(
                     // Clear pending flag on success
                     messageDao.insertAll(listOf(msg.copy(readPending = false)))
 
-                    Log.d(tag, "Marked message ${msg.remoteId} as read in ${msg.forumName}/${msg.topicName}")
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -186,8 +180,6 @@ class SyncRepository(
 
     suspend fun fullSync() = withContext(Dispatchers.IO) {
         try {
-            Log.d(tag, "Starting full sync")
-            
             // 1. Sync Read Status first
             syncReadStatusToServer()
 
@@ -227,7 +219,6 @@ class SyncRepository(
                 }
             }
             
-            Log.d(tag, "Full sync completed")
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
