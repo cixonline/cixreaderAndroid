@@ -53,110 +53,107 @@ fun MugshotEditor(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false
+            decorFitsSystemWindows = true
         )
     ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = Color.Black
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .systemBarsPadding() // Ensures controls are visible around notch/status bar
-            ) {
-                // Header Row
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color.White)
-                    }
-                    
-                    Text(
-                        "Crop Mugshot",
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                    
-                    Button(
-                        onClick = {
-                            Log.d("MugshotEditor", "Save clicked. imageSize=$imageSize, containerSize=$containerSize")
-                            val croppedBitmap = createCroppedBitmap(
-                                context, uri, scale, offset, containerSize, imageSize
-                            )
-                            if (croppedBitmap != null) {
-                                Log.d("MugshotEditor", "Crop successful: ${croppedBitmap.width}x${croppedBitmap.height}")
-                                onConfirm(croppedBitmap)
-                            } else {
-                                Log.e("MugshotEditor", "Crop failed")
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD91B5C))
-                    ) {
-                        Text("SAVE", fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // This represents the circular frame
-                    Box(
-                        modifier = Modifier
-                            .size(280.dp) 
-                            .clip(CircleShape)
-                            .background(Color(0xFF1A1A1A))
-                            .onGloballyPositioned { containerSize = it.size }
-                            .pointerInput(Unit) {
-                                detectTransformGestures { _, pan, zoom, _ ->
-                                    scale = (scale * zoom).coerceIn(0.5f, 10f)
-                                    offset += pan
+        Scaffold(
+            topBar = {
+                CenterAlignedTopAppBar(
+                    title = { Text("Crop Mugshot", style = MaterialTheme.typography.titleLarge) },
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Default.Close, contentDescription = "Cancel")
+                        }
+                    },
+                    actions = {
+                        TextButton(
+                            onClick = {
+                                val croppedBitmap = createCroppedBitmap(
+                                    context, uri, scale, offset, containerSize, imageSize
+                                )
+                                if (croppedBitmap != null) {
+                                    onConfirm(croppedBitmap)
                                 }
                             }
-                            .clipToBounds()
-                    ) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(context)
-                                .data(uri)
-                                .size(Size.ORIGINAL)
-                                .build(),
-                            imageLoader = NetworkClient.getImageLoader(context),
-                            contentDescription = null,
-                            contentScale = ContentScale.Fit,
-                            onSuccess = { state ->
-                                imageSize = IntSize(
-                                    state.painter.intrinsicSize.width.toInt(),
-                                    state.painter.intrinsicSize.height.toInt()
-                                )
-                            },
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer(
-                                    scaleX = scale,
-                                    scaleY = scale,
-                                    translationX = offset.x,
-                                    translationY = offset.y
-                                )
-                        )
-                    }
+                        ) {
+                            Text(
+                                "ACCEPT", 
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = Color.Black,
+                        titleContentColor = Color.White,
+                        navigationIconContentColor = Color.White
+                    )
+                )
+            },
+            containerColor = Color.Black
+        ) { padding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentAlignment = Alignment.Center
+            ) {
+                // Dimmed background for the non-cropped areas
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.5f))
+                )
+
+                // This represents the circular frame
+                Box(
+                    modifier = Modifier
+                        .size(280.dp) 
+                        .clip(CircleShape)
+                        .background(Color(0xFF1A1A1A))
+                        .onGloballyPositioned { containerSize = it.size }
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                scale = (scale * zoom).coerceIn(0.5f, 10f)
+                                offset += pan
+                            }
+                        }
+                        .clipToBounds()
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(uri)
+                            .size(Size.ORIGINAL)
+                            .build(),
+                        imageLoader = NetworkClient.getImageLoader(context),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        onSuccess = { state ->
+                            imageSize = IntSize(
+                                state.painter.intrinsicSize.width.toInt(),
+                                state.painter.intrinsicSize.height.toInt()
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer(
+                                scaleX = scale,
+                                scaleY = scale,
+                                translationX = offset.x,
+                                translationY = offset.y
+                            )
+                    )
                 }
                 
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
                         .padding(bottom = 32.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        "Pinch to zoom, drag to frame within the circle",
+                        "Pinch to zoom, drag to frame",
                         color = Color.White.copy(alpha = 0.7f),
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -197,7 +194,6 @@ private fun createCroppedBitmap(
         }
         
         // 2. Apply transformations to match the UI view
-        // Start with the initial fit scale
         matrix.postScale(fitScale, fitScale)
         
         // Center the scaled image in the container
