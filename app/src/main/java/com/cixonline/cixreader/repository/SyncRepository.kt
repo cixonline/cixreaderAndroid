@@ -38,6 +38,7 @@ class SyncRepository(
             do {
                 val resultSet = api.sync(count = maxResults, since = currentSince)
                 val messages = resultSet.messages
+                Log.d(tag, "sync API returned ${messages.size} messages")
                 
                 if (messages.isEmpty()) break
                 
@@ -139,6 +140,8 @@ class SyncRepository(
             val encodedTopic = HtmlUtils.cixEncode(topicName)
             
             val resultSet = api.getMessages(encodedForum, encodedTopic, since = since)
+            Log.d(tag, "getMessages (allmessages) API returned ${resultSet.messages.size} messages for $forumName/$topicName")
+
             val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
             
             val messages = resultSet.messages.map { apiMsg ->

@@ -35,9 +35,17 @@ class MessageRepository(
             val encodedForum = HtmlUtils.cixEncode(forum)
             val encodedTopic = HtmlUtils.cixEncode(topic)
             
+            val latestMessage = messageDao.getLatestMessage(topicId)
+            val since = if (force || latestMessage == null) null else DateUtils.formatApiDate(latestMessage.date)
+
+            // If we have messages and aren't forcing, only fetch if we're likely behind
+            if (!force && latestMessage != null) {
+                // We could potentially skip here if we trust periodic sync, 
+                // but let's at least use 'since' to avoid downloading everything.
+            }
+
             // Fetch the latest messages for the topic.
-            // By default, since=null returns the most recent 100 messages.
-            val resultSet = api.getMessages(encodedForum, encodedTopic, since = null)
+            val resultSet = api.getMessages(encodedForum, encodedTopic, since = since)
             val apiMessages = resultSet.messages
             
             if (apiMessages.isNotEmpty()) {

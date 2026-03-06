@@ -91,34 +91,39 @@ class TopicViewModel(
 
     init {
         viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                if (initialRootId != 0 || initialMessageId != 0) {
-                    repository.fetchMessageAndChildren(
-                        forumName, 
-                        topicName, 
-                        if (initialRootId != 0) initialRootId else initialMessageId, 
-                        topicId
-                    )
-                } else {
-                    val firstUnreadId = repository.getFirstUnreadMessageId(forumName, topicName)
-                    if (firstUnreadId > 0) {
-                        repository.fetchThreadThenBackfill(forumName, topicName, firstUnreadId, topicId)
-                        _scrollToMessageId.value = firstUnreadId
+            // Check local cache first
+            val currentMessages = repository.getMessagesForTopic(topicId).first()
+            if (currentMessages.isEmpty() || initialRootId != 0 || initialMessageId != 0) {
+                _isLoading.value = true
+                try {
+                    if (initialRootId != 0 || initialMessageId != 0) {
+                        repository.fetchMessageAndChildren(
+                            forumName, 
+                            topicName, 
+                            if (initialRootId != 0) initialRootId else initialMessageId, 
+                            topicId
+                        )
                     } else {
-                        repository.refreshMessages(forumName, topicName, topicId)
-                        val currentMessages = repository.getMessagesForTopic(topicId).first()
-                        if (currentMessages.isNotEmpty()) {
-                            currentMessages.maxByOrNull { it.date }?.let { mostRecent ->
-                                _scrollToMessageId.value = mostRecent.remoteId
+                        // Only fetch if cache is empty
+                        val firstUnreadId = repository.getFirstUnreadMessageId(forumName, topicName)
+                        if (firstUnreadId > 0) {
+                            repository.fetchThreadThenBackfill(forumName, topicName, firstUnreadId, topicId)
+                            _scrollToMessageId.value = firstUnreadId
+                        } else {
+                            repository.refreshMessages(forumName, topicName, topicId)
+                            val messagesAfterRefresh = repository.getMessagesForTopic(topicId).first()
+                            if (messagesAfterRefresh.isNotEmpty()) {
+                                messagesAfterRefresh.maxByOrNull { it.date }?.let { mostRecent ->
+                                    _scrollToMessageId.value = mostRecent.remoteId
+                                }
                             }
                         }
                     }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    _isLoading.value = false
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                _isLoading.value = false
             }
         }
     }
@@ -127,7 +132,7 @@ class TopicViewModel(
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                repository.refreshMessages(forumName, topicName, topicId)
+                repository.refreshMessages(forumName, topicName, topicId, force = true)
             } catch (e: NotAMemberException) {
                 _showJoinDialog.value = e.forumName
             } catch (e: Exception) {
