@@ -69,6 +69,7 @@ class ProfileViewModel(
     
     fun setPendingMugshotBitmap(bitmap: Bitmap?) {
         _pendingMugshotBitmap.value = bitmap
+        // Clearing the pending URI will close the MugshotEditor in ProfileScreen
         _pendingMugshotUri.value = null
     }
 
@@ -103,6 +104,7 @@ class ProfileViewModel(
                     api.setResume(resume)
                 }
 
+                // Upload the mugshot only when the profile is saved
                 _pendingMugshotBitmap.value?.let { bitmap ->
                     try {
                         uploadMugshotBitmapInternal(bitmap)
@@ -128,6 +130,7 @@ class ProfileViewModel(
 
     private suspend fun uploadMugshotBitmapInternal(bitmap: Bitmap) {
         val out = ByteArrayOutputStream()
+        // Ensure 100x100 as per CIX requirements
         val finalBitmap = if (bitmap.width != 100 || bitmap.height != 100) {
              Bitmap.createScaledBitmap(bitmap, 100, 100, true)
         } else bitmap
@@ -187,7 +190,6 @@ class ProfileDelegate(
     private val api: CixApi,
     private val cachedProfileDao: CachedProfileDao
 ) {
-    private val tag = "ProfileDelegate"
     private val _selectedProfile = MutableStateFlow<UserProfile?>(null)
     val selectedProfile: StateFlow<UserProfile?> = _selectedProfile
 
@@ -234,7 +236,6 @@ class ProfileDelegate(
                 if (profile.userName.isNullOrBlank()) profile.userName = serverUser
                 _selectedProfile.value = profile
                 
-                // Ensure the mugshot URL is set
                 _selectedMugshotUrl.value = getMugshotXmlUrl(serverUser)
 
                 coroutineScope {
@@ -266,8 +267,7 @@ class ProfileDelegate(
                     )
                 }
             } catch (e: Exception) {
-                Log.e(tag, "showProfile failed for $user", e)
-                // Fallback URL if everything else fails
+                Log.e("ProfileDelegate", "showProfile failed for $user", e)
                 if (_selectedMugshotUrl.value == null) {
                     _selectedMugshotUrl.value = getMugshotXmlUrl(user)
                 }
