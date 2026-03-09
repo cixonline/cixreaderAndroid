@@ -372,7 +372,6 @@ fun ThreadScreen(
                                 },
                                 onSaveDraft = { body, uri, name ->
                                     viewModel.saveDraft(selectedMessage!!.remoteId, body, uri, name)
-                                    showReplyPane = false
                                 }
                             )
                         }
@@ -854,6 +853,14 @@ fun ReplyPane(
     
     val context = LocalContext.current
     
+    // Auto-save draft on every text change
+    LaunchedEffect(text) {
+        if (text != initialText) {
+            delay(500) // Debounce saves
+            onSaveDraft(text, attachmentUri, attachmentName)
+        }
+    }
+
     val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         attachmentUri = uri
         attachmentName = uri?.let { u ->
@@ -863,6 +870,7 @@ fun ReplyPane(
                 cursor.getString(nameIndex)
             }
         }
+        onSaveDraft(text, attachmentUri, attachmentName)
     }
 
     var tempPhotoUri by remember { mutableStateOf<Uri?>(null) }
@@ -870,6 +878,7 @@ fun ReplyPane(
         if (success && tempPhotoUri != null) {
             attachmentUri = tempPhotoUri
             attachmentName = "camera_photo_${System.currentTimeMillis()}.jpg"
+            onSaveDraft(text, attachmentUri, attachmentName)
         }
     }
 
@@ -922,7 +931,7 @@ fun ReplyPane(
         AlertDialog(
             onDismissRequest = { showCancelConfirm = false },
             title = { Text("Cancel Message") },
-            text = { Text("Are you sure you want to discard this message? You can also save it as a draft.") },
+            text = { Text("Are you sure you want to discard this message? This action will delete your current draft.") },
             confirmButton = {
                 TextButton(onClick = { 
                     showCancelConfirm = false
@@ -932,16 +941,8 @@ fun ReplyPane(
                 }
             },
             dismissButton = {
-                Row {
-                    TextButton(onClick = { 
-                        onSaveDraft(text, attachmentUri, attachmentName)
-                        showCancelConfirm = false
-                    }) {
-                        Text("Save Draft")
-                    }
-                    TextButton(onClick = { showCancelConfirm = false }) {
-                        Text("Keep Editing")
-                    }
+                TextButton(onClick = { showCancelConfirm = false }) {
+                    Text("Keep Editing")
                 }
             }
         )
@@ -978,18 +979,18 @@ fun ReplyPane(
                         IconButton(onClick = {
                             attachmentUri = null
                             attachmentName = null
+                            onSaveDraft(text, null, null)
                         }) {
                             Icon(Icons.Default.Close, contentDescription = "Remove attachment", modifier = Modifier.size(16.dp))
                         }
                     }
                     TextButton(onClick = {
-                        if ((text.isNotBlank() && text != initialText) || attachmentUri != initialAttachmentUri) {
+                        if (text.isNotBlank() || attachmentUri != null) {
                             showCancelConfirm = true
                         } else {
                             onCancel()
                         }
                     }) { Text("Cancel") }
-                    TextButton(onClick = { onSaveDraft(text, attachmentUri, attachmentName) }, enabled = text.isNotBlank()) { Text("Draft") }
                     Button(onClick = { onPost(text, attachmentUri, attachmentName) }, enabled = text.isNotBlank()) { Text("Post") }
                 }
             }

@@ -125,7 +125,6 @@ class TopicViewModel(
         val allMessages = messages.value
         if (allMessages.isEmpty()) return NextUnreadItem.NoMoreUnread
 
-        // 1. Reconstruct the visual order sequence used by ThreadScreen
         val tree = allMessages.groupBy { it.commentId }
         val ids = allMessages.map { it.remoteId }.toSet()
         val currentRoots = allMessages.filter { it.commentId == 0 || !ids.contains(it.commentId) }
@@ -138,7 +137,6 @@ class TopicViewModel(
         }
         currentRoots.forEach { walk(it) }
 
-        // 2. Find the next unread message in this visual order
         if (currentMessageId != null) {
             val currentIndex = visualSequence.indexOfFirst { it.remoteId == currentMessageId }
             if (currentIndex != -1) {
@@ -147,11 +145,9 @@ class TopicViewModel(
                 }
             }
         } else {
-            // Find the very first unread message in visual sequence
             visualSequence.find { it.unread }?.let { return NextUnreadItem.Message(it) }
         }
 
-        // 3. No more unread in current topic. Search other topics/forums.
         return findNextUnreadOutsideTopic()
     }
 
@@ -236,7 +232,10 @@ class TopicViewModel(
 
     fun saveDraft(replyToId: Int, body: String, attachmentUri: Uri? = null, attachmentName: String? = null) {
         viewModelScope.launch {
+            // Fetch existing draft ID to ensure we update instead of inserting duplicates
+            val existing = draftDao.getDraft(forumName, topicName, replyToId)
             val draft = Draft(
+                id = existing?.id ?: 0,
                 forumName = forumName,
                 topicName = topicName,
                 replyToId = replyToId,

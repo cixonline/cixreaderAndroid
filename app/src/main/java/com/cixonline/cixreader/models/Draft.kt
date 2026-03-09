@@ -1,9 +1,15 @@
 package com.cixonline.cixreader.models
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "drafts")
+@Entity(
+    tableName = "drafts",
+    indices = [
+        Index(value = ["forumName", "topicName", "replyToId"], unique = true)
+    ]
+)
 data class Draft(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val forumName: String,
