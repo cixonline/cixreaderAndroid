@@ -229,7 +229,8 @@ fun AppNavHost(
                 onBackClick = actions.onBackClick,
                 onLogout = actions.onLogout,
                 onSettingsClick = actions.onSettingsClick,
-                onDraftsClick = actions.onDraftsClick
+                onDraftsClick = actions.onDraftsClick,
+                onProfileClick = actions.onProfileClick
             )
         }
     }

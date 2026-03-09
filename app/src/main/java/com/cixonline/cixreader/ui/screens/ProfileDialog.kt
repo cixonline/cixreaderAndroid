@@ -78,14 +78,14 @@ fun ProfileDialog(
                                 contentDescription = "Mugshot",
                                 onState = { state = it },
                                 modifier = Modifier
-                                    .size(80.dp)
+                                    .size(160.dp) // Increased from 80.dp to 160.dp
                                     .clip(CircleShape),
                                 contentScale = ContentScale.Crop
                             )
                             
                             if (state is AsyncImagePainter.State.Loading) {
                                 CircularProgressIndicator(
-                                    modifier = Modifier.size(24.dp),
+                                    modifier = Modifier.size(32.dp),
                                     strokeWidth = 2.dp,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -96,7 +96,7 @@ fun ProfileDialog(
                             painter = painterResource(R.drawable.cix_logo),
                             contentDescription = "No user",
                             modifier = Modifier
-                                .size(80.dp)
+                                .size(160.dp) // Increased from 80.dp to 160.dp
                                 .clip(CircleShape)
                         )
                     }
@@ -123,6 +123,11 @@ fun ProfileDialog(
                     profile.lastOn?.let {
                         if (it.isNotBlank()) {
                             ProfileRow(label = "Last On", value = it)
+                        }
+                    }
+                    profile.lastPost?.let {
+                        if (it.isNotBlank()) {
+                            ProfileRow(label = "Last Post", value = it)
                         }
                     }
                     profile.lastPost?.let {

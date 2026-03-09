@@ -41,6 +41,7 @@ import coil.compose.AsyncImagePainter
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.size.Size
+import com.cixonline.cixreader.BuildConfig
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.ui.components.MugshotEditor
@@ -63,7 +64,8 @@ fun ProfileScreen(
     onBackClick: () -> Unit,
     onLogout: () -> Unit,
     onSettingsClick: () -> Unit,
-    onDraftsClick: () -> Unit
+    onDraftsClick: () -> Unit,
+    onProfileClick: (String) -> Unit
 ) {
     val context = LocalContext.current
     val profile by viewModel.selectedProfile.collectAsState()
@@ -86,6 +88,7 @@ fun ProfileScreen(
     var showImageSourceDialog by remember { mutableStateOf(false) }
     var showFullImage by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+    var showVersionDialog by remember { mutableStateOf(false) }
     // Use rememberSaveable for the Uri to survive activity recreation
     var tempCameraUri by rememberSaveable { mutableStateOf<Uri?>(null) }
 
@@ -233,6 +236,13 @@ fun ProfileScreen(
                             onDismissRequest = { showMenu = false }
                         ) {
                             DropdownMenuItem(
+                                text = { Text("Profile") },
+                                onClick = {
+                                    showMenu = false
+                                    currentLoggedInUser?.let { onProfileClick(it) }
+                                }
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Drafts") },
                                 onClick = {
                                     showMenu = false
@@ -244,6 +254,13 @@ fun ProfileScreen(
                                 onClick = {
                                     showMenu = false
                                     onSettingsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Version") },
+                                onClick = {
+                                    showMenu = false
+                                    showVersionDialog = true
                                 }
                             )
                             DropdownMenuItem(
@@ -344,7 +361,7 @@ fun ProfileScreen(
                             Box(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
-                                    .size(80.dp)
+                                    .size(160.dp) // Increased from 80.dp to 160.dp (4 times the area)
                                     .then(
                                         if (isOwnProfile && isEditing) {
                                             Modifier.clickable { showImageSourceDialog = true }
@@ -378,7 +395,7 @@ fun ProfileScreen(
 
                                     if (state is AsyncImagePainter.State.Loading) {
                                         CircularProgressIndicator(
-                                            modifier = Modifier.size(24.dp),
+                                            modifier = Modifier.size(32.dp),
                                             strokeWidth = 2.dp,
                                             color = MaterialTheme.colorScheme.primary
                                         )
@@ -402,7 +419,7 @@ fun ProfileScreen(
                                             imageVector = Icons.Default.CameraAlt,
                                             contentDescription = "Change Photo",
                                             tint = Color.White,
-                                            modifier = Modifier.padding(24.dp)
+                                            modifier = Modifier.padding(48.dp) // Adjusted padding for larger size
                                         )
                                     }
                                 }
@@ -481,6 +498,24 @@ fun ProfileScreen(
                 }
             }
         }
+    }
+
+    if (showVersionDialog) {
+        AlertDialog(
+            onDismissRequest = { showVersionDialog = false },
+            title = { Text("App Information") },
+            text = {
+                Column {
+                    Text("Version: ${BuildConfig.VERSION_NAME}")
+                    Text("Build Date: ${BuildConfig.BUILD_TIME}")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showVersionDialog = false }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 }
 
