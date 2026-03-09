@@ -1,7 +1,13 @@
 package com.cixonline.cixreader.ui.screens
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -97,6 +103,12 @@ fun ThreadScreen(
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
+    // Lifted state for ReplyPane to handle back button confirmation
+    var replyText by remember { mutableStateOf("") }
+    var replyAttachmentUri by remember { mutableStateOf<Uri?>(null) }
+    var replyAttachmentName by remember { mutableStateOf<String?>(null) }
+    var showReplyCancelConfirm by remember { mutableStateOf(false) }
+
     fun findRootForMessage(msg: CIXMessage, allMsgs: List<CIXMessage>): Int {
         val msgMap = allMsgs.associateBy { it.remoteId }
         var current = msg
@@ -140,7 +152,28 @@ fun ThreadScreen(
     LaunchedEffect(showReplyPane, selectedMessage) {
         if (showReplyPane && selectedMessage != null) {
             initialDraft = viewModel.getDraft(selectedMessage!!.remoteId)
+            replyText = initialDraft?.body ?: ""
+            replyAttachmentUri = initialDraft?.attachmentUri?.let { Uri.parse(it) }
+            replyAttachmentName = initialDraft?.attachmentName
+        } else if (!showReplyPane) {
+            replyText = ""
+            replyAttachmentUri = null
+            replyAttachmentName = null
         }
+    }
+
+    val handleBackAction = {
+        if (showReplyPane && (replyText.isNotBlank() || replyAttachmentUri != null)) {
+            showReplyCancelConfirm = true
+        } else if (showReplyPane) {
+            showReplyPane = false
+        } else {
+            onBackClick()
+        }
+    }
+
+    BackHandler(enabled = showReplyPane) {
+        handleBackAction()
     }
 
     if (showNoMoreUnreadDialog) {
@@ -159,6 +192,38 @@ fun ThreadScreen(
             dismissButton = {
                 TextButton(onClick = { showNoMoreUnreadDialog = false }) {
                     Text("Close")
+                }
+            }
+        )
+    }
+
+    if (showReplyCancelConfirm) {
+        AlertDialog(
+            onDismissRequest = { showReplyCancelConfirm = false },
+            title = { Text("Cancel Message") },
+            text = { Text("Are you sure you want to discard this message? You can also save it as a draft.") },
+            confirmButton = {
+                TextButton(onClick = { 
+                    showReplyCancelConfirm = false
+                    showReplyPane = false 
+                }) {
+                    Text("Discard", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { 
+                        if (selectedMessage != null) {
+                            viewModel.saveDraft(selectedMessage!!.remoteId, replyText, replyAttachmentUri, replyAttachmentName)
+                        }
+                        showReplyCancelConfirm = false
+                        showReplyPane = false
+                    }) {
+                        Text("Save Draft")
+                    }
+                    TextButton(onClick = { showReplyCancelConfirm = false }) {
+                        Text("Keep Editing")
+                    }
                 }
             }
         )
@@ -191,7 +256,7 @@ fun ThreadScreen(
                     actionIconContentColor = Color.White
                 ),
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
+                    IconButton(onClick = handleBackAction) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -283,7 +348,13 @@ fun ThreadScreen(
                             message = selectedMessage!!,
                             currentUsername = currentUsername,
                             replyActive = showReplyPane,
-                            onReplyClick = { showReplyPane = !showReplyPane },
+                            onReplyClick = {
+                                if (showReplyPane) {
+                                    handleBackAction()
+                                } else {
+                                    showReplyPane = true
+                                }
+                            },
                             onNextUnreadClick = {
                                 coroutineScope.launch {
                                     val nextItem = viewModel.findNextUnreadItem(selectedMessage?.remoteId)
@@ -359,10 +430,13 @@ fun ThreadScreen(
                         ) {
                             ReplyPane(
                                 replyTo = selectedMessage!!,
-                                initialText = initialDraft?.body ?: "",
-                                initialAttachmentUri = initialDraft?.attachmentUri?.let { Uri.parse(it) },
-                                initialAttachmentName = initialDraft?.attachmentName,
-                                onCancel = { showReplyPane = false },
+                                text = replyText,
+                                onTextChange = { replyText = it },
+                                attachmentUri = replyAttachmentUri,
+                                onAttachmentUriChange = { replyAttachmentUri = it },
+                                attachmentName = replyAttachmentName,
+                                onAttachmentNameChange = { replyAttachmentName = it },
+                                onCancel = handleBackAction,
                                 onPost = { body, uri, name ->
                                     coroutineScope.launch {
                                         if (viewModel.postReply(context, selectedMessage!!.remoteId, body, uri, name)) {
@@ -837,50 +911,83 @@ fun AudioPlayer(url: String) {
 @Composable
 fun ReplyPane(
     replyTo: CIXMessage,
-    initialText: String = "",
-    initialAttachmentUri: Uri? = null,
-    initialAttachmentName: String? = null,
+    text: String,
+    onTextChange: (String) -> Unit,
+    attachmentUri: Uri?,
+    onAttachmentUriChange: (Uri?) -> Unit,
+    attachmentName: String?,
+    onAttachmentNameChange: (String?) -> Unit,
     onCancel: () -> Unit,
     onPost: (String, Uri?, String?) -> Unit,
     onSaveDraft: (String, Uri?, String?) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var text by remember(initialText) { mutableStateOf(initialText) }
-    var attachmentUri by remember(initialAttachmentUri) { mutableStateOf<Uri?>(initialAttachmentUri) }
-    var attachmentName by remember(initialAttachmentName) { mutableStateOf<String?>(initialAttachmentName) }
-    var showCancelConfirm by remember { mutableStateOf(false) }
-    var showAttachmentSourceDialog by remember { mutableStateOf(false) }
-    
+    var isListening by remember { mutableStateOf(false) }
     val context = LocalContext.current
     
-    // Auto-save draft on every text change
-    LaunchedEffect(text) {
-        if (text != initialText) {
-            delay(500) // Debounce saves
-            onSaveDraft(text, attachmentUri, attachmentName)
+    val speechRecognizer = remember { SpeechRecognizer.createSpeechRecognizer(context) }
+    val speechRecognizerIntent = remember {
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+        }
+    }
+
+    val recognitionListener = remember {
+        object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() { isListening = true }
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() { isListening = false }
+            override fun onError(error: Int) { isListening = false }
+            override fun onResults(results: Bundle?) {
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    val newText = matches[0]
+                    onTextChange(if (text.isBlank()) newText else "$text $newText")
+                }
+            }
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        }
+    }
+
+    DisposableEffect(Unit) {
+        speechRecognizer.setRecognitionListener(recognitionListener)
+        onDispose { speechRecognizer.destroy() }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            isListening = true
+            speechRecognizer.startListening(speechRecognizerIntent)
         }
     }
 
     val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        attachmentUri = uri
-        attachmentName = uri?.let { u ->
+        onAttachmentUriChange(uri)
+        onAttachmentNameChange(uri?.let { u ->
             context.contentResolver.query(u, null, null, null, null)?.use { cursor ->
                 val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
                 cursor.moveToFirst()
                 cursor.getString(nameIndex)
             }
-        }
-        onSaveDraft(text, attachmentUri, attachmentName)
+        })
     }
 
     var tempPhotoUri by remember { mutableStateOf<Uri?>(null) }
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success && tempPhotoUri != null) {
-            attachmentUri = tempPhotoUri
-            attachmentName = "camera_photo_${System.currentTimeMillis()}.jpg"
-            onSaveDraft(text, attachmentUri, attachmentName)
+            onAttachmentUriChange(tempPhotoUri)
+            onAttachmentNameChange("camera_photo_${System.currentTimeMillis()}.jpg")
         }
     }
+
+    var showAttachmentSourceDialog by remember { mutableStateOf(false) }
 
     if (showAttachmentSourceDialog) {
         AlertDialog(
@@ -927,33 +1034,13 @@ fun ReplyPane(
         )
     }
 
-    if (showCancelConfirm) {
-        AlertDialog(
-            onDismissRequest = { showCancelConfirm = false },
-            title = { Text("Cancel Message") },
-            text = { Text("Are you sure you want to discard this message? This action will delete your current draft.") },
-            confirmButton = {
-                TextButton(onClick = { 
-                    showCancelConfirm = false
-                    onCancel() 
-                }) {
-                    Text("Discard", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCancelConfirm = false }) {
-                    Text("Keep Editing")
-                }
-            }
-        )
-    }
     Surface(modifier = modifier, color = MaterialTheme.colorScheme.surface) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
             OutlinedTextField(
                 value = text, 
-                onValueChange = { text = it }, 
+                onValueChange = onTextChange, 
                 modifier = Modifier.fillMaxWidth().height(110.dp), // Approx 3 lines
-                placeholder = { Text("Type your message here...") }, 
+                placeholder = { Text(if (isListening) "Listening..." else "Type your message here...") }, 
                 textStyle = MaterialTheme.typography.bodyMedium, 
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrectEnabled = true)
             )
@@ -971,26 +1058,33 @@ fun ReplyPane(
                     overflow = TextOverflow.Ellipsis
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { 
+                        if (isListening) {
+                            speechRecognizer.stopListening()
+                            isListening = false
+                        } else {
+                            permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                        }
+                    }) {
+                        Icon(
+                            if (isListening) Icons.Default.MicOff else Icons.Default.Mic, 
+                            contentDescription = "Dictate",
+                            tint = if (isListening) Color.Red else LocalContentColor.current
+                        )
+                    }
                     IconButton(onClick = { showAttachmentSourceDialog = true }) {
                         Icon(Icons.Default.AttachFile, contentDescription = "Add Attachment", tint = if (attachmentUri != null) Color(0xFFD91B5C) else LocalContentColor.current)
                     }
                     if (attachmentName != null) {
-                        Text(text = attachmentName!!, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 60.dp))
+                        Text(text = attachmentName, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 60.dp))
                         IconButton(onClick = {
-                            attachmentUri = null
-                            attachmentName = null
-                            onSaveDraft(text, null, null)
+                            onAttachmentUriChange(null)
+                            onAttachmentNameChange(null)
                         }) {
                             Icon(Icons.Default.Close, contentDescription = "Remove attachment", modifier = Modifier.size(16.dp))
                         }
                     }
-                    TextButton(onClick = {
-                        if (text.isNotBlank() || attachmentUri != null) {
-                            showCancelConfirm = true
-                        } else {
-                            onCancel()
-                        }
-                    }) { Text("Cancel") }
+                    TextButton(onClick = onCancel) { Text("Cancel") }
                     Button(onClick = { onPost(text, attachmentUri, attachmentName) }, enabled = text.isNotBlank()) { Text("Post") }
                 }
             }

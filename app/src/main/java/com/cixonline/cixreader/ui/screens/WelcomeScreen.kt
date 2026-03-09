@@ -1,7 +1,12 @@
 package com.cixonline.cixreader.ui.screens
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -38,6 +43,7 @@ import com.cixonline.cixreader.viewmodel.WelcomeViewModel
 import com.cixonline.cixreader.viewmodel.JoinResult
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -492,10 +498,54 @@ fun PostMessageDialog(
     var attachmentUri by remember { mutableStateOf<Uri?>(null) }
     var attachmentName by remember { mutableStateOf<String?>(null) }
     var showAttachmentSourceDialog by remember { mutableStateOf(false) }
+    var isListening by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var isPosting by remember { mutableStateOf(false) }
+
+    val speechRecognizer = remember { SpeechRecognizer.createSpeechRecognizer(context) }
+    val speechRecognizerIntent = remember {
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+        }
+    }
+
+    val recognitionListener = remember {
+        object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() { isListening = true }
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() { isListening = false }
+            override fun onError(error: Int) { isListening = false }
+            override fun onResults(results: Bundle?) {
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    val newText = matches[0]
+                    messageBody = if (messageBody.isBlank()) newText else "$messageBody $newText"
+                }
+            }
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        }
+    }
+
+    DisposableEffect(Unit) {
+        speechRecognizer.setRecognitionListener(recognitionListener)
+        onDispose { speechRecognizer.destroy() }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            isListening = true
+            speechRecognizer.startListening(speechRecognizerIntent)
+        }
+    }
 
     val sortedForums = remember(forums) { forums.sortedBy { it.name.lowercase() } }
     val sortedTopics = remember(topics) { topics.sortedBy { it.name.lowercase() } }
@@ -631,7 +681,7 @@ fun PostMessageDialog(
                 OutlinedTextField(
                     value = messageBody,
                     onValueChange = { messageBody = it },
-                    label = { Text("Message") },
+                    label = { Text(if (isListening) "Listening..." else "Message") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(150.dp),
@@ -753,6 +803,21 @@ fun PostMessageDialog(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically) {
                     
+                    IconButton(onClick = { 
+                        if (isListening) {
+                            speechRecognizer.stopListening()
+                            isListening = false
+                        } else {
+                            permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                        }
+                    }) {
+                        Icon(
+                            if (isListening) Icons.Default.MicOff else Icons.Default.Mic, 
+                            contentDescription = "Dictate",
+                            tint = if (isListening) Color.Red else LocalContentColor.current
+                        )
+                    }
+
                     IconButton(onClick = { showAttachmentSourceDialog = true }) {
                         Icon(Icons.Default.AttachFile, contentDescription = "Add Attachment", tint = if (attachmentUri != null) Color(0xFFD91B5C) else LocalContentColor.current)
                     }
