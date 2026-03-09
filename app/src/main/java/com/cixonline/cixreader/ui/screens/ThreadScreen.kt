@@ -329,7 +329,9 @@ fun ThreadScreen(
                             expandedRootIds = expandedRootIds,
                             selectedMessageId = selectedMessage?.remoteId,
                             onMessageClick = { msg ->
-                                selectedMessage = msg
+                                if (!showReplyPane) {
+                                    selectedMessage = msg
+                                }
                             },
                             onToggleExpand = { rootId ->
                                 val expanding = !expandedRootIds.contains(rootId)
@@ -338,7 +340,7 @@ fun ThreadScreen(
                                 } else {
                                     expandedRootIds - rootId
                                 }
-                                if (expanding) {
+                                if (expanding && !showReplyPane) {
                                     messages.find { it.remoteId == rootId }?.let { rootMsg ->
                                         selectedMessage = rootMsg
                                     }
@@ -409,9 +411,11 @@ fun ThreadScreen(
                                 message = selectedMessage!!,
                                 parentMessage = parentMessage,
                                 onParentClick = { parent ->
-                                    selectedMessage = parent
-                                    val rootId = findRootForMessage(parent, messages)
-                                    expandedRootIds = expandedRootIds + rootId
+                                    if (!showReplyPane) {
+                                        selectedMessage = parent
+                                        val rootId = findRootForMessage(parent, messages)
+                                        expandedRootIds = expandedRootIds + rootId
+                                    }
                                 },
                                 onNavigateToThread = onNavigateToThread
                             )
@@ -804,6 +808,31 @@ fun MessageViewer(
         message.body.replace("\r\n", "\n").replace("\r", "\n")
     }
 
+    val chunks = remember(normalizedBody) {
+        val urlPattern = Regex("https?://[\\w:#@%/;$()~_?+\\-=.&!*]+")
+        val result = mutableListOf<MessageChunk>()
+        var lastIndex = 0
+        
+        urlPattern.findAll(normalizedBody).forEach { match ->
+            if (match.range.first > lastIndex) {
+                result.add(MessageChunk.Text(normalizedBody.substring(lastIndex, match.range.first)))
+            }
+            val url = match.value
+            val extension = url.substringAfterLast(".").lowercase()
+            if (listOf("jpg", "jpeg", "png", "gif", "webp").contains(extension)) {
+                result.add(MessageChunk.Image(url))
+            } else {
+                result.add(MessageChunk.Link(url))
+            }
+            lastIndex = match.range.last + 1
+        }
+        
+        if (lastIndex < normalizedBody.length) {
+            result.add(MessageChunk.Text(normalizedBody.substring(lastIndex)))
+        }
+        result
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -843,28 +872,73 @@ fun MessageViewer(
                 }
             }
         }
-        val annotatedString = remember(normalizedBody, message.forumName, message.topicName) {
-            linkify(normalizedBody, message.forumName, message.topicName)
-        }
-        ClickableText(
-            text = annotatedString,
-            style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
-            onClick = { offset ->
-                annotatedString.getStringAnnotations(tag = "URL", start = offset, end = offset)
-                    .firstOrNull()?.let { uriHandler.openUri(it.item) }
-                annotatedString.getStringAnnotations(tag = "CIX_REF", start = offset, end = offset)
-                    .firstOrNull()?.let { annotation ->
-                        val parts = annotation.item.split(":")
-                        onNavigateToThread(parts[0], parts[1], (parts[0] + parts[1]).hashCode(), 0, parts[2].toIntOrNull() ?: 0)
+
+        chunks.forEach { chunk ->
+            when (chunk) {
+                is MessageChunk.Text -> {
+                    val annotatedString = linkify(chunk.text, message.forumName, message.topicName)
+                    ClickableText(
+                        text = annotatedString,
+                        style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                        onClick = { offset ->
+                            annotatedString.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                                .firstOrNull()?.let { uriHandler.openUri(it.item) }
+                            annotatedString.getStringAnnotations(tag = "CIX_REF", start = offset, end = offset)
+                                .firstOrNull()?.let { annotation ->
+                                    val parts = annotation.item.split(":")
+                                    onNavigateToThread(parts[0], parts[1], (parts[0] + parts[1]).hashCode(), 0, parts[2].toIntOrNull() ?: 0)
+                                }
+                        }
+                    )
+                }
+                is MessageChunk.Link -> {
+                    val annotatedString = buildAnnotatedString {
+                        pushStringAnnotation(tag = "URL", annotation = chunk.url)
+                        withStyle(style = SpanStyle(color = Color(0xFFD0BCFF), textDecoration = TextDecoration.Underline)) {
+                            append(chunk.url)
+                        }
+                        pop()
                     }
+                    ClickableText(
+                        text = annotatedString,
+                        style = MaterialTheme.typography.bodyMedium,
+                        onClick = { uriHandler.openUri(chunk.url) }
+                    )
+                }
+                is MessageChunk.Image -> {
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                        Box(modifier = Modifier.width(150.dp).padding(end = 12.dp)) {
+                            AsyncImage(
+                                model = chunk.url,
+                                contentDescription = "Inline image",
+                                modifier = Modifier.fillMaxWidth().wrapContentHeight().clickable { uriHandler.openUri(chunk.url) },
+                                contentScale = ContentScale.FillWidth,
+                                placeholder = painterResource(R.drawable.cix_logo),
+                                error = painterResource(android.R.drawable.stat_notify_error)
+                            )
+                        }
+                        // Note: Compose doesn't support true text-wrap around images in a single text layout easily.
+                        // This uses a Row/Column approach which flows text next to the image for that chunk.
+                    }
+                }
             }
-        )
+        }
+
         val urls = remember(normalizedBody) { extractUrls(normalizedBody) }
-        urls.forEach { url ->
+        urls.filter { url -> 
+            val ext = url.substringAfterLast(".").lowercase()
+            !listOf("jpg", "jpeg", "png", "gif", "webp").contains(ext)
+        }.forEach { url ->
             Spacer(modifier = Modifier.height(16.dp))
             MediaPreview(url = url)
         }
     }
+}
+
+sealed class MessageChunk {
+    data class Text(val text: String) : MessageChunk()
+    data class Image(val url: String) : MessageChunk()
+    data class Link(val url: String) : MessageChunk()
 }
 
 @Composable
