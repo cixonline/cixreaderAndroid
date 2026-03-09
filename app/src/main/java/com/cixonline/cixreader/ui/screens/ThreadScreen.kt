@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -251,7 +252,8 @@ fun ThreadScreen(
         ) {
             Box(modifier = Modifier.fillMaxSize().imePadding()) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    Box(modifier = Modifier.weight(if (showReplyPane) 0.5f else 1f)) {
+                    // Thread list: Shrinks further when replying to prioritize viewer and input
+                    Box(modifier = Modifier.weight(if (showReplyPane) 0.35f else 1f)) {
                         CombinedThreadList(
                             messages = messages,
                             expandedRootIds = expandedRootIds,
@@ -315,7 +317,8 @@ fun ThreadScreen(
                         HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     }
 
-                    Box(modifier = Modifier.weight(if (showReplyPane) 0.5f else 1f)) {
+                    // Message viewer: Keeps significant portion of screen
+                    Box(modifier = Modifier.weight(if (showReplyPane) 0.45f else 1f)) {
                         if (isLoading && messages.isEmpty()) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 CircularProgressIndicator()
@@ -345,9 +348,15 @@ fun ThreadScreen(
                         }
                     }
 
+                    // Reply pane: Compact 3-line input with buttons snug against keyboard
                     if (showReplyPane && selectedMessage != null) {
-                        HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
-                        Box(modifier = Modifier.height(200.dp)) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .wrapContentHeight(), // Let it be compact
+                            tonalElevation = 4.dp,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+                        ) {
                             ReplyPane(
                                 replyTo = selectedMessage!!,
                                 initialText = initialDraft?.body ?: "",
@@ -369,7 +378,7 @@ fun ThreadScreen(
                         }
                     }
                 }
-                
+
                 if (isLoading && messages.isNotEmpty()) {
                     Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
@@ -834,7 +843,8 @@ fun ReplyPane(
     initialAttachmentName: String? = null,
     onCancel: () -> Unit,
     onPost: (String, Uri?, String?) -> Unit,
-    onSaveDraft: (String, Uri?, String?) -> Unit
+    onSaveDraft: (String, Uri?, String?) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     var text by remember(initialText) { mutableStateOf(initialText) }
     var attachmentUri by remember(initialAttachmentUri) { mutableStateOf<Uri?>(initialAttachmentUri) }
@@ -936,33 +946,35 @@ fun ReplyPane(
             }
         )
     }
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-        Column(modifier = Modifier.padding(8.dp)) {
+    Surface(modifier = modifier, color = MaterialTheme.colorScheme.surface) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
             OutlinedTextField(
                 value = text, 
                 onValueChange = { text = it }, 
-                modifier = Modifier.fillMaxWidth().weight(1f), 
+                modifier = Modifier.fillMaxWidth().height(110.dp), // Approx 3 lines
                 placeholder = { Text("Type your message here...") }, 
-                textStyle = MaterialTheme.typography.bodySmall, 
+                textStyle = MaterialTheme.typography.bodyMedium, 
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrectEnabled = true)
             )
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp), 
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween, 
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "Reply to ${replyTo.author} (#${replyTo.remoteId})", 
-                    style = MaterialTheme.typography.labelMedium, 
+                    style = MaterialTheme.typography.labelSmall, 
                     color = MaterialTheme.colorScheme.primary, 
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { showAttachmentSourceDialog = true }) {
                         Icon(Icons.Default.AttachFile, contentDescription = "Add Attachment", tint = if (attachmentUri != null) Color(0xFFD91B5C) else LocalContentColor.current)
                     }
                     if (attachmentName != null) {
-                        Text(text = attachmentName!!, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 100.dp))
+                        Text(text = attachmentName!!, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 60.dp))
                         IconButton(onClick = {
                             attachmentUri = null
                             attachmentName = null
