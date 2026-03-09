@@ -1,5 +1,6 @@
 package com.cixonline.cixreader.ui.screens
 
+import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.FileProvider
 import com.cixonline.cixreader.BuildConfig
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.Folder
@@ -35,6 +37,7 @@ import com.cixonline.cixreader.viewmodel.InterestingThreadUI
 import com.cixonline.cixreader.viewmodel.WelcomeViewModel
 import com.cixonline.cixreader.viewmodel.JoinResult
 import kotlinx.coroutines.launch
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -488,7 +491,8 @@ fun PostMessageDialog(
     
     var attachmentUri by remember { mutableStateOf<Uri?>(null) }
     var attachmentName by remember { mutableStateOf<String?>(null) }
-    
+    var showAttachmentSourceDialog by remember { mutableStateOf(false) }
+
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var isPosting by remember { mutableStateOf(false) }
@@ -496,7 +500,7 @@ fun PostMessageDialog(
     val sortedForums = remember(forums) { forums.sortedBy { it.name.lowercase() } }
     val sortedTopics = remember(topics) { topics.sortedBy { it.name.lowercase() } }
 
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         attachmentUri = uri
         attachmentName = uri?.let { u ->
             context.contentResolver.query(u, null, null, null, null)?.use { cursor ->
@@ -505,6 +509,59 @@ fun PostMessageDialog(
                 cursor.getString(nameIndex)
             }
         }
+    }
+
+    var tempPhotoUri by remember { mutableStateOf<Uri?>(null) }
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        if (success && tempPhotoUri != null) {
+            attachmentUri = tempPhotoUri
+            attachmentName = "camera_photo_${System.currentTimeMillis()}.jpg"
+        }
+    }
+
+    if (showAttachmentSourceDialog) {
+        AlertDialog(
+            onDismissRequest = { showAttachmentSourceDialog = false },
+            title = { Text("Add Attachment") },
+            text = { Text("Choose a source for your attachment") },
+            confirmButton = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    TextButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            showAttachmentSourceDialog = false
+                            val uri = createTempImageUri(context)
+                            tempPhotoUri = uri
+                            cameraLauncher.launch(uri)
+                        }
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.PhotoCamera, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Camera")
+                        }
+                    }
+                    TextButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            showAttachmentSourceDialog = false
+                            fileLauncher.launch("*/*")
+                        }
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.AttachFile, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Files")
+                        }
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAttachmentSourceDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (showCancelConfirm) {
@@ -696,8 +753,8 @@ fun PostMessageDialog(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically) {
                     
-                    IconButton(onClick = { launcher.launch("*/*") }) {
-                        Icon(Icons.Default.AttachFile, contentDescription = "Attach File", tint = if (attachmentUri != null) Color(0xFFD91B5C) else LocalContentColor.current)
+                    IconButton(onClick = { showAttachmentSourceDialog = true }) {
+                        Icon(Icons.Default.AttachFile, contentDescription = "Add Attachment", tint = if (attachmentUri != null) Color(0xFFD91B5C) else LocalContentColor.current)
                     }
                     if (attachmentName != null) {
                         Text(text = attachmentName!!, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 80.dp))
@@ -817,4 +874,16 @@ fun InterestingThreadItem(thread: InterestingThreadUI, onClick: () -> Unit, onAu
             )
         }
     }
+}
+
+private fun createTempImageUri(context: Context): Uri {
+    val tempFile = File.createTempFile("cix_upload_", ".jpg", context.cacheDir).apply {
+        createNewFile()
+        deleteOnExit()
+    }
+    return FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        tempFile
+    )
 }
