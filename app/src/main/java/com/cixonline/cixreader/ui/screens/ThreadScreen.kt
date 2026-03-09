@@ -94,6 +94,7 @@ fun ThreadScreen(
 
     var expandedRootIds by remember { mutableStateOf(setOf<Int>()) }
     var selectedMessage by remember { mutableStateOf<CIXMessage?>(null) }
+    var replyingToMessage by remember { mutableStateOf<CIXMessage?>(null) }
     var showMenu by remember { mutableStateOf(false) }
     var showReplyPane by remember { mutableStateOf(false) }
     var initialDraft by remember { mutableStateOf<Draft?>(null) }
@@ -149,9 +150,9 @@ fun ThreadScreen(
         }
     }
 
-    LaunchedEffect(showReplyPane, selectedMessage) {
-        if (showReplyPane && selectedMessage != null) {
-            initialDraft = viewModel.getDraft(selectedMessage!!.remoteId)
+    LaunchedEffect(showReplyPane, replyingToMessage) {
+        if (showReplyPane && replyingToMessage != null) {
+            initialDraft = viewModel.getDraft(replyingToMessage!!.remoteId)
             replyText = initialDraft?.body ?: ""
             replyAttachmentUri = initialDraft?.attachmentUri?.let { Uri.parse(it) }
             replyAttachmentName = initialDraft?.attachmentName
@@ -159,6 +160,7 @@ fun ThreadScreen(
             replyText = ""
             replyAttachmentUri = null
             replyAttachmentName = null
+            replyingToMessage = null
         }
     }
 
@@ -167,6 +169,7 @@ fun ThreadScreen(
             showReplyCancelConfirm = true
         } else if (showReplyPane) {
             showReplyPane = false
+            replyingToMessage = null
         } else {
             onBackClick()
         }
@@ -206,6 +209,7 @@ fun ThreadScreen(
                 TextButton(onClick = { 
                     showReplyCancelConfirm = false
                     showReplyPane = false 
+                    replyingToMessage = null
                 }) {
                     Text("Discard", color = MaterialTheme.colorScheme.error)
                 }
@@ -213,11 +217,12 @@ fun ThreadScreen(
             dismissButton = {
                 Row {
                     TextButton(onClick = { 
-                        if (selectedMessage != null) {
-                            viewModel.saveDraft(selectedMessage!!.remoteId, replyText, replyAttachmentUri, replyAttachmentName)
+                        if (replyingToMessage != null) {
+                            viewModel.saveDraft(replyingToMessage!!.remoteId, replyText, replyAttachmentUri, replyAttachmentName)
                         }
                         showReplyCancelConfirm = false
                         showReplyPane = false
+                        replyingToMessage = null
                     }) {
                         Text("Save Draft")
                     }
@@ -352,6 +357,7 @@ fun ThreadScreen(
                                 if (showReplyPane) {
                                     handleBackAction()
                                 } else {
+                                    replyingToMessage = selectedMessage
                                     showReplyPane = true
                                 }
                             },
@@ -368,6 +374,7 @@ fun ThreadScreen(
                                             val rootId = findRootForMessage(nextItem.message, messages)
                                             expandedRootIds = expandedRootIds + rootId
                                             showReplyPane = false
+                                            replyingToMessage = null
                                         }
                                         is NextUnreadItem.Topic -> {
                                             onNavigateToThread(nextItem.forum, nextItem.topic, nextItem.topicId, 0, 0)
@@ -420,7 +427,7 @@ fun ThreadScreen(
                     }
 
                     // Reply pane: Compact 3-line input with buttons snug against keyboard
-                    if (showReplyPane && selectedMessage != null) {
+                    if (showReplyPane && replyingToMessage != null) {
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -429,7 +436,7 @@ fun ThreadScreen(
                             border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
                         ) {
                             ReplyPane(
-                                replyTo = selectedMessage!!,
+                                replyTo = replyingToMessage!!,
                                 text = replyText,
                                 onTextChange = { replyText = it },
                                 attachmentUri = replyAttachmentUri,
@@ -439,13 +446,14 @@ fun ThreadScreen(
                                 onCancel = handleBackAction,
                                 onPost = { body, uri, name ->
                                     coroutineScope.launch {
-                                        if (viewModel.postReply(context, selectedMessage!!.remoteId, body, uri, name)) {
+                                        if (viewModel.postReply(context, replyingToMessage!!.remoteId, body, uri, name)) {
                                             showReplyPane = false
+                                            replyingToMessage = null
                                         }
                                     }
                                 },
                                 onSaveDraft = { body, uri, name ->
-                                    viewModel.saveDraft(selectedMessage!!.remoteId, body, uri, name)
+                                    viewModel.saveDraft(replyingToMessage!!.remoteId, body, uri, name)
                                 }
                             )
                         }
