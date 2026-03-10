@@ -3,6 +3,7 @@ package com.cixonline.cixreader.viewmodel
 import android.content.Context
 import android.net.Uri
 import android.util.Base64
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -17,6 +18,8 @@ import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.Draft
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.repository.NotAMemberException
+import com.cixonline.cixreader.utils.DateUtils
+import com.cixonline.cixreader.utils.HtmlUtils
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -77,31 +80,35 @@ class TopicViewModel(
 
     init {
         viewModelScope.launch {
-            val currentMessages = repository.getMessagesForTopic(topicId).first()
-            if (currentMessages.isEmpty() || initialRootId != 0 || initialMessageId != 0) {
-                _isLoading.value = true
-                try {
-                    if (initialRootId != 0 || initialMessageId != 0) {
-                        repository.fetchMessageAndChildren(
-                            forumName, 
-                            topicName, 
-                            if (initialRootId != 0) initialRootId else initialMessageId, 
-                            topicId
-                        )
-                    } else {
-                        val firstUnreadId = repository.getFirstUnreadMessageId(forumName, topicName)
-                        if (firstUnreadId > 0) {
-                            repository.fetchThreadThenBackfill(forumName, topicName, firstUnreadId, topicId)
-                            _scrollToMessageId.value = firstUnreadId
-                        } else {
-                            repository.refreshMessages(forumName, topicName, topicId)
-                        }
+            _isLoading.value = true
+            try {
+                if (initialRootId != 0 || initialMessageId != 0) {
+                    repository.fetchMessageAndChildren(
+                        forumName,
+                        topicName,
+                        if (initialRootId != 0) initialRootId else initialMessageId,
+                        topicId
+                    )
+                } else {
+                    // Always fetch messages from the last 30 days on entry if no specific message targeted
+                    val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+                    val since = DateUtils.formatApiDate(thirtyDaysAgo)
+                    repository.refreshMessages(forumName, topicName, topicId, sinceOverride = since)
+
+                    // After refresh, look for the oldest unread message in the last 30 days
+                    val allMessages = repository.getMessagesForTopic(topicId).first()
+                    val firstUnread = allMessages.filter { it.isActuallyUnread }.minByOrNull { it.date }
+
+                    if (firstUnread != null) {
+                        // Fetch the thread for this unread message and scroll to it
+                        repository.fetchThreadThenBackfill(forumName, topicName, firstUnread.remoteId, topicId)
+                        _scrollToMessageId.value = firstUnread.remoteId
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                } finally {
-                    _isLoading.value = false
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isLoading.value = false
             }
         }
     }
@@ -125,27 +132,30 @@ class TopicViewModel(
         val allMessages = messages.value
         if (allMessages.isEmpty()) return NextUnreadItem.NoMoreUnread
 
-        val tree = allMessages.groupBy { it.commentId }
-        val ids = allMessages.map { it.remoteId }.toSet()
-        val currentRoots = allMessages.filter { it.commentId == 0 || !ids.contains(it.commentId) }
-            .sortedByDescending { it.date }
+        if (currentMessageId == null) {
+            // Initial entry: find OLDEST unread message (taking 30-day rule into account)
+            val oldestUnread = allMessages.filter { it.isActuallyUnread }.minByOrNull { it.date }
+            if (oldestUnread != null) return NextUnreadItem.Message(oldestUnread)
+        } else {
+            // Navigation: find NEXT unread message in visual thread sequence
+            val tree = allMessages.groupBy { it.commentId }
+            val ids = allMessages.map { it.remoteId }.toSet()
+            val currentRoots = allMessages.filter { it.commentId == 0 || !ids.contains(it.commentId) }
+                .sortedByDescending { it.date }
 
-        val visualSequence = mutableListOf<CIXMessage>()
-        fun walk(m: CIXMessage) {
-            visualSequence.add(m)
-            tree[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it) }
-        }
-        currentRoots.forEach { walk(it) }
+            val visualSequence = mutableListOf<CIXMessage>()
+            fun walk(m: CIXMessage) {
+                visualSequence.add(m)
+                tree[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it) }
+            }
+            currentRoots.forEach { walk(it) }
 
-        if (currentMessageId != null) {
             val currentIndex = visualSequence.indexOfFirst { it.remoteId == currentMessageId }
             if (currentIndex != -1) {
                 for (i in (currentIndex + 1) until visualSequence.size) {
-                    if (visualSequence[i].unread) return NextUnreadItem.Message(visualSequence[i])
+                    if (visualSequence[i].isActuallyUnread) return NextUnreadItem.Message(visualSequence[i])
                 }
             }
-        } else {
-            visualSequence.find { it.unread }?.let { return NextUnreadItem.Message(it) }
         }
 
         return findNextUnreadOutsideTopic()
@@ -272,6 +282,17 @@ class TopicViewModel(
         _isLoading.value = true
         if (repository.withdrawMessage(message)) refresh()
         _isLoading.value = false
+    }
+
+    fun logRawXml() = viewModelScope.launch {
+        try {
+            val encodedForum = HtmlUtils.cixEncode(forumName)
+            val encodedTopic = HtmlUtils.cixEncode(topicName)
+            val response = api.getMessagesRaw(encodedForum, encodedTopic)
+            Log.d("RAW_XML", response.string())
+        } catch (e: Exception) {
+            Log.e("RAW_XML", "Failed to get raw XML", e)
+        }
     }
 
     override fun showProfile(user: String) = profileDelegate.showProfile(viewModelScope, user)

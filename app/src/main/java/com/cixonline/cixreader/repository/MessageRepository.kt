@@ -31,19 +31,13 @@ class MessageRepository(
         return messageDao.getByTopic(topicId)
     }
 
-    suspend fun refreshMessages(forum: String, topic: String, topicId: Int, force: Boolean = false) = withContext(Dispatchers.IO) {
+    suspend fun refreshMessages(forum: String, topic: String, topicId: Int, force: Boolean = false, sinceOverride: String? = null) = withContext(Dispatchers.IO) {
         try {
             val encodedForum = HtmlUtils.cixEncode(forum)
             val encodedTopic = HtmlUtils.cixEncode(topic)
             
             val latestMessage = messageDao.getLatestMessage(topicId)
-            val since = if (force || latestMessage == null) null else DateUtils.formatApiDate(latestMessage.date)
-
-            // If we have messages and aren't forcing, only fetch if we're likely behind
-            if (!force && latestMessage != null) {
-                // We could potentially skip here if we trust periodic sync, 
-                // but let's at least use 'since' to avoid downloading everything.
-            }
+            val since = sinceOverride ?: if (force || latestMessage == null) null else DateUtils.formatApiDate(latestMessage.date)
 
             // Fetch the latest messages for the topic.
             val resultSet = api.getMessages(encodedForum, encodedTopic, since = since)
@@ -205,7 +199,7 @@ class MessageRepository(
             val forumParam = HtmlUtils.normalizeName(forum)
             val topicParam = HtmlUtils.normalizeName(topic)
 
-            val processedAttachments = attachments?.map { 
+            val processedAttachments = attachments?.map {
                 it.copy(filename = HtmlUtils.encodeFilename(it.filename))
             }
 

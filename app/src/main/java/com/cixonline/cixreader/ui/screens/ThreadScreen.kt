@@ -121,6 +121,7 @@ fun ThreadScreen(
         return current.remoteId
     }
 
+    // Initial message selection logic
     LaunchedEffect(messages) {
         if (messages.isNotEmpty() && selectedMessage == null) {
             val targetMsg = if (viewModel.initialMessageId != 0) {
@@ -128,7 +129,7 @@ fun ThreadScreen(
             } else {
                 when (val next = viewModel.findNextUnreadItem(null)) {
                     is NextUnreadItem.Message -> next.message
-                    else -> messages.filter { it.commentId == 0 }.maxByOrNull { it.date }
+                    else -> messages.maxByOrNull { it.date } // Fallback to absolute latest message
                 }
             }
 
@@ -136,6 +137,26 @@ fun ThreadScreen(
                 selectedMessage = targetMsg
                 val rootId = findRootForMessage(targetMsg, messages)
                 expandedRootIds = expandedRootIds + rootId
+            }
+        }
+    }
+
+    // Mark current message as read automatically
+    LaunchedEffect(selectedMessage?.remoteId) {
+        selectedMessage?.let {
+            if (it.isActuallyUnread) {
+                viewModel.markAsRead(it)
+            }
+        }
+    }
+
+    // Keep selectedMessage in sync with the underlying list data
+    LaunchedEffect(messages) {
+        selectedMessage?.let { selected ->
+            messages.find { it.remoteId == selected.remoteId }?.let { latest ->
+                if (latest.unread != selected.unread || latest.body != selected.body) {
+                    selectedMessage = latest
+                }
             }
         }
     }
@@ -657,7 +678,7 @@ fun ThreadItem(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall,
-                fontWeight = if (unreadCount > 0) FontWeight.ExtraBold else FontWeight.Normal,
+                fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f)
             )
@@ -673,7 +694,7 @@ fun ThreadItem(
                 text = message.author,
                 maxLines = 1,
                 style = MaterialTheme.typography.labelSmall,
-                fontWeight = if (unreadCount > 0) FontWeight.ExtraBold else FontWeight.Normal,
+                fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
                 color = MaterialTheme.colorScheme.secondary,
                 textAlign = TextAlign.End
             )
@@ -718,7 +739,7 @@ fun ThreadRow(
                 style = MaterialTheme.typography.bodySmall.copy(
                     textAlign = if (isSelected) TextAlign.Center else TextAlign.Start
                 ),
-                fontWeight = if (message.isActuallyUnread) FontWeight.ExtraBold else FontWeight.Normal,
+                fontWeight = if (message.isActuallyUnread) FontWeight.Bold else FontWeight.Normal,
                 color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f)
             )
@@ -727,7 +748,7 @@ fun ThreadRow(
                 text = message.author,
                 maxLines = 1,
                 style = MaterialTheme.typography.labelSmall,
-                fontWeight = if (message.isActuallyUnread) FontWeight.ExtraBold else FontWeight.Normal,
+                fontWeight = if (message.isActuallyUnread) FontWeight.Bold else FontWeight.Normal,
                 color = if (isSelected) Color.White else MaterialTheme.colorScheme.secondary,
                 textAlign = TextAlign.End
             )
