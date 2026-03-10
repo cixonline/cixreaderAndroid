@@ -209,7 +209,7 @@ fun MessageItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = (indentLevel * 12 + 8).dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+            .padding(start = (indentLevel * 6 + 8).dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (message.isActuallyUnread) 
                 MaterialTheme.colorScheme.surfaceVariant 

@@ -626,7 +626,7 @@ fun CombinedThreadList(
                         onClick = { onMessageClick(item.message) },
                         onToggleExpand = if (item.depth == 0) { { onToggleExpand(item.message.remoteId) } } else null
                     )
-                    HorizontalDivider(modifier = Modifier.padding(start = (item.depth * 12 + 32).dp))
+                    HorizontalDivider(modifier = Modifier.padding(start = (item.depth * 6 + 32).dp))
                 }
             }
         }
@@ -716,7 +716,7 @@ fun ThreadRow(
     ) {
         Row(
             modifier = Modifier.padding(
-                start = if (onToggleExpand != null) 4.dp else (level * 12 + 32).dp, 
+                start = if (onToggleExpand != null) 4.dp else (level * 6 + 32).dp,
                 top = 4.dp, bottom = 4.dp, end = 8.dp
             ),
             verticalAlignment = Alignment.CenterVertically
