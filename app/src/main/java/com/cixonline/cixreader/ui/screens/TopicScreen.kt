@@ -211,7 +211,7 @@ fun MessageItem(
             .fillMaxWidth()
             .padding(start = (indentLevel * 12 + 8).dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (message.unread) 
+            containerColor = if (message.isActuallyUnread) 
                 MaterialTheme.colorScheme.surfaceVariant 
             else 
                 MaterialTheme.colorScheme.surface
@@ -229,7 +229,7 @@ fun MessageItem(
                         text = message.author,
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary,
-                        fontWeight = if (message.unread) FontWeight.Bold else FontWeight.Normal
+                        fontWeight = if (message.isActuallyUnread) FontWeight.Bold else FontWeight.Normal
                     )
                     Text(
                         text = dateString,
@@ -259,7 +259,7 @@ fun MessageItem(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (message.unread) {
+                if (message.isActuallyUnread) {
                     TextButton(onClick = onReadClick) {
                         Text("Mark Read", style = MaterialTheme.typography.labelSmall)
                     }

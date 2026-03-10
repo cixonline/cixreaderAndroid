@@ -1,5 +1,6 @@
 package com.cixonline.cixreader.models
 
+import android.util.Log
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.room.Ignore
@@ -37,6 +38,17 @@ data class CIXMessage(
 ) {
     @Ignore
     var level: Int = 0
+
+    val isActuallyUnread: Boolean
+        get() {
+            val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+            val result = unread && date >= thirtyDaysAgo
+            // Only log if it would have been unread but is now read due to the 30-day rule
+            if (unread && !result) {
+                Log.d("CIXMessage", "Message #$remoteId is unread in DB but > 30 days old. Marking as read in UI.")
+            }
+            return result
+        }
 
     val isRoot: Boolean
         get() = commentId == 0

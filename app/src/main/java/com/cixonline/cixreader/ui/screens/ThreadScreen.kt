@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -100,6 +101,7 @@ fun ThreadScreen(
     var initialDraft by remember { mutableStateOf<Draft?>(null) }
     var showNoMoreUnreadDialog by remember { mutableStateOf(false) }
     var showVersionDialog by remember { mutableStateOf(false) }
+    var showDebugDialog by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -194,6 +196,35 @@ fun ThreadScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showNoMoreUnreadDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+
+    if (showDebugDialog && selectedMessage != null) {
+        AlertDialog(
+            onDismissRequest = { showDebugDialog = false },
+            title = { Text("Debug Cache Info (#${selectedMessage!!.remoteId})") },
+            text = {
+                Column {
+                    Text("Database ID: ${selectedMessage!!.id}")
+                    Text("Remote ID: ${selectedMessage!!.remoteId}")
+                    Text("Author: ${selectedMessage!!.author}")
+                    Text("Date: ${selectedMessage!!.date}")
+                    Text("Unread (DB): ${selectedMessage!!.unread}")
+                    Text("isActuallyUnread (UI): ${selectedMessage!!.isActuallyUnread}")
+                    Text("Topic ID: ${selectedMessage!!.topicId}")
+                    Text("Comment ID: ${selectedMessage!!.commentId}")
+                    Text("Root ID: ${selectedMessage!!.rootId}")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(onClick = { viewModel.logRawXml() }) {
+                        Text("Log All Topic XML")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDebugDialog = false }) {
                     Text("Close")
                 }
             }
@@ -366,7 +397,7 @@ fun ThreadScreen(
                             onNextUnreadClick = {
                                 coroutineScope.launch {
                                     val nextItem = viewModel.findNextUnreadItem(selectedMessage?.remoteId)
-                                    if (selectedMessage!!.unread) {
+                                    if (selectedMessage!!.isActuallyUnread) {
                                         viewModel.markAsRead(selectedMessage!!)
                                     }
                                     
@@ -391,7 +422,8 @@ fun ThreadScreen(
                                 }
                             },
                             onAuthorClick = { onProfileClick(selectedMessage!!.author) },
-                            onWithdrawClick = { viewModel.withdrawMessage(selectedMessage!!) }
+                            onWithdrawClick = { viewModel.withdrawMessage(selectedMessage!!) },
+                            onDebugClick = { showDebugDialog = true }
                         )
                     } else {
                         HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outlineVariant)
@@ -511,7 +543,7 @@ fun CombinedThreadList(
 
         roots.forEach { root ->
             val tree = buildThreadTree(messages, root.remoteId)
-            val unreadCount = tree.count { it.first.unread }
+            val unreadCount = tree.count { it.first.isActuallyUnread }
 
             if (expandedRootIds.contains(root.remoteId)) {
                 tree.forEach { (msg, depth) ->
@@ -686,7 +718,7 @@ fun ThreadRow(
                 style = MaterialTheme.typography.bodySmall.copy(
                     textAlign = if (isSelected) TextAlign.Center else TextAlign.Start
                 ),
-                fontWeight = if (message.unread) FontWeight.ExtraBold else FontWeight.Normal,
+                fontWeight = if (message.isActuallyUnread) FontWeight.ExtraBold else FontWeight.Normal,
                 color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f)
             )
@@ -695,7 +727,7 @@ fun ThreadRow(
                 text = message.author,
                 maxLines = 1,
                 style = MaterialTheme.typography.labelSmall,
-                fontWeight = if (message.unread) FontWeight.ExtraBold else FontWeight.Normal,
+                fontWeight = if (message.isActuallyUnread) FontWeight.ExtraBold else FontWeight.Normal,
                 color = if (isSelected) Color.White else MaterialTheme.colorScheme.secondary,
                 textAlign = TextAlign.End
             )
@@ -711,7 +743,8 @@ fun MessageActionBar(
     onReplyClick: () -> Unit,
     onNextUnreadClick: () -> Unit,
     onAuthorClick: () -> Unit,
-    onWithdrawClick: () -> Unit
+    onWithdrawClick: () -> Unit,
+    onDebugClick: () -> Unit = {}
 ) {
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy HH:mm", Locale.getDefault()) }
     val dateString = remember(message.date) { dateFormat.format(Date(message.date)) }
@@ -770,6 +803,9 @@ fun MessageActionBar(
                 )
             }
             Row {
+                IconButton(onClick = onDebugClick) {
+                    Icon(Icons.Default.BugReport, contentDescription = "Debug", tint = Color.White)
+                }
                 if (currentUsername != null && message.author.equals(currentUsername, ignoreCase = true) && !message.isWithdrawn()) {
                     IconButton(onClick = { showWithdrawConfirm = true }) {
                         Icon(

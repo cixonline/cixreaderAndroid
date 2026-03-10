@@ -4,6 +4,7 @@ import android.util.Log
 import com.cixonline.cixreader.api.CixApi
 import com.cixonline.cixreader.api.JsonNetworkClient
 import com.cixonline.cixreader.api.MessageApi
+import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.api.PostAttachment
 import com.cixonline.cixreader.api.PostMessage2Request
 import com.cixonline.cixreader.db.MessageDao
@@ -63,6 +64,7 @@ class MessageRepository(
     private suspend fun saveMessagesToDb(apiMessages: List<MessageApi>, forum: String, topic: String, topicId: Int) {
         val existingMessages = messageDao.getByTopic(topicId).first().associateBy { it.remoteId }
         val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+        val currentUsername = NetworkClient.getUsername()
         
         val messagesToInsert = apiMessages.map { apiMsg ->
             val existing = existingMessages[apiMsg.id]
@@ -70,7 +72,9 @@ class MessageRepository(
             
             val isReadFromServer = apiMsg.status?.equals("R", ignoreCase = true) == true
             val isOld = messageDate < thirtyDaysAgo
-            val isUnread = if (isReadFromServer || isOld) false else (existing?.unread ?: true)
+            val isFromSelf = apiMsg.author?.equals(currentUsername, ignoreCase = true) == true
+            
+            val isUnread = if (isReadFromServer || isOld || isFromSelf) false else (existing?.unread ?: true)
 
             CIXMessage(
                 id = existing?.id ?: 0,
@@ -157,10 +161,13 @@ class MessageRepository(
             
             val messageDate = DateUtils.parseCixDate(messageApi.dateTime)
             val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+            val currentUsername = NetworkClient.getUsername()
             
             val isReadFromServer = messageApi.status?.equals("R", ignoreCase = true) == true
             val isOld = messageDate < thirtyDaysAgo
-            val isUnread = if (isReadFromServer || isOld) false else (existing?.unread ?: true)
+            val isFromSelf = messageApi.author?.equals(currentUsername, ignoreCase = true) == true
+            
+            val isUnread = if (isReadFromServer || isOld || isFromSelf) false else (existing?.unread ?: true)
 
             val message = CIXMessage(
                 id = existing?.id ?: 0,
