@@ -96,6 +96,7 @@ fun MainContent(
             navController = navController,
             startDestination = startDestination,
             settingsManager = settingsManager,
+            syncManager = syncManager,
             database = database,
             forumRepository = forumRepository,
             messageRepository = messageRepository,
