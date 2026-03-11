@@ -355,6 +355,7 @@ class WelcomeViewModel(
                                     topicId = topicId, 
                                     forumName = forum, 
                                     topicName = topic, 
+                                    subject = HtmlUtils.decodeHtml(messageApi.subject),
                                     unread = true
                                 )
                                 messageDao.insert(newMessage)

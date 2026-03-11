@@ -4,6 +4,7 @@ import android.util.Log
 import com.cixonline.cixreader.api.CixApi
 import com.cixonline.cixreader.api.JsonNetworkClient
 import com.cixonline.cixreader.api.MessageApi
+import com.cixonline.cixreader.api.MessageRangeRequest
 import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.api.PostAttachment
 import com.cixonline.cixreader.api.PostMessage2Request
@@ -15,9 +16,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import org.simpleframework.xml.core.Persister
 import org.xmlpull.v1.XmlPullParserFactory
 import retrofit2.HttpException
 import java.io.StringReader
+import java.io.StringWriter
 
 class NotAMemberException(val forumName: String) : Exception("Not a member of forum: $forumName")
 
@@ -37,6 +40,10 @@ class MessageRepository(
 
     suspend fun getLatestMessageInTopic(topicId: Int): CIXMessage? = withContext(Dispatchers.IO) {
         messageDao.getLatestMessage(topicId)
+    }
+
+    suspend fun getOldestMessageInTopic(topicId: Int): CIXMessage? = withContext(Dispatchers.IO) {
+        messageDao.getOldestMessage(topicId)
     }
 
     suspend fun getOldestUnreadInTopic(topicId: Int): CIXMessage? = withContext(Dispatchers.IO) {
@@ -71,6 +78,60 @@ class MessageRepository(
         }
     }
 
+    suspend fun backfillToMessageOne(forum: String, topic: String, topicId: Int) = withContext(Dispatchers.IO) {
+        try {
+            val oldestLocal = messageDao.getOldestMessage(topicId)
+            val oldestId = oldestLocal?.remoteId ?: return@withContext
+            
+            if (oldestId <= 1) {
+                Log.d(tag, "Already have message 1 for $forum/$topic")
+                return@withContext
+            }
+
+            // Range is 1 to (oldestId - 1)
+            var currentEnd = oldestId - 1
+            val batchSize = 1000 // Arbitrary safe batch size for range requests
+            
+            val encodedForum = HtmlUtils.cixEncode(forum)
+            val encodedTopic = HtmlUtils.cixEncode(topic)
+
+            while (currentEnd >= 1) {
+                val currentStart = (currentEnd - batchSize + 1).coerceAtLeast(1)
+                Log.d(tag, "Backfilling $forum/$topic range: $currentStart to $currentEnd")
+                
+                val request = MessageRangeRequest(
+                    end = currentEnd,
+                    forum = encodedForum,
+                    start = currentStart,
+                    topic = encodedTopic
+                )
+
+                 // Log XML payload
+                try {
+                    val serializer = Persister()
+                    val writer = StringWriter()
+                    serializer.write(request, writer)
+                    Log.d(tag, "messagerange.xml POST payload: ${writer.toString()}")
+                } catch (e: Exception) {
+                    Log.e(tag, "Failed to log messagerange.xml payload", e)
+                }
+                
+                val resultSet = api.getMessageRange(request)
+                if (resultSet.messages.isNotEmpty()) {
+                    saveMessagesToDb(resultSet.messages, forum, topic, topicId)
+                } else {
+                    // If no messages in this range (e.g. gap), we just move on
+                    Log.d(tag, "No messages in range $currentStart to $currentEnd for $forum/$topic")
+                }
+                
+                currentEnd = currentStart - 1
+            }
+            Log.d(tag, "Backfill complete for $forum/$topic")
+        } catch (e: Exception) {
+            Log.e(tag, "Backfill to message 1 failed for $forum/$topic", e)
+        }
+    }
+
     private suspend fun saveMessagesToDb(apiMessages: List<MessageApi>, forum: String, topic: String, topicId: Int) {
         val currentMessages = messageDao.getByTopic(topicId).first()
         val existingMessages = currentMessages.associateBy { it.remoteId }
@@ -85,7 +146,13 @@ class MessageRepository(
             val isOld = messageDate < thirtyDaysAgo
             val isFromSelf = apiMsg.author?.equals(currentUsername, ignoreCase = true) == true
             
-            val isUnread = if (isReadFromServer || isOld || isFromSelf) false else (existing?.unread ?: true)
+            val isUnread = if (existing != null && !existing.unread) {
+                false
+            } else if (isReadFromServer || isOld || isFromSelf) {
+                false
+            } else {
+                existing?.unread ?: true
+            }
 
             CIXMessage(
                 id = existing?.id ?: 0,
@@ -149,6 +216,24 @@ class MessageRepository(
         }
     }
 
+    private fun extractStringFromXml(xml: String): String {
+        return try {
+            val factory = XmlPullParserFactory.newInstance()
+            val parser = factory.newPullParser()
+            parser.setInput(StringReader(xml))
+            var eventType = parser.eventType
+            while (eventType != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                if (eventType == org.xmlpull.v1.XmlPullParser.TEXT) {
+                    return parser.text
+                }
+                eventType = parser.next()
+            }
+            xml
+        } catch (e: Exception) {
+            xml
+        }
+    }
+
     suspend fun getFirstUnreadMessageId(forum: String, topic: String): Int = withContext(Dispatchers.IO) {
         try {
             val encodedForum = HtmlUtils.cixEncode(forum)
@@ -176,7 +261,13 @@ class MessageRepository(
             val isOld = messageDate < thirtyDaysAgo
             val isFromSelf = messageApi.author?.equals(currentUsername, ignoreCase = true) == true
             
-            val isUnread = if (isReadFromServer || isOld || isFromSelf) false else (existing?.unread ?: true)
+            val isUnread = if (existing != null && !existing.unread) {
+                false
+            } else if (isReadFromServer || isOld || isFromSelf) {
+                false
+            } else {
+                existing?.unread ?: true
+            }
 
             val message = CIXMessage(
                 id = existing?.id ?: 0,
@@ -226,97 +317,82 @@ class MessageRepository(
             }
 
             val request = PostMessage2Request(
-                attachments = processedAttachments,
-                body = bodyForRequest,
-                flags = if (processedAttachments != null && processedAttachments.isNotEmpty()) 1 else 0,
                 forum = forumParam,
-                markRead = 1,
+                topic = topicParam,
+                body = bodyForRequest,
                 msgId = replyTo,
-                topic = topicParam
+                attachments = processedAttachments
             )
-            
+
             val response = JsonNetworkClient.api.postMessageJson(request)
-
-            if (response.id > 0) {
-                var updatedBody = bodyForRequest
-                response.attachments?.forEachIndexed { index, attachmentResponse ->
-                    val marker = "{${index + 1}}"
-                    var url = attachmentResponse.url
-                    if (url != null) {
-                        url = HtmlUtils.cleanCixUrls(url)
-                        updatedBody = updatedBody.replace(marker, url)
-                    }
-                }
-
-                insertNewMessageLocal(response.id, author, updatedBody, replyTo, forum, topic)
-                return@withContext response.id
-            }
-            return@withContext 0
-        } catch (e: HttpException) {
-            val errorBody = e.response()?.errorBody()?.string()
-            Log.e(tag, "postMessage failed with HTTP ${e.code()}. Response: $errorBody", e)
-            return@withContext 0
+            
+            val message = CIXMessage(
+                remoteId = response.id,
+                author = author,
+                body = body,
+                date = System.currentTimeMillis(),
+                commentId = replyTo,
+                rootId = if (replyTo == 0) response.id else 0, // Simplified: if new message, it is its own root
+                topicId = 0,
+                forumName = forum,
+                topicName = topic,
+                subject = "",
+                unread = false,
+                postPending = false
+            )
+            messageDao.insert(message)
+            
+            response.id
         } catch (e: Exception) {
             Log.e(tag, "postMessage failed", e)
-            return@withContext 0
+            throw e
         }
-    }
-
-    private suspend fun insertNewMessageLocal(id: Int, author: String, body: String, replyTo: Int, forum: String, topic: String) {
-        val topicId = HtmlUtils.calculateTopicId(forum, topic)
-        val newMessage = CIXMessage(
-            remoteId = id,
-            author = author,
-            body = body,
-            date = System.currentTimeMillis(),
-            commentId = replyTo,
-            rootId = 0,
-            topicId = topicId,
-            forumName = forum,
-            topicName = topic,
-            unread = false
-        )
-        messageDao.insert(newMessage)
     }
 
     suspend fun joinForum(forum: String): Boolean = withContext(Dispatchers.IO) {
         try {
             val encodedForum = HtmlUtils.cixEncode(forum)
             val response = api.joinForum(encodedForum)
-            val result = response.string()
-            result == "Success"
+            val result = extractStringFromXml(response.string())
+            result.trim() == "Success"
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(tag, "Join forum failed", e)
             false
-        }
-    }
-
-    suspend fun toggleStar(message: CIXMessage) = withContext(Dispatchers.IO) {
-        val updatedMessage = message.copy(starred = !message.starred)
-        messageDao.update(updatedMessage)
-    }
-
-    suspend fun markAsRead(message: CIXMessage) = withContext(Dispatchers.IO) {
-        if (message.unread) {
-            val updatedMessage = message.copy(unread = false, readPending = true)
-            messageDao.update(updatedMessage)
         }
     }
 
     suspend fun withdrawMessage(message: CIXMessage): Boolean = withContext(Dispatchers.IO) {
         try {
-            val encodedForum = HtmlUtils.cixEncode(message.forumName)
-            val encodedTopic = HtmlUtils.cixEncode(message.topicName)
-            val response = api.withdrawMessage(encodedForum, encodedTopic, message.remoteId)
-            val result = response.string()
-            
-            val updatedMessage = message.copy(body = "<<withdrawn by author>>", unread = false)
-            messageDao.update(updatedMessage)
-
-            true
+            val response = api.withdrawMessage(
+                HtmlUtils.cixEncode(message.forumName),
+                HtmlUtils.cixEncode(message.topicName),
+                message.remoteId
+            )
+            val result = extractStringFromXml(response.string())
+            result.trim() == "Success"
         } catch (e: Exception) {
             Log.e(tag, "Withdraw message failed", e)
             false
+        }
+    }
+
+    suspend fun toggleStar(message: CIXMessage) = withContext(Dispatchers.IO) {
+        val newStarred = !message.starred
+        messageDao.updateStarred(message.id, newStarred)
+    }
+
+    suspend fun markAsRead(message: CIXMessage) = withContext(Dispatchers.IO) {
+        if (message.unread) {
+            messageDao.updateUnread(message.id, false)
+            try {
+                api.markRead(
+                    HtmlUtils.cixEncode(message.forumName),
+                    HtmlUtils.cixEncode(message.topicName),
+                    message.remoteId
+                )
+            } catch (e: Exception) {
+                Log.e(tag, "Mark as read on server failed", e)
+            }
         }
     }
 }

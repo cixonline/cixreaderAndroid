@@ -18,6 +18,9 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE topicId = :topicId ORDER BY remoteId DESC LIMIT 1")
     suspend fun getLatestMessage(topicId: Int): CIXMessage?
 
+    @Query("SELECT * FROM messages WHERE topicId = :topicId ORDER BY remoteId ASC LIMIT 1")
+    suspend fun getOldestMessage(topicId: Int): CIXMessage?
+
     @Query("SELECT COUNT(*) FROM messages WHERE topicId = :topicId")
     suspend fun getMessageCount(topicId: Int): Int
 
@@ -41,6 +44,12 @@ interface MessageDao {
 
     @Update
     suspend fun update(message: CIXMessage)
+
+    @Query("UPDATE messages SET starred = :starred WHERE id = :id")
+    suspend fun updateStarred(id: Int, starred: Boolean)
+
+    @Query("UPDATE messages SET unread = :unread WHERE id = :id")
+    suspend fun updateUnread(id: Int, unread: Boolean)
 
     @Delete
     suspend fun delete(message: CIXMessage)

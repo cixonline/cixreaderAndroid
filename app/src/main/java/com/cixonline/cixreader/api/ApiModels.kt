@@ -5,6 +5,7 @@ import org.simpleframework.xml.Attribute
 import org.simpleframework.xml.Element
 import org.simpleframework.xml.ElementList
 import org.simpleframework.xml.Namespace
+import org.simpleframework.xml.NamespaceList
 import org.simpleframework.xml.Order
 import org.simpleframework.xml.Root
 import org.simpleframework.xml.Text
@@ -426,3 +427,23 @@ data class DirListing(
     // Required by SimpleXML for deserialization
     constructor() : this(null, null, 0, null, null, null)
 }
+
+@Root(name = "Range", strict = false)
+@NamespaceList(
+    Namespace(reference = "http://cixonline.com"),
+    Namespace(prefix = "i", reference = "http://www.w3.org/2001/XMLSchema-instance")
+)
+@Order(elements = ["End", "ForumName", "Start", "TopicName"])
+class MessageRangeRequest @JvmOverloads constructor(
+    @field:Element(name = "End")
+    var end: Int = 0,
+
+    @field:Element(name = "ForumName")
+    var forum: String = "",
+
+    @field:Element(name = "Start")
+    var start: Int = 0,
+
+    @field:Element(name = "TopicName")
+    var topic: String = ""
+)

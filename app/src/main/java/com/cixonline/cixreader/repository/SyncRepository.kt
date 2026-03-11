@@ -59,7 +59,16 @@ class SyncRepository(
 
                     val isReadFromServer = apiMsg.status?.equals("R", ignoreCase = true) == true
                     val isOld = messageDate < thirtyDaysAgo
-                    val isUnread = if (isReadFromServer || isOld) false else (existing?.unread ?: true)
+                    
+                    // If message exists and is already read locally, KEEP it read.
+                    // Otherwise, follow server status or 30-day rule.
+                    val isUnread = if (existing != null && !existing.unread) {
+                        false
+                    } else if (isReadFromServer || isOld) {
+                        false
+                    } else {
+                        existing?.unread ?: true
+                    }
 
                     CIXMessage(
                         id = existing?.id ?: 0,
@@ -150,7 +159,15 @@ class SyncRepository(
                 
                 val isReadFromServer = apiMsg.status?.equals("R", ignoreCase = true) == true
                 val isOld = messageDate < thirtyDaysAgo
-                val isUnread = if (isReadFromServer || isOld) false else (existing?.unread ?: true)
+                
+                // If message exists and is already read locally, KEEP it read.
+                val isUnread = if (existing != null && !existing.unread) {
+                    false
+                } else if (isReadFromServer || isOld) {
+                    false
+                } else {
+                    existing?.unread ?: true
+                }
 
                 CIXMessage(
                     id = existing?.id ?: 0,

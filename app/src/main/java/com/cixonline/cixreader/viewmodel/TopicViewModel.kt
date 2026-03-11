@@ -150,6 +150,12 @@ class TopicViewModel(
                         Log.d("TopicViewModel", "No messages found in topic at all.")
                     }
                 }
+
+                // Background task: Backfill to message 1
+                viewModelScope.launch {
+                    repository.backfillToMessageOne(forumName, topicName, topicId)
+                }
+
             } catch (e: Exception) {
                 Log.e("TopicViewModel", "Init failed for $forumName/$topicName", e)
                 _error.value = "Failed to load messages: ${e.message}"
@@ -180,28 +186,41 @@ class TopicViewModel(
         val allMessages = messages.value
         if (allMessages.isEmpty()) return NextUnreadItem.NoMoreUnread
 
+        // Use a consistent tree/sequence construction
+        val tree = allMessages.groupBy { it.commentId }
+        val ids = allMessages.map { it.remoteId }.toSet()
+        val currentRoots = allMessages.filter { it.commentId == 0 || !ids.contains(it.commentId) }
+            .sortedByDescending { it.date }
+
+        val visualSequence = mutableListOf<CIXMessage>()
+        fun walk(m: CIXMessage) {
+            visualSequence.add(m)
+            tree[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it) }
+        }
+        currentRoots.forEach { walk(it) }
+
         if (currentMessageId == null) {
-            val oldestUnread = allMessages.filter { it.isActuallyUnread }.minByOrNull { it.date }
-            if (oldestUnread != null) return NextUnreadItem.Message(oldestUnread)
+            // Finding initial unread: return first unread in visual sequence
+            visualSequence.find { it.isActuallyUnread }?.let { return NextUnreadItem.Message(it) }
         } else {
-            val tree = allMessages.groupBy { it.commentId }
-            val ids = allMessages.map { it.remoteId }.toSet()
-            val currentRoots = allMessages.filter { it.commentId == 0 || !ids.contains(it.commentId) }
-                .sortedByDescending { it.date }
-
-            val visualSequence = mutableListOf<CIXMessage>()
-            fun walk(m: CIXMessage) {
-                visualSequence.add(m)
-                tree[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it) }
-            }
-            currentRoots.forEach { walk(it) }
-
+            // Navigating from a specific message
             val currentIndex = visualSequence.indexOfFirst { it.remoteId == currentMessageId }
             if (currentIndex != -1) {
+                // Check messages FOLLOWING the current one in the thread view
                 for (i in (currentIndex + 1) until visualSequence.size) {
                     if (visualSequence[i].isActuallyUnread) return NextUnreadItem.Message(visualSequence[i])
                 }
+            } else {
+                // If current message isn't in sequence for some reason, find first unread
+                visualSequence.find { it.isActuallyUnread }?.let { return NextUnreadItem.Message(it) }
             }
+        }
+
+        // If we reach here, we've exhausted all messages following the current one in the visual flow.
+        // Now check for any unread BEFORE the current one (handling cases where user jumped around)
+        val anyUnreadInTopic = visualSequence.find { it.isActuallyUnread }
+        if (anyUnreadInTopic != null) {
+            return NextUnreadItem.Message(anyUnreadInTopic)
         }
 
         return findNextUnreadOutsideTopic()
@@ -209,10 +228,12 @@ class TopicViewModel(
 
     private suspend fun findNextUnreadOutsideTopic(): NextUnreadItem {
         val allFolders = folderDao.getAll().first()
-        val currentForum = allFolders.find { it.isRootFolder && it.name.equals(forumName, ignoreCase = true) }
+        val rootFolders = allFolders.filter { it.isRootFolder }.sortedBy { it.name.lowercase() }
+        val currentForum = rootFolders.find { it.name.equals(forumName, ignoreCase = true) }
         
+        // 1. Check remaining topics in CURRENT forum
         if (currentForum != null) {
-            val forumTopics = allFolders.filter { it.parentId == currentForum.id }.sortedBy { it.index }
+            val forumTopics = allFolders.filter { it.parentId == currentForum.id }.sortedBy { it.name.lowercase() }
             val currentTopicIndex = forumTopics.indexOfFirst { it.id == topicId }
             if (currentTopicIndex != -1) {
                 for (i in (currentTopicIndex + 1) until forumTopics.size) {
@@ -221,27 +242,32 @@ class TopicViewModel(
             }
         }
 
-        val allForums = allFolders.filter { it.isRootFolder }.sortedBy { it.index }
-        val currentForumIndex = allForums.indexOfFirst { it.name.equals(forumName, ignoreCase = true) }
+        // 2. Check subsequent forums in alphabetical order
+        val currentForumIndex = rootFolders.indexOfFirst { it.name.equals(forumName, ignoreCase = true) }
         if (currentForumIndex != -1) {
-            for (i in (currentForumIndex + 1) until allForums.size) {
-                if (allForums[i].unread > 0) {
-                    allFolders.find { it.parentId == allForums[i].id && it.unread > 0 }?.let {
-                        return NextUnreadItem.Topic(allForums[i].name, it.name, it.id)
+            // Check forwards from current forum
+            for (i in (currentForumIndex + 1) until rootFolders.size) {
+                if (rootFolders[i].unread > 0) {
+                    val topics = allFolders.filter { it.parentId == rootFolders[i].id }.sortedBy { it.name.lowercase() }
+                    topics.find { it.unread > 0 }?.let {
+                        return NextUnreadItem.Topic(rootFolders[i].name, it.name, it.id)
                     }
                 }
             }
+            // Wrap around: check from beginning of list
             for (i in 0 until currentForumIndex) {
-                if (allForums[i].unread > 0) {
-                    allFolders.find { it.parentId == allForums[i].id && it.unread > 0 }?.let {
-                        return NextUnreadItem.Topic(allForums[i].name, it.name, it.id)
+                if (rootFolders[i].unread > 0) {
+                    val topics = allFolders.filter { it.parentId == rootFolders[i].id }.sortedBy { it.name.lowercase() }
+                    topics.find { it.unread > 0 }?.let {
+                        return NextUnreadItem.Topic(rootFolders[i].name, it.name, it.id)
                     }
                 }
             }
         }
 
+        // 3. Final check: earlier topics in CURRENT forum (wrap around within forum)
         if (currentForum != null) {
-            val forumTopics = allFolders.filter { it.parentId == currentForum.id }.sortedBy { it.index }
+            val forumTopics = allFolders.filter { it.parentId == currentForum.id }.sortedBy { it.name.lowercase() }
             val currentTopicIndex = forumTopics.indexOfFirst { it.id == topicId }
             if (currentTopicIndex != -1) {
                 for (i in 0 until currentTopicIndex) {

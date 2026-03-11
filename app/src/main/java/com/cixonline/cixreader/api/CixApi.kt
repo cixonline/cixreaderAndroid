@@ -79,6 +79,10 @@ interface CixApi {
         @Query("since") since: String? = null
     ): MessageResultSet
 
+    @Headers("Content-Type: application/xml")
+    @POST("forums/messagerange.xml")
+    suspend fun getMessageRange(@Body request: MessageRangeRequest): MessageResultSet
+
     @GET("forums/{forum}/{topic}/allmessages.xml")
     suspend fun getMessagesRaw(
         @Path("forum", encoded = true) forum: String,

@@ -141,15 +141,6 @@ fun ThreadScreen(
         }
     }
 
-    // Mark current message as read automatically
-    LaunchedEffect(selectedMessage?.remoteId) {
-        selectedMessage?.let {
-            if (it.isActuallyUnread) {
-                viewModel.markAsRead(it)
-            }
-        }
-    }
-
     // Keep selectedMessage in sync with the underlying list data
     LaunchedEffect(messages) {
         selectedMessage?.let { selected ->
