@@ -7,7 +7,7 @@ On entering the topic we should do one of:
   * Ascertain the oldest unread message (some may have been read via a different app)
   * Build the onscreen thread from the cache landing on the oldest unread message.
 
-*Check if there are any messages in the cache for this topici if there are not:
+*Check if there are any messages in the cache for this topic if there are not:
   * Get the last 30 days of messages for this topic using an API call and cache.
   * Ascertain the oldest unread message (some may have been read via a different app)
   * Get the entire thread that contains this unread message using an API call and cache.
@@ -16,3 +16,9 @@ On entering the topic we should do one of:
 *Display the most recent thread in this topic and land on the root message
 
 In all the above cases, check to see if there are any messages missing from the cache, and back fill the topic.
+
+====Background syncing====
+
+When Backgound syncing is set on in the settings, the app syncs in the background every minute, which is in line with the desktop version of CIXReader. The date of the last successful sync is stored so that messages are not missed. A sync is run when the app starts and when it is running and the phone comes out of sleep. Attmpts to sync while the app is asleep will fail because it doesn't have permissions to use networking when the phone is asleep.
+
+The app adds 2 hours to getLastSyncDate, to account for time drift and daylight saving changes.
