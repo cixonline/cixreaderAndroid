@@ -118,7 +118,7 @@ class SyncRepository(
 
                 } catch (e: CancellationException) {
                     throw e
-                } catch (e: Exception) {
+        } catch (e: Exception) {
                     Log.e(tag, "Failed to mark message ${msg.remoteId} as read", e)
                 }
             }
@@ -221,6 +221,9 @@ class SyncRepository(
                     refreshMessages(forum.name, topic.name, topic.id)
                 }
             }
+            
+            // Update last sync date on successful full sync
+            settingsManager.saveLastSyncDate(DateUtils.formatApiDate(System.currentTimeMillis()))
             
         } catch (e: CancellationException) {
             throw e

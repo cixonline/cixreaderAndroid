@@ -6,6 +6,7 @@ import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.Calendar
 
 enum class ThemeMode {
     SYSTEM, LIGHT, DARK
@@ -111,6 +112,19 @@ class SettingsManager(context: Context) {
     }
 
     fun getLastSyncDate(): String? {
-        return sharedPreferences.getString("last_sync_date", null)
+        val lastSync = sharedPreferences.getString("last_sync_date", null) ?: return null
+        return try {
+            val timestamp = DateUtils.parseCixDate(lastSync)
+            if (timestamp > 0) {
+                val calendar = Calendar.getInstance()
+                calendar.timeInMillis = timestamp
+                calendar.add(Calendar.HOUR_OF_DAY, 2)
+                DateUtils.formatApiDate(calendar.timeInMillis)
+            } else {
+                lastSync
+            }
+        } catch (e: Exception) {
+            lastSync
+        }
     }
 }
