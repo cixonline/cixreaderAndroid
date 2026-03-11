@@ -36,6 +36,7 @@ object NetworkClient {
     }
 
     fun getUsername() = username
+    fun hasCredentials() = username.isNotEmpty() && password.isNotEmpty()
 
     private val authInterceptor = Interceptor { chain ->
         val request = chain.request()

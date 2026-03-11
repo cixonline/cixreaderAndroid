@@ -15,7 +15,10 @@ class SyncWorker(appContext: Context, workerParams: WorkerParameters):
 
     override suspend fun doWork(): Result {
         val settingsManager = SettingsManager(applicationContext)
-        if (!settingsManager.isBackgroundSyncEnabled()) {
+        
+        // Don't sync if background sync is disabled or if we don't have credentials
+        if (!settingsManager.isBackgroundSyncEnabled() || !NetworkClient.hasCredentials()) {
+            Log.d("SyncWorker", "Skipping sync: background sync enabled=${settingsManager.isBackgroundSyncEnabled()}, has credentials=${NetworkClient.hasCredentials()}")
             return Result.success()
         }
 

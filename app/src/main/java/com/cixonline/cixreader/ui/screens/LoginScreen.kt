@@ -19,12 +19,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cixonline.cixreader.BuildConfig
 import com.cixonline.cixreader.R
+import com.cixonline.cixreader.utils.SyncManager
 import com.cixonline.cixreader.viewmodel.LoginViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
     viewModel: LoginViewModel,
+    syncManager: SyncManager,
     onLoginSuccess: () -> Unit
 ) {
     val uriHandler = LocalUriHandler.current
@@ -119,7 +121,12 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(32.dp))
 
             Button(
-                onClick = { viewModel.login(onLoginSuccess) },
+                onClick = { 
+                    viewModel.login {
+                        syncManager.triggerImmediateSync()
+                        onLoginSuccess()
+                    } 
+                },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color.White,

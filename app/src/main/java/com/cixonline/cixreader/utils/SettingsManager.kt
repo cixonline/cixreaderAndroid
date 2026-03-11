@@ -49,6 +49,11 @@ class SettingsManager(context: Context) {
         _usernameFlow.value = username
     }
 
+    fun hasCredentials(): Boolean {
+        val (u, p) = getCredentials()
+        return !u.isNullOrEmpty() && !p.isNullOrEmpty()
+    }
+
     fun getCredentials(): Pair<String?, String?> {
         return try {
             val username = sharedPreferences.getString("username", null)

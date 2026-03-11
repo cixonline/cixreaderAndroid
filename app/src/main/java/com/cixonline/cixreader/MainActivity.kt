@@ -38,7 +38,9 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 settingsManager.backgroundSyncFlow.collect { enabled ->
-                    syncManager.handleSyncStateChange(enabled)
+                    if (settingsManager.hasCredentials()) {
+                        syncManager.handleSyncStateChange(enabled)
+                    }
                 }
             }
         }
@@ -48,14 +50,10 @@ class MainActivity : ComponentActivity() {
                 settingsManager = settingsManager,
                 database = database,
                 forumRepository = forumRepository,
-                messageRepository = messageRepository
+                messageRepository = messageRepository,
+                syncManager = syncManager
             )
         }
-    }
-
-    override fun onStart() {
-        super.onStart()
-        syncManager.triggerImmediateSync()
     }
 }
 
@@ -64,7 +62,8 @@ fun MainContent(
     settingsManager: SettingsManager,
     database: AppDatabase,
     forumRepository: ForumRepository,
-    messageRepository: MessageRepository
+    messageRepository: MessageRepository,
+    syncManager: SyncManager
 ) {
     val fontSizeMultiplier by settingsManager.fontSizeFlow.collectAsState(initial = settingsManager.getFontSize())
     val themeMode by settingsManager.themeFlow.collectAsState(initial = settingsManager.getThemeMode())
@@ -86,6 +85,7 @@ fun MainContent(
             val (user, pass) = settingsManager.getCredentials()
             if (user != null && pass != null) {
                 NetworkClient.setCredentials(user, pass)
+                syncManager.triggerImmediateSync()
                 "welcome"
             } else {
                 "login"

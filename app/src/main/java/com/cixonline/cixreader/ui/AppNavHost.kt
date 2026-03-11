@@ -16,6 +16,7 @@ import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.ui.screens.*
 import com.cixonline.cixreader.utils.HtmlUtils
 import com.cixonline.cixreader.utils.SettingsManager
+import com.cixonline.cixreader.utils.SyncManager
 import com.cixonline.cixreader.viewmodel.*
 
 @Composable
@@ -23,6 +24,7 @@ fun AppNavHost(
     navController: NavHostController,
     startDestination: String,
     settingsManager: SettingsManager,
+    syncManager: SyncManager,
     database: AppDatabase,
     forumRepository: ForumRepository,
     messageRepository: MessageRepository,
@@ -39,6 +41,7 @@ fun AppNavHost(
             )
             LoginScreen(
                 viewModel = loginViewModel,
+                syncManager = syncManager,
                 onLoginSuccess = {
                     navController.navigate("welcome") {
                         popUpTo("login") { inclusive = true }
