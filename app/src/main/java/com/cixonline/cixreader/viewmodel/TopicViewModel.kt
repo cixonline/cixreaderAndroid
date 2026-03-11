@@ -80,8 +80,11 @@ class TopicViewModel(
 
     init {
         viewModelScope.launch {
-            _isLoading.value = true
             try {
+                _isLoading.value = true
+                
+                val currentMessages = repository.getMessagesForTopic(topicId).first()
+                
                 if (initialRootId != 0 || initialMessageId != 0) {
                     repository.fetchMessageAndChildren(
                         forumName,
@@ -89,21 +92,26 @@ class TopicViewModel(
                         if (initialRootId != 0) initialRootId else initialMessageId,
                         topicId
                     )
-                } else {
-                    // Always fetch messages from the last 30 days on entry if no specific message targeted
+                } else if (currentMessages.isEmpty()) {
+                    // 1: Get the last 30 days of messages for this topic using an API call and cache them.
                     val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
                     val since = DateUtils.formatApiDate(thirtyDaysAgo)
                     repository.refreshMessages(forumName, topicName, topicId, sinceOverride = since)
 
-                    // After refresh, look for the oldest unread message in the last 30 days
-                    val allMessages = repository.getMessagesForTopic(topicId).first()
-                    val firstUnread = allMessages.filter { it.isActuallyUnread }.minByOrNull { it.date }
+                    // 2: Ascertain the oldest unread message from the cached messages.
+                    val updatedMessages = repository.getMessagesForTopic(topicId).first()
+                    val oldestUnread = updatedMessages.filter { it.isActuallyUnread }.minByOrNull { it.date }
 
-                    if (firstUnread != null) {
-                        // Fetch the thread for this unread message and scroll to it
-                        repository.fetchThreadThenBackfill(forumName, topicName, firstUnread.remoteId, topicId)
-                        _scrollToMessageId.value = firstUnread.remoteId
+                    if (oldestUnread != null) {
+                        // 3: Get the entire thread that contains this unread message using an API call and cache all these messages.
+                        repository.fetchThreadThenBackfill(forumName, topicName, oldestUnread.remoteId, topicId)
+                        
+                        // 4: Display the thread landing on the oldest unread message.
+                        _scrollToMessageId.value = oldestUnread.remoteId
                     }
+                } else {
+                    // Cache is NOT empty, but we might still want to refresh to get latest
+                    repository.refreshMessages(forumName, topicName, topicId)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

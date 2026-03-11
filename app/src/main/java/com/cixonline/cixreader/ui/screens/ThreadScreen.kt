@@ -454,7 +454,11 @@ fun ThreadScreen(
                     Box(modifier = Modifier.weight(if (showReplyPane) 0.45f else 1f)) {
                         if (isLoading && messages.isEmpty()) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator()
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator()
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("Fetching messages...", style = MaterialTheme.typography.bodySmall)
+                                }
                             }
                         } else if (selectedMessage != null) {
                             val parentMessage = remember(selectedMessage, messages) {
