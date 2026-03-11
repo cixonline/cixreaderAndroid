@@ -1,5 +1,6 @@
 package com.cixonline.cixreader.ui
 
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -80,7 +81,7 @@ fun AppNavHost(
                 currentUsername = currentUsername,
                 onBackClick = actions.onBackClick,
                 onTopicClick = { forumName, topicName, topicId ->
-                    navController.navigate("thread/$forumName/$topicName/$topicId")
+                    actions.navigateToThread(forumName, topicName, topicId, 0, 0)
                 },
                 onLogout = actions.onLogout,
                 onSettingsClick = actions.onSettingsClick,
@@ -151,9 +152,13 @@ fun AppNavHost(
                 viewModel = viewModel,
                 forumName = forumName,
                 currentUsername = currentUsername,
-                onBackClick = actions.onBackClick,
+                onBackClick = {
+                    navController.navigate("welcome") {
+                        popUpTo("welcome") { inclusive = true }
+                    }
+                },
                 onTopicClick = { topicName, topicId ->
-                    navController.navigate("thread/$forumName/$topicName/$topicId")
+                    actions.navigateToThread(forumName, topicName, topicId, 0, 0)
                 },
                 onLogout = actions.onLogout,
                 onSettingsClick = actions.onSettingsClick,
@@ -162,11 +167,11 @@ fun AppNavHost(
             )
         }
         composable(
-            route = "thread/{forumName}/{topicName}/{topicId}?rootId={rootId}&msgId={msgId}",
+            route = "thread/{topicId}?forumName={forumName}&topicName={topicName}&rootId={rootId}&msgId={msgId}",
             arguments = listOf(
+                navArgument("topicId") { type = NavType.IntType },
                 navArgument("forumName") { type = NavType.StringType },
                 navArgument("topicName") { type = NavType.StringType },
-                navArgument("topicId") { type = NavType.IntType },
                 navArgument("rootId") { 
                     type = NavType.IntType
                     defaultValue = 0
@@ -177,9 +182,9 @@ fun AppNavHost(
                 }
             )
         ) { backStackEntry ->
+            val topicIdArg = backStackEntry.arguments?.getInt("topicId") ?: 0
             val forumNameArg = backStackEntry.arguments?.getString("forumName") ?: ""
             val topicNameArg = backStackEntry.arguments?.getString("topicName") ?: ""
-            val topicIdArg = backStackEntry.arguments?.getInt("topicId") ?: 0
             val rootIdArg = backStackEntry.arguments?.getInt("rootId") ?: 0
             val msgIdArg = backStackEntry.arguments?.getInt("msgId") ?: 0
             
@@ -200,7 +205,12 @@ fun AppNavHost(
             ThreadScreen(
                 viewModel = viewModel,
                 currentUsername = currentUsername,
-                onBackClick = actions.onBackClick,
+                onBackClick = {
+                    val forumId = HtmlUtils.calculateForumId(viewModel.forumName)
+                    navController.navigate("topics/${viewModel.forumName}/$forumId") {
+                        popUpTo("welcome")
+                    }
+                },
                 onLogout = actions.onLogout,
                 onSettingsClick = actions.onSettingsClick,
                 settingsManager = settingsManager,
@@ -253,7 +263,7 @@ class NavigationActions(private val navController: NavHostController, private va
     }
 
     val onProfileClick: (String) -> Unit = { username ->
-        navController.navigate("profile/$username")
+        navController.navigate("profile/${Uri.encode(username)}")
     }
     
     val onBackClick: () -> Unit = {
@@ -269,6 +279,9 @@ class NavigationActions(private val navController: NavHostController, private va
     }
 
     val navigateToThread: (String, String, Int, Int, Int) -> Unit = { forum, topic, topicId, rootId, msgId ->
-        navController.navigate("thread/$forum/$topic/$topicId?rootId=$rootId&msgId=$msgId")
+        val encodedForum = Uri.encode(forum)
+        val encodedTopic = Uri.encode(topic)
+        // Using query parameters for forum and topic names to safely handle special characters (like slashes)
+        navController.navigate("thread/$topicId?forumName=$encodedForum&topicName=$encodedTopic&rootId=$rootId&msgId=$msgId")
     }
 }
