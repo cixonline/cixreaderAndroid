@@ -210,8 +210,7 @@ fun AppNavHost(
                 viewModel = viewModel,
                 currentUsername = currentUsername,
                 onBackClick = {
-                    val forumId = HtmlUtils.calculateForumId(viewModel.forumName)
-                    navController.navigate("topics/${viewModel.forumName}/$forumId") {
+                    navController.navigate("forums") {
                         popUpTo("welcome")
                     }
                 },
