@@ -14,6 +14,7 @@ import com.cixonline.cixreader.db.AppDatabase
 import com.cixonline.cixreader.repository.ForumRepository
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.ui.screens.*
+import com.cixonline.cixreader.utils.HtmlUtils
 import com.cixonline.cixreader.utils.SettingsManager
 import com.cixonline.cixreader.viewmodel.*
 
