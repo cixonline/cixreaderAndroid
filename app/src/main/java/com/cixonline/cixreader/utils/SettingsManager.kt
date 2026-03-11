@@ -118,7 +118,7 @@ class SettingsManager(context: Context) {
             if (timestamp > 0) {
                 val calendar = Calendar.getInstance()
                 calendar.timeInMillis = timestamp
-                calendar.add(Calendar.HOUR_OF_DAY, 2)
+                calendar.add(Calendar.HOUR_OF_DAY, -2) // Subtract 2 hours to handle time drift and DST
                 DateUtils.formatApiDate(calendar.timeInMillis)
             } else {
                 lastSync

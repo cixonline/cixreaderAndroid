@@ -36,12 +36,21 @@ class TopicViewModel(
     private val cachedProfileDao: CachedProfileDao,
     private val draftDao: DraftDao,
     private val folderDao: FolderDao,
-    val forumName: String,
-    val topicName: String,
-    val topicId: Int,
+    val rawForumName: String,
+    val rawTopicName: String,
+    val providedTopicId: Int,
     val initialMessageId: Int = 0,
     val initialRootId: Int = 0
 ) : ViewModel(), ProfileHost {
+
+    val forumName = HtmlUtils.normalizeName(rawForumName)
+    val topicName = HtmlUtils.normalizeName(rawTopicName)
+
+    val topicId: Int = if (providedTopicId != 0) {
+        providedTopicId
+    } else {
+        HtmlUtils.calculateTopicId(forumName, topicName)
+    }
 
     private val profileDelegate = ProfileDelegate(api, cachedProfileDao)
 
@@ -50,6 +59,9 @@ class TopicViewModel(
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
+
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error
 
     private val _showJoinDialog = MutableStateFlow<String?>(null)
     val showJoinDialog: StateFlow<String?> = _showJoinDialog
@@ -62,29 +74,29 @@ class TopicViewModel(
     override val selectedMugshotUrl: StateFlow<String?> = profileDelegate.selectedMugshotUrl
     override val isProfileLoading: StateFlow<Boolean> = profileDelegate.isLoading
 
-    val messages: StateFlow<List<CIXMessage>> = combine(
-        repository.getMessagesForTopic(topicId),
-        _searchQuery
-    ) { allMessages, query ->
-        val filtered = allMessages.filter { msg -> !msg.isWithdrawn() }
-        
-        if (query.isBlank()) {
-            filtered
-        } else {
-            filtered.filter { msg ->
-                msg.author.contains(query, ignoreCase = true) ||
-                msg.body.contains(query, ignoreCase = true)
+    val messages: StateFlow<List<CIXMessage>> = repository.getMessagesForTopic(topicId)
+        .combine(_searchQuery) { allMessages, query ->
+            val filtered = allMessages.filter { msg -> !msg.isWithdrawn() }
+            if (query.isBlank()) {
+                filtered
+            } else {
+                filtered.filter { msg ->
+                    msg.author.contains(query, ignoreCase = true) ||
+                    msg.body.contains(query, ignoreCase = true)
+                }
             }
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
+        Log.d("TopicViewModel", "Initializing topic: $forumName/$topicName (ID: $topicId)")
         viewModelScope.launch {
             try {
                 _isLoading.value = true
+                _error.value = null
                 
-                val currentMessages = repository.getMessagesForTopic(topicId).first()
-                
+                val currentCount = repository.getMessageCount(topicId)
+                Log.d("TopicViewModel", "Initial cache count: $currentCount")
+
                 if (initialRootId != 0 || initialMessageId != 0) {
                     repository.fetchMessageAndChildren(
                         forumName,
@@ -92,29 +104,55 @@ class TopicViewModel(
                         if (initialRootId != 0) initialRootId else initialMessageId,
                         topicId
                     )
-                } else if (currentMessages.isEmpty()) {
-                    // 1: Get the last 30 days of messages for this topic using an API call and cache them.
-                    val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
-                    val since = DateUtils.formatApiDate(thirtyDaysAgo)
-                    repository.refreshMessages(forumName, topicName, topicId, sinceOverride = since)
-
-                    // 2: Ascertain the oldest unread message from the cached messages.
-                    val updatedMessages = repository.getMessagesForTopic(topicId).first()
-                    val oldestUnread = updatedMessages.filter { it.isActuallyUnread }.minByOrNull { it.date }
-
-                    if (oldestUnread != null) {
-                        // 3: Get the entire thread that contains this unread message using an API call and cache all these messages.
-                        repository.fetchThreadThenBackfill(forumName, topicName, oldestUnread.remoteId, topicId)
-                        
-                        // 4: Display the thread landing on the oldest unread message.
-                        _scrollToMessageId.value = oldestUnread.remoteId
-                    }
                 } else {
-                    // Cache is NOT empty, but we might still want to refresh to get latest
-                    repository.refreshMessages(forumName, topicName, topicId)
+                    // Scenario: Entering topic normally or via Next Unread
+                    if (currentCount == 0) {
+                        Log.d("TopicViewModel", "Cache empty. Fetching last 30 days.")
+                        val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+                        val since = DateUtils.formatApiDate(thirtyDaysAgo)
+                        repository.refreshMessages(forumName, topicName, topicId, sinceOverride = since)
+                    } else {
+                        Log.d("TopicViewModel", "Cache exists. Refreshing for latest.")
+                        repository.refreshMessages(forumName, topicName, topicId)
+                    }
+
+                    // Look for oldest unread
+                    var targetMessage = repository.getOldestUnreadInTopic(topicId)
+                    
+                    if (targetMessage == null) {
+                        Log.d("TopicViewModel", "No unread found. Checking firstunread API.")
+                        val serverFirstUnreadId = repository.getFirstUnreadMessageId(forumName, topicName)
+                        if (serverFirstUnreadId > 0) {
+                            // Fetch specific message metadata to get its date/unread status properly cached
+                            repository.fetchMessageAndChildren(forumName, topicName, serverFirstUnreadId, topicId)
+                            targetMessage = repository.getMessagesForTopic(topicId).first().find { it.remoteId == serverFirstUnreadId }
+                        }
+                    }
+
+                    if (targetMessage == null) {
+                        Log.d("TopicViewModel", "Still no unread found. Fallback to most recent thread.")
+                        // If we still have no messages (e.g. 30-day fetch returned nothing), get absolute latest
+                        if (repository.getMessageCount(topicId) == 0) {
+                            repository.refreshMessages(forumName, topicName, topicId)
+                        }
+
+                        val allMsgs = repository.getMessagesForTopic(topicId).first()
+                        targetMessage = allMsgs.maxByOrNull { it.date }
+                    }
+
+                    if (targetMessage != null) {
+                        Log.d("TopicViewModel", "Landing on message #${targetMessage.remoteId}. Fetching thread.")
+                        repository.fetchThreadThenBackfill(forumName, topicName, targetMessage.remoteId, topicId)
+                        if (_scrollToMessageId.value == null) {
+                            _scrollToMessageId.value = targetMessage.remoteId
+                        }
+                    } else {
+                        Log.d("TopicViewModel", "No messages found in topic at all.")
+                    }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e("TopicViewModel", "Init failed for $forumName/$topicName", e)
+                _error.value = "Failed to load messages: ${e.message}"
             } finally {
                 _isLoading.value = false
             }
@@ -124,12 +162,14 @@ class TopicViewModel(
     fun refresh() {
         viewModelScope.launch {
             _isLoading.value = true
+            _error.value = null
             try {
                 repository.refreshMessages(forumName, topicName, topicId, force = true)
             } catch (e: NotAMemberException) {
                 _showJoinDialog.value = e.forumName
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e("TopicViewModel", "Refresh failed", e)
+                _error.value = "Refresh failed: ${e.message}"
             } finally {
                 _isLoading.value = false
             }
@@ -141,11 +181,9 @@ class TopicViewModel(
         if (allMessages.isEmpty()) return NextUnreadItem.NoMoreUnread
 
         if (currentMessageId == null) {
-            // Initial entry: find OLDEST unread message (taking 30-day rule into account)
             val oldestUnread = allMessages.filter { it.isActuallyUnread }.minByOrNull { it.date }
             if (oldestUnread != null) return NextUnreadItem.Message(oldestUnread)
         } else {
-            // Navigation: find NEXT unread message in visual thread sequence
             val tree = allMessages.groupBy { it.commentId }
             val ids = allMessages.map { it.remoteId }.toSet()
             val currentRoots = allMessages.filter { it.commentId == 0 || !ids.contains(it.commentId) }
@@ -250,7 +288,6 @@ class TopicViewModel(
 
     fun saveDraft(replyToId: Int, body: String, attachmentUri: Uri? = null, attachmentName: String? = null) {
         viewModelScope.launch {
-            // Fetch existing draft ID to ensure we update instead of inserting duplicates
             val existing = draftDao.getDraft(forumName, topicName, replyToId)
             val draft = Draft(
                 id = existing?.id ?: 0,

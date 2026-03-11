@@ -31,6 +31,19 @@ class MessageRepository(
         return messageDao.getByTopic(topicId)
     }
 
+    suspend fun getMessageCount(topicId: Int): Int = withContext(Dispatchers.IO) {
+        messageDao.getMessageCount(topicId)
+    }
+
+    suspend fun getLatestMessageInTopic(topicId: Int): CIXMessage? = withContext(Dispatchers.IO) {
+        messageDao.getLatestMessage(topicId)
+    }
+
+    suspend fun getOldestUnreadInTopic(topicId: Int): CIXMessage? = withContext(Dispatchers.IO) {
+        val allMessages = messageDao.getByTopic(topicId).first()
+        allMessages.filter { it.isActuallyUnread }.minByOrNull { it.date }
+    }
+
     suspend fun refreshMessages(forum: String, topic: String, topicId: Int, force: Boolean = false, sinceOverride: String? = null) = withContext(Dispatchers.IO) {
         try {
             val encodedForum = HtmlUtils.cixEncode(forum)
@@ -39,12 +52,15 @@ class MessageRepository(
             val latestMessage = messageDao.getLatestMessage(topicId)
             val since = sinceOverride ?: if (force || latestMessage == null) null else DateUtils.formatApiDate(latestMessage.date)
 
-            // Fetch the latest messages for the topic.
+            Log.d(tag, "Refreshing messages for $forum/$topic. Since: $since")
             val resultSet = api.getMessages(encodedForum, encodedTopic, since = since)
             val apiMessages = resultSet.messages
             
             if (apiMessages.isNotEmpty()) {
+                Log.d(tag, "Fetched ${apiMessages.size} messages for $forum/$topic")
                 saveMessagesToDb(apiMessages, forum, topic, topicId)
+            } else {
+                Log.d(tag, "No new messages for $forum/$topic")
             }
         } catch (e: Exception) {
             if (e.message?.contains("not a member", ignoreCase = true) == true) {
@@ -56,7 +72,8 @@ class MessageRepository(
     }
 
     private suspend fun saveMessagesToDb(apiMessages: List<MessageApi>, forum: String, topic: String, topicId: Int) {
-        val existingMessages = messageDao.getByTopic(topicId).first().associateBy { it.remoteId }
+        val currentMessages = messageDao.getByTopic(topicId).first()
+        val existingMessages = currentMessages.associateBy { it.remoteId }
         val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
         val currentUsername = NetworkClient.getUsername()
         
@@ -101,13 +118,12 @@ class MessageRepository(
             val encodedForum = HtmlUtils.cixEncode(forum)
             val encodedTopic = HtmlUtils.cixEncode(topic)
             
-            // 1. Fetch the thread first to display it quickly
+            Log.d(tag, "Fetching thread for msg $msgId in $forum/$topic")
             val threadSet = api.getThread(encodedForum, encodedTopic, msgId)
             if (threadSet.messages.isNotEmpty()) {
                 saveMessagesToDb(threadSet.messages, forum, topic, topicId)
             }
 
-            // 2. Backfill with the rest of the topic messages
             refreshMessages(forum, topic, topicId)
             
         } catch (e: Exception) {
@@ -149,7 +165,6 @@ class MessageRepository(
             val encodedForum = HtmlUtils.cixEncode(forum)
             val encodedTopic = HtmlUtils.cixEncode(topic)
             
-            // 1. Fetch the specific message
             val messageApi = api.getMessage(encodedForum, encodedTopic, msgId)
             val existing = messageDao.getByRemoteId(msgId, topicId)
             
@@ -179,7 +194,6 @@ class MessageRepository(
             )
             messageDao.insert(message)
 
-            // 2. Fetch children if they aren't likely to be in the recent 100
             refreshMessages(forum, topic, topicId)
             
         } catch (e: Exception) {
@@ -199,12 +213,10 @@ class MessageRepository(
             val forumParam = HtmlUtils.normalizeName(forum)
             val topicParam = HtmlUtils.normalizeName(topic)
 
-            val processedAttachments = attachments?.map {
+            val processedAttachments = attachments?.map { 
                 it.copy(filename = HtmlUtils.encodeFilename(it.filename))
             }
 
-            // Add attachment markers like {1}, {2} to the body if they aren't already present.
-            // The server will replace these markers with the actual URLs.
             var bodyForRequest = body
             processedAttachments?.forEachIndexed { index, _ ->
                 val marker = "{${index + 1}}"
@@ -223,24 +235,19 @@ class MessageRepository(
                 topic = topicParam
             )
             
-            Log.d(tag, "Sending PostMessage2Request JSON via dedicated JSON client")
-            // Use the dedicated JSON client to ensure proper serialization and avoid XML conflicts.
             val response = JsonNetworkClient.api.postMessageJson(request)
 
             if (response.id > 0) {
-                // For the local database, we replace the markers with the actual URLs returned by the server.
                 var updatedBody = bodyForRequest
                 response.attachments?.forEachIndexed { index, attachmentResponse ->
                     val marker = "{${index + 1}}"
                     var url = attachmentResponse.url
                     if (url != null) {
-                        // Cleanup the URL: remove :80 and ensure https
                         url = HtmlUtils.cleanCixUrls(url)
                         updatedBody = updatedBody.replace(marker, url)
                     }
                 }
 
-                // Insert the new message locally with the body containing the actual URLs.
                 insertNewMessageLocal(response.id, author, updatedBody, replyTo, forum, topic)
                 return@withContext response.id
             }
@@ -303,7 +310,6 @@ class MessageRepository(
             val response = api.withdrawMessage(encodedForum, encodedTopic, message.remoteId)
             val result = response.string()
             
-            // Mark as withdrawn in local cache
             val updatedMessage = message.copy(body = "<<withdrawn by author>>", unread = false)
             messageDao.update(updatedMessage)
 
