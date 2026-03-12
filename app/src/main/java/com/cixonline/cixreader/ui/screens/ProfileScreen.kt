@@ -318,7 +318,7 @@ fun ProfileScreen(
             }
         } else if (profile == null) {
             Box(modifier = Modifier.padding(paddingValues).fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Could not load profile.")
+                Text("Go online to load profile.")
             }
         } else {
             val p = profile!!
