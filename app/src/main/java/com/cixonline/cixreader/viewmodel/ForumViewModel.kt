@@ -53,7 +53,20 @@ class ForumViewModel(
             isLoading = true
             errorMessage = null
             try {
+                // First sync forums from server
                 repository.refreshForums()
+                
+                // Then, for any currently expanded forums, refresh their topics too
+                val expanded = _expandedForums.value
+                if (expanded.isNotEmpty()) {
+                    val allCurrentFolders = repository.allFolders.first()
+                    expanded.forEach { forumId ->
+                        val forum = allCurrentFolders.find { it.id == forumId }
+                        if (forum != null) {
+                            repository.refreshTopics(forum.name, forum.id)
+                        }
+                    }
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
                 errorMessage = "Failed to load forums: ${e.message}"
@@ -73,14 +86,14 @@ class ForumViewModel(
             // Refresh topics for this forum when expanded
             viewModelScope.launch {
                 _loadingForums.value += forumId
-                isLoading = true
+                // Note: We don't set global isLoading = true here to avoid full screen flicker,
+                // but we could if we wanted a global indicator.
                 try {
                     repository.refreshTopics(forum.name, forum.id)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 } finally {
                     _loadingForums.value -= forumId
-                    isLoading = false
                 }
             }
         }
