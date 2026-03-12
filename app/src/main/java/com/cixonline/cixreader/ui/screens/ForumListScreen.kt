@@ -25,6 +25,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -216,7 +217,7 @@ fun ForumListScreen(
                     }
                 } else {
                     val displayList = remember(folders, expandedForums, showOnlyUnread) {
-                        val list = mutableListOf<Pair<Folder, Boolean>>() // Folder, isTopic
+                        val list = mutableListOf<Pair<Folder?, Boolean>>() // Folder?, isTopic
                         
                         val filteredFolders = if (showOnlyUnread) {
                             // Keep forums if they have unread messages OR if any of their topics have unread messages
@@ -239,8 +240,13 @@ fun ForumListScreen(
                                     .sortedWith(
                                         compareBy { it.name.lowercase() }
                                     )
-                                topics.forEach { topic ->
-                                    list.add(topic to true)
+                                if (topics.isEmpty()) {
+                                    // Add a null folder to represent the "No Topics found" message
+                                    list.add(null to true)
+                                } else {
+                                    topics.forEach { topic ->
+                                        list.add(topic to true)
+                                    }
                                 }
                             }
                         }
@@ -249,7 +255,7 @@ fun ForumListScreen(
 
                     val alphabet = remember(displayList) {
                         displayList.mapNotNull { 
-                            val char = it.first.name.firstOrNull()?.uppercaseChar()
+                            val char = it.first?.name?.firstOrNull()?.uppercaseChar()
                             if (char != null && char in 'A'..'Z') char else null
                         }.distinct().sorted()
                     }
@@ -276,20 +282,35 @@ fun ForumListScreen(
                                     }
                                 }
                         ) {
-                            items(displayList, key = { it.first.id.toString() + if (it.second) "-topic" else "-forum" }) { (item, isTopic) ->
+                            items(displayList, key = { 
+                                if (it.first == null) "no-topics-${it.hashCode()}"
+                                else it.first!!.id.toString() + if (it.second) "-topic" else "-forum" 
+                            }) { (item, isTopic) ->
                                 if (isTopic) {
-                                    val forum = folders.find { it.id == item.parentId }
-                                    CompactTopicItem(
-                                        title = item.name,
-                                        unreadCount = item.unread,
-                                        isLoading = viewModel.isLoading,
-                                        onClick = { 
-                                            if (forum != null) {
-                                                onTopicClick(forum.name, item.name, item.id)
+                                    if (item == null) {
+                                        Text(
+                                            text = "No Topics found, connect to CIX for more",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontStyle = FontStyle.Italic,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(start = 40.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+                                        )
+                                    } else {
+                                        val forum = folders.find { it.id == item.parentId }
+                                        CompactTopicItem(
+                                            title = item.name,
+                                            unreadCount = item.unread,
+                                            isLoading = viewModel.isLoading,
+                                            onClick = { 
+                                                if (forum != null) {
+                                                    onTopicClick(forum.name, item.name, item.id)
+                                                }
                                             }
-                                        }
-                                    )
-                                } else {
+                                        )
+                                    }
+                                } else if (item != null) {
                                     // Calculate total unread from children
                                     val topicsUnread = folders.filter { it.parentId == item.id }.sumOf { it.unread }
                                     val totalUnread = if (topicsUnread > 0) topicsUnread else item.unread
@@ -330,7 +351,7 @@ fun ForumListScreen(
                                             .fillMaxWidth()
                                             .clickable {
                                                 val index = displayList.indexOfFirst { 
-                                                    it.first.name.startsWith(char, ignoreCase = true) 
+                                                    it.first?.name?.startsWith(char, ignoreCase = true) == true
                                                 }
                                                 if (index != -1) {
                                                     scope.launch {
