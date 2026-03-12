@@ -90,6 +90,36 @@ class WelcomeViewModel(
         )
     }
 
+    init {
+        loadCachedInterestingThreads()
+    }
+
+    private fun loadCachedInterestingThreads() {
+        viewModelScope.launch {
+            try {
+                // Get the last 20 messages that were roots and display them while we wait for the API
+                val cachedRoots = messageDao.getRecentRoots(20)
+                if (cachedRoots.isNotEmpty()) {
+                    val cachedUI = cachedRoots.map { msg ->
+                        InterestingThreadUI(
+                            forum = msg.forumName,
+                            topic = msg.topicName,
+                            rootId = msg.remoteId,
+                            author = msg.author,
+                            dateTime = DateUtils.formatDateTime(msg.date),
+                            body = msg.body,
+                            subject = msg.subject,
+                            isRootResolved = true
+                        )
+                    }
+                    _interestingThreads.value = cachedUI
+                }
+            } catch (e: Exception) {
+                Log.e("WelcomeViewModel", "Failed to load cached threads", e)
+            }
+        }
+    }
+
     fun selectForum(forum: Folder?) {
         _selectedForum.value = forum
         _selectedTopic.value = null

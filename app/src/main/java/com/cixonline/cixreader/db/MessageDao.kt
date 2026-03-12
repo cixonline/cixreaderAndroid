@@ -27,6 +27,9 @@ interface MessageDao {
     @Query("SELECT * FROM messages ORDER BY date DESC LIMIT :count")
     fun getRecentMessages(count: Int): Flow<List<CIXMessage>>
 
+    @Query("SELECT * FROM messages WHERE commentId = 0 ORDER BY date DESC LIMIT :count")
+    suspend fun getRecentRoots(count: Int): List<CIXMessage>
+
     @Query("SELECT * FROM messages WHERE unread = 1 AND date > :cutoffDate ORDER BY date ASC LIMIT 1")
     suspend fun getFirstUnreadMessage(cutoffDate: Long): CIXMessage?
 
