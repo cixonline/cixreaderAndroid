@@ -290,8 +290,13 @@ fun ForumListScreen(
                                         }
                                     )
                                 } else {
+                                    // Calculate total unread from children
+                                    val topicsUnread = folders.filter { it.parentId == item.id }.sumOf { it.unread }
+                                    val totalUnread = if (topicsUnread > 0) topicsUnread else item.unread
+
                                     SwipeToResignRow(
                                         item = item,
+                                        totalUnread = totalUnread,
                                         isExpanded = expandedForums.contains(item.id),
                                         isLoading = viewModel.isLoading,
                                         isSwiped = swipedForumId == item.id,
@@ -367,6 +372,7 @@ fun ForumListScreen(
 @Composable
 fun SwipeToResignRow(
     item: Folder,
+    totalUnread: Int,
     isExpanded: Boolean,
     isLoading: Boolean,
     isSwiped: Boolean,
@@ -440,7 +446,7 @@ fun SwipeToResignRow(
     ) {
         CompactForumItem(
             title = item.name,
-            unreadCount = item.unread,
+            unreadCount = totalUnread,
             isExpanded = isExpanded,
             isLoading = isLoading,
             onClick = {
