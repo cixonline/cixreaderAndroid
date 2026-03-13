@@ -22,6 +22,7 @@ import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.net.UnknownHostException
 
 sealed class NextUnreadItem {
     data class Message(val message: CIXMessage) : NextUnreadItem()
@@ -158,11 +159,19 @@ class TopicViewModel(
 
             } catch (e: Exception) {
                 Log.e("TopicViewModel", "Init failed for $forumName/$topicName", e)
-                _error.value = "Failed to load messages: ${e.message}"
+                if (isOfflineError(e) && repository.getMessageCount(topicId) == 0) {
+                    _error.value = "No Messages found in the cache. You are offline, go online for content"
+                } else {
+                    _error.value = "Failed to load messages: ${e.message}"
+                }
             } finally {
                 _isLoading.value = false
             }
         }
+    }
+
+    private fun isOfflineError(e: Throwable): Boolean {
+        return e is UnknownHostException || e.cause is UnknownHostException
     }
 
     fun refresh() {
@@ -175,7 +184,11 @@ class TopicViewModel(
                 _showJoinDialog.value = e.forumName
             } catch (e: Exception) {
                 Log.e("TopicViewModel", "Refresh failed", e)
-                _error.value = "Refresh failed: ${e.message}"
+                if (isOfflineError(e) && repository.getMessageCount(topicId) == 0) {
+                    _error.value = "No Messages found in the cache. You are offline, go online for content"
+                } else {
+                    _error.value = "Refresh failed: ${e.message}"
+                }
             } finally {
                 _isLoading.value = false
             }

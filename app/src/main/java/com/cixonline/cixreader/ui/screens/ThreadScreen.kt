@@ -90,6 +90,7 @@ fun ThreadScreen(
 ) {
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
     val scrollToMessageId by viewModel.scrollToMessageId.collectAsState()
     val context = LocalContext.current
 
@@ -450,6 +451,15 @@ fun ThreadScreen(
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text("Fetching messages...", style = MaterialTheme.typography.bodySmall)
                                 }
+                            }
+                        } else if (error != null && messages.isEmpty()) {
+                            Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = error ?: "",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error,
+                                    textAlign = TextAlign.Center
+                                )
                             }
                         } else if (selectedMessage != null) {
                             val parentMessage = remember(selectedMessage, messages) {

@@ -13,6 +13,7 @@ import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.repository.ForumRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.net.UnknownHostException
 
 class ForumViewModel(
     private val api: CixApi,
@@ -32,6 +33,9 @@ class ForumViewModel(
 
     private val _loadingForums = MutableStateFlow<Set<Int>>(emptySet())
     val loadingForums: StateFlow<Set<Int>> = _loadingForums.asStateFlow()
+
+    private val _connectionErrorForums = MutableStateFlow<Set<Int>>(emptySet())
+    val connectionErrorForums: StateFlow<Set<Int>> = _connectionErrorForums.asStateFlow()
 
     var isLoading by mutableStateOf(false)
         private set
@@ -63,7 +67,17 @@ class ForumViewModel(
                     expanded.forEach { forumId ->
                         val forum = allCurrentFolders.find { it.id == forumId }
                         if (forum != null) {
-                            repository.refreshTopics(forum.name, forum.id)
+                            _loadingForums.update { it + forumId }
+                            try {
+                                repository.refreshTopics(forum.name, forum.id)
+                                _connectionErrorForums.update { it - forumId }
+                            } catch (e: UnknownHostException) {
+                                _connectionErrorForums.update { it + forumId }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            } finally {
+                                _loadingForums.update { it - forumId }
+                            }
                         }
                     }
                 }
@@ -81,19 +95,23 @@ class ForumViewModel(
         val current = _expandedForums.value
         if (current.contains(forumId)) {
             _expandedForums.value = current - forumId
+            _connectionErrorForums.update { it - forumId }
         } else {
+            // Update loading state BEFORE expanding so the first composition already knows it's loading
+            _loadingForums.update { it + forumId }
             _expandedForums.value = current + forumId
+            
             // Refresh topics for this forum when expanded
             viewModelScope.launch {
-                _loadingForums.value += forumId
-                // Note: We don't set global isLoading = true here to avoid full screen flicker,
-                // but we could if we wanted a global indicator.
                 try {
                     repository.refreshTopics(forum.name, forum.id)
+                    _connectionErrorForums.update { it - forumId }
+                } catch (e: UnknownHostException) {
+                    _connectionErrorForums.update { it + forumId }
                 } catch (e: Exception) {
                     e.printStackTrace()
                 } finally {
-                    _loadingForums.value -= forumId
+                    _loadingForums.update { it - forumId }
                 }
             }
         }
@@ -106,6 +124,7 @@ class ForumViewModel(
                 val success = repository.resignForum(forum.name, forum.id)
                 if (success) {
                     _expandedForums.value = _expandedForums.value - forum.id
+                    _connectionErrorForums.update { it - forum.id }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreVert
@@ -35,6 +36,7 @@ import com.cixonline.cixreader.BuildConfig
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.viewmodel.ForumViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -47,11 +49,14 @@ fun ForumListScreen(
     onLogout: () -> Unit,
     onSettingsClick: () -> Unit,
     onProfileClick: (String) -> Unit,
-    onDraftsClick: () -> Unit
+    onDraftsClick: () -> Unit,
+    isOffline: Boolean = false
 ) {
     val folders by viewModel.allFolders.collectAsState(initial = emptyList())
     val expandedForums by viewModel.expandedForums.collectAsState()
     val showOnlyUnread by viewModel.showOnlyUnread.collectAsState()
+    val loadingForums by viewModel.loadingForums.collectAsState()
+    val connectionErrorForums by viewModel.connectionErrorForums.collectAsState()
     var showMenu by remember { mutableStateOf(false) }
     var showVersionDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -95,6 +100,14 @@ fun ForumListScreen(
                     }
                 },
                 actions = {
+                    if (isOffline) {
+                        Icon(
+                            imageVector = Icons.Default.CloudOff,
+                            contentDescription = "Offline",
+                            tint = Color.White.copy(alpha = 0.8f),
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         FilterChip(
                             selected = !showOnlyUnread,
@@ -217,7 +230,7 @@ fun ForumListScreen(
                     }
                 } else {
                     val displayList = remember(folders, expandedForums, showOnlyUnread) {
-                        val list = mutableListOf<Pair<Folder?, Boolean>>() // Folder?, isTopic
+                        val list = mutableListOf<Triple<Folder?, Boolean, Int>>() // Folder?, isTopic, forumId
                         
                         val filteredFolders = if (showOnlyUnread) {
                             // Keep forums if they have unread messages OR if any of their topics have unread messages
@@ -234,18 +247,18 @@ fun ForumListScreen(
                             )
                         
                         forums.forEach { forum ->
-                            list.add(forum to false)
+                            list.add(Triple(forum, false, forum.id))
                             if (expandedForums.contains(forum.id)) {
                                 val topics = filteredFolders.filter { it.parentId == forum.id }
                                     .sortedWith(
                                         compareBy { it.name.lowercase() }
                                     )
                                 if (topics.isEmpty()) {
-                                    // Add a null folder to represent the "No Topics found" message
-                                    list.add(null to true)
+                                    // Add a null folder to represent the "No Topics found" message or spinner
+                                    list.add(Triple(null, true, forum.id))
                                 } else {
                                     topics.forEach { topic ->
-                                        list.add(topic to true)
+                                        list.add(Triple(topic, true, forum.id))
                                     }
                                 }
                             }
@@ -282,21 +295,46 @@ fun ForumListScreen(
                                     }
                                 }
                         ) {
-                            items(displayList, key = { 
-                                if (it.first == null) "no-topics-${it.hashCode()}"
-                                else it.first!!.id.toString() + if (it.second) "-topic" else "-forum" 
-                            }) { (item, isTopic) ->
+                            items(displayList, key = { (item, isTopic, forumId) -> 
+                                if (item == null) "no-topics-$forumId"
+                                else item.id.toString() + if (isTopic) "-topic" else "-forum" 
+                            }) { (item, isTopic, forumId) ->
                                 if (isTopic) {
                                     if (item == null) {
-                                        Text(
-                                            text = "No Topics found, connect to CIX for more",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontStyle = FontStyle.Italic,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        var showNoTopicsMessage by remember(forumId) { mutableStateOf(false) }
+                                        val isLoadingForum = loadingForums.contains(forumId)
+                                        val isConnectionError = connectionErrorForums.contains(forumId)
+
+                                        LaunchedEffect(isLoadingForum, isConnectionError) {
+                                            if (!isLoadingForum && isConnectionError) {
+                                                delay(1000)
+                                                showNoTopicsMessage = true
+                                            } else {
+                                                showNoTopicsMessage = false
+                                            }
+                                        }
+
+                                        Box(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(start = 40.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
-                                        )
+                                                .padding(start = 40.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+                                            contentAlignment = Alignment.CenterStart
+                                        ) {
+                                            if (isLoadingForum) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(16.dp),
+                                                    strokeWidth = 2.dp,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            } else if (showNoTopicsMessage) {
+                                                Text(
+                                                    text = "No Topics found, connect to CIX for more",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontStyle = FontStyle.Italic,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                                )
+                                            }
+                                        }
                                     } else {
                                         val forum = folders.find { it.id == item.parentId }
                                         CompactTopicItem(

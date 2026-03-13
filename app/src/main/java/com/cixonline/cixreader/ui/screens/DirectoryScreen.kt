@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
@@ -40,7 +41,8 @@ fun DirectoryScreen(
     onLogout: () -> Unit,
     onSettingsClick: () -> Unit,
     onProfileClick: (String) -> Unit,
-    onDraftsClick: () -> Unit
+    onDraftsClick: () -> Unit,
+    isOffline: Boolean = false
 ) {
     val forums by viewModel.forums.collectAsState()
     val joinedForumNames by viewModel.joinedForumNames.collectAsState()
@@ -115,6 +117,14 @@ fun DirectoryScreen(
                     }
                 },
                 actions = {
+                    if (isOffline) {
+                        Icon(
+                            imageVector = Icons.Default.CloudOff,
+                            contentDescription = "Offline",
+                            tint = Color.White.copy(alpha = 0.8f),
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
+                    }
                     if (isSearching) {
                         IconButton(onClick = { 
                             isSearching = false
