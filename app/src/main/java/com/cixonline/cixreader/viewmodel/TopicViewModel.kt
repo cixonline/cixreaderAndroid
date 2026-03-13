@@ -160,7 +160,7 @@ class TopicViewModel(
             } catch (e: Exception) {
                 Log.e("TopicViewModel", "Init failed for $forumName/$topicName", e)
                 if (isOfflineError(e) && repository.getMessageCount(topicId) == 0) {
-                    _error.value = "No Messages found in the cache. You are offline, go online for content"
+                    _error.value = "No Messages found in the cache. You are offline, go online for content and drag down to refresh this topic"
                 } else {
                     _error.value = "Failed to load messages: ${e.message}"
                 }
