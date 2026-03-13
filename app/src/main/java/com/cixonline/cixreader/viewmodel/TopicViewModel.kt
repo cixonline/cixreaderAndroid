@@ -16,6 +16,7 @@ import com.cixonline.cixreader.db.DraftDao
 import com.cixonline.cixreader.db.FolderDao
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.Draft
+import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.repository.NotAMemberException
 import com.cixonline.cixreader.utils.DateUtils
@@ -87,6 +88,21 @@ class TopicViewModel(
                 }
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allForums: Flow<List<Folder>> = folderDao.getAll().map { folders ->
+        folders.filter { it.isRootFolder }
+    }
+
+    private val _selectedForumForPost = MutableStateFlow<Folder?>(null)
+    val selectedForumForPost: StateFlow<Folder?> = _selectedForumForPost
+
+    private val _selectedTopicForPost = MutableStateFlow<Folder?>(null)
+    val selectedTopicForPost: StateFlow<Folder?> = _selectedTopicForPost
+
+    val topicsForSelectedForum: StateFlow<List<Folder>> = _selectedForumForPost.flatMapLatest { forum ->
+        if (forum == null) flowOf(emptyList())
+        else folderDao.getChildren(forum.id)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
         Log.d("TopicViewModel", "Initializing topic: $forumName/$topicName (ID: $topicId)")
@@ -292,6 +308,69 @@ class TopicViewModel(
         return NextUnreadItem.NoMoreUnread
     }
 
+    fun preparePostDialog() {
+        viewModelScope.launch {
+            val allFolders = folderDao.getAll().first()
+            val currentForum = allFolders.find { it.isRootFolder && it.name.equals(forumName, ignoreCase = true) }
+            _selectedForumForPost.value = currentForum
+            if (currentForum != null) {
+                val topics = folderDao.getChildren(currentForum.id).first()
+                val currentTopic = topics.find { it.id == topicId } 
+                    ?: topics.find { it.name.equals(topicName, ignoreCase = true) }
+                
+                if (currentTopic != null) {
+                    _selectedTopicForPost.value = currentTopic
+                } else {
+                    // Fallback to creating a Folder object if it's missing from DB children list
+                    _selectedTopicForPost.value = Folder(id = topicId, name = topicName, parentId = currentForum.id)
+                }
+            }
+        }
+    }
+
+    fun selectForumForPost(forum: Folder?) {
+        _selectedForumForPost.value = forum
+        _selectedTopicForPost.value = null
+    }
+
+    fun selectTopicForPost(topic: Folder?) {
+        _selectedTopicForPost.value = topic
+    }
+
+    suspend fun postMessage(
+        context: Context,
+        forum: String,
+        topic: String,
+        body: String,
+        attachmentUri: Uri?,
+        attachmentName: String?
+    ): Boolean {
+        _isLoading.value = true
+        val attachments = if (attachmentUri != null && attachmentName != null) {
+            try {
+                context.contentResolver.openInputStream(attachmentUri)?.use { inputStream ->
+                    val bytes = inputStream.readBytes()
+                    listOf(PostAttachment(data = Base64.encodeToString(bytes, Base64.NO_WRAP), filename = attachmentName))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            }
+        } else null
+
+        val currentAuthor = NetworkClient.getUsername()
+        val resultId = repository.postMessage(forum, topic, body, 0, currentAuthor, attachments)
+        
+        if (resultId != 0) {
+            draftDao.deleteDraftForContext(forum, topic, 0)
+            if (resultId > 0 && forum.equals(forumName, ignoreCase = true) && topic.equals(topicName, ignoreCase = true)) {
+                _scrollToMessageId.value = resultId
+            }
+        }
+        _isLoading.value = false
+        return resultId != 0
+    }
+
     suspend fun postReply(
         context: Context,
         replyToId: Int, 
@@ -341,7 +420,23 @@ class TopicViewModel(
         }
     }
 
+    fun saveDraftForContext(forum: String, topic: String, body: String) {
+        viewModelScope.launch {
+            val existing = draftDao.getDraft(forum, topic, 0)
+            val draft = Draft(
+                id = existing?.id ?: 0,
+                forumName = forum,
+                topicName = topic,
+                replyToId = 0,
+                body = body
+            )
+            draftDao.insertDraft(draft)
+        }
+    }
+
     suspend fun getDraft(replyToId: Int): Draft? = draftDao.getDraft(forumName, topicName, replyToId)
+
+    suspend fun getDraftForContext(forum: String, topic: String): Draft? = draftDao.getDraft(forum, topic, 0)
 
     fun joinForum(forum: String) {
         viewModelScope.launch {

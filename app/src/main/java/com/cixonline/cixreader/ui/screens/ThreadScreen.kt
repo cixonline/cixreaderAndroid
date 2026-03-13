@@ -51,6 +51,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
@@ -60,6 +62,7 @@ import com.cixonline.cixreader.BuildConfig
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.Draft
+import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.viewmodel.NextUnreadItem
 import com.cixonline.cixreader.viewmodel.TopicViewModel
 import com.cixonline.cixreader.utils.SettingsManager
@@ -99,12 +102,14 @@ fun ThreadScreen(
     var replyingToMessage by remember { mutableStateOf<CIXMessage?>(null) }
     var showMenu by remember { mutableStateOf(false) }
     var showReplyPane by remember { mutableStateOf(false) }
+    var showPostDialog by remember { mutableStateOf(false) }
     var initialDraft by remember { mutableStateOf<Draft?>(null) }
     var showNoMoreUnreadDialog by remember { mutableStateOf(false) }
     var showVersionDialog by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // Lifted state for ReplyPane to handle back button confirmation
     var replyText by remember { mutableStateOf("") }
@@ -249,6 +254,7 @@ fun ThreadScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -377,6 +383,10 @@ fun ThreadScreen(
                                     showReplyPane = true
                                 }
                             },
+                            onPostClick = {
+                                viewModel.preparePostDialog()
+                                showPostDialog = true
+                            },
                             onNextUnreadClick = {
                                 coroutineScope.launch {
                                     val nextItem = viewModel.findNextUnreadItem(selectedMessage?.remoteId)
@@ -500,6 +510,19 @@ fun ThreadScreen(
         }
     }
 
+    if (showPostDialog) {
+        PostMessageDialog(
+            viewModel = viewModel,
+            onDismiss = { showPostDialog = false },
+            onPostSuccess = {
+                showPostDialog = false
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Message posted successfully")
+                }
+            }
+        )
+    }
+
     if (showVersionDialog) {
         AlertDialog(
             onDismissRequest = { showVersionDialog = false },
@@ -516,6 +539,359 @@ fun ThreadScreen(
                 }
             }
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PostMessageDialog(
+    viewModel: TopicViewModel,
+    onDismiss: () -> Unit,
+    onPostSuccess: () -> Unit
+) {
+    val forums by viewModel.allForums.collectAsState(emptyList())
+    val selectedForum by viewModel.selectedForumForPost.collectAsState()
+    val selectedTopic by viewModel.selectedTopicForPost.collectAsState()
+    val topics by viewModel.topicsForSelectedForum.collectAsState()
+    var messageBody by remember { mutableStateOf("") }
+    var forumExpanded by remember { mutableStateOf(false) }
+    var topicExpanded by remember { mutableStateOf(false) }
+    var showCancelConfirm by remember { mutableStateOf(false) }
+    
+    var attachmentUri by remember { mutableStateOf<Uri?>(null) }
+    var attachmentName by remember { mutableStateOf<String?>(null) }
+    var showAttachmentSourceDialog by remember { mutableStateOf(false) }
+    var isListening by remember { mutableStateOf(false) }
+
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var isPosting by remember { mutableStateOf(false) }
+
+    val speechRecognizer = remember { SpeechRecognizer.createSpeechRecognizer(context) }
+    val speechRecognizerIntent = remember {
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+        }
+    }
+
+    val recognitionListener = remember {
+        object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() { isListening = true }
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() { isListening = false }
+            override fun onError(error: Int) { isListening = false }
+            override fun onResults(results: Bundle?) {
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    val newText = matches[0]
+                    messageBody = if (messageBody.isBlank()) newText else "$messageBody $newText"
+                }
+            }
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        }
+    }
+
+    DisposableEffect(Unit) {
+        speechRecognizer.setRecognitionListener(recognitionListener)
+        onDispose { speechRecognizer.destroy() }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            isListening = true
+            speechRecognizer.startListening(speechRecognizerIntent)
+        }
+    }
+
+    val sortedForums = remember(forums) { forums.sortedBy { it.name.lowercase() } }
+    val sortedTopics = remember(topics) { topics.sortedBy { it.name.lowercase() } }
+
+    val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        attachmentUri = uri
+        attachmentName = uri?.let { u ->
+            context.contentResolver.query(u, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                cursor.moveToFirst()
+                cursor.getString(nameIndex)
+            }
+        }
+    }
+
+    var tempPhotoUri by remember { mutableStateOf<Uri?>(null) }
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        if (success && tempPhotoUri != null) {
+            attachmentUri = tempPhotoUri
+            attachmentName = "camera_photo_${System.currentTimeMillis()}.jpg"
+        }
+    }
+
+    if (showAttachmentSourceDialog) {
+        AlertDialog(
+            onDismissRequest = { showAttachmentSourceDialog = false },
+            title = { Text("Add Attachment") },
+            text = { Text("Choose a source for your attachment") },
+            confirmButton = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    TextButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            showAttachmentSourceDialog = false
+                            val uri = createTempImageUri(context)
+                            tempPhotoUri = uri
+                            cameraLauncher.launch(uri)
+                        }
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.PhotoCamera, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Camera")
+                        }
+                    }
+                    TextButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            showAttachmentSourceDialog = false
+                            fileLauncher.launch("*/*")
+                        }
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.AttachFile, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Files")
+                        }
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAttachmentSourceDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showCancelConfirm) {
+        AlertDialog(
+            onDismissRequest = { showCancelConfirm = false },
+            title = { Text("Cancel Message") },
+            text = { Text("Are you sure you want to discard this message? You can also save it as a draft.") },
+            confirmButton = {
+                TextButton(onClick = { 
+                    showCancelConfirm = false
+                    onDismiss() 
+                }) {
+                    Text("Discard", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { 
+                        if (selectedForum != null && selectedTopic != null) {
+                            viewModel.saveDraftForContext(selectedForum!!.name, selectedTopic!!.name, messageBody)
+                        }
+                        showCancelConfirm = false
+                        onDismiss()
+                    }) {
+                        Text("Save Draft")
+                    }
+                    TextButton(onClick = { showCancelConfirm = false }) {
+                        Text("Keep Editing")
+                    }
+                }
+            }
+        )
+    }
+
+    LaunchedEffect(selectedForum, selectedTopic) {
+        if (selectedForum != null && selectedTopic != null) {
+            val draft = viewModel.getDraftForContext(selectedForum!!.name, selectedTopic!!.name)
+            if (draft != null && messageBody.isBlank()) {
+                messageBody = draft.body
+            }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = {
+            if (messageBody.isNotBlank()) showCancelConfirm = true else onDismiss()
+        },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "New Message",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                OutlinedTextField(
+                    value = messageBody,
+                    onValueChange = { messageBody = it },
+                    label = { Text(if (isListening) "Listening..." else "Message") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp),
+                    maxLines = 10,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        autoCorrectEnabled = true
+                    )
+                )
+
+                // Forum Selection
+                ExposedDropdownMenuBox(
+                    expanded = forumExpanded,
+                    onExpandedChange = { forumExpanded = it },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = selectedForum?.name ?: "Select Forum",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Forum") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = forumExpanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = forumExpanded,
+                        onDismissRequest = { forumExpanded = false },
+                        modifier = Modifier.heightIn(max = 300.dp)
+                    ) {
+                        sortedForums.forEach { forum ->
+                            DropdownMenuItem(
+                                text = { Text(forum.name) },
+                                onClick = {
+                                    viewModel.selectForumForPost(forum)
+                                    forumExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Topic Selection
+                ExposedDropdownMenuBox(
+                    expanded = topicExpanded,
+                    onExpandedChange = { topicExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = selectedTopic?.name ?: "Select Topic",
+                        onValueChange = {},
+                        readOnly = true,
+                        enabled = selectedForum != null,
+                        label = { Text("Topic") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = topicExpanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = topicExpanded,
+                        onDismissRequest = { topicExpanded = false },
+                        modifier = Modifier.heightIn(max = 300.dp)
+                    ) {
+                        sortedTopics.forEach { topic ->
+                            DropdownMenuItem(
+                                text = { Text(topic.name) },
+                                onClick = {
+                                    viewModel.selectTopicForPost(topic)
+                                    topicExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    
+                    IconButton(onClick = { 
+                        if (isListening) {
+                            speechRecognizer.stopListening()
+                            isListening = false
+                        } else {
+                            permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                        }
+                    }) {
+                        Icon(
+                            if (isListening) Icons.Default.MicOff else Icons.Default.Mic, 
+                            contentDescription = "Dictate",
+                            tint = if (isListening) Color.Red else LocalContentColor.current
+                        )
+                    }
+
+                    IconButton(onClick = { showAttachmentSourceDialog = true }) {
+                        Icon(Icons.Default.AttachFile, contentDescription = "Add Attachment", tint = if (attachmentUri != null) Color(0xFFD91B5C) else LocalContentColor.current)
+                    }
+                    if (attachmentName != null) {
+                        Text(text = attachmentName!!, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 80.dp))
+                    }
+                    
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    TextButton(onClick = {
+                        if (messageBody.isNotBlank()) showCancelConfirm = true else onDismiss()
+                    }) {
+                        Text("Cancel")
+                    }
+                    TextButton(
+                        onClick = { 
+                            if (selectedForum != null && selectedTopic != null) {
+                                viewModel.saveDraftForContext(selectedForum!!.name, selectedTopic!!.name, messageBody)
+                                onDismiss()
+                            }
+                        },
+                        enabled = selectedForum != null && selectedTopic != null && messageBody.isNotBlank()
+                    ) {
+                        Text("Draft")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            if (selectedForum != null && selectedTopic != null && messageBody.isNotBlank()) {
+                                isPosting = true
+                                scope.launch {
+                                    val success = viewModel.postMessage(
+                                        context,
+                                        selectedForum!!.name,
+                                        selectedTopic!!.name,
+                                        messageBody,
+                                        attachmentUri,
+                                        attachmentName
+                                    )
+                                    isPosting = false
+                                    if (success) onPostSuccess()
+                                }
+                            }
+                        },
+                        enabled = selectedForum != null && selectedTopic != null && messageBody.isNotBlank() && !isPosting
+                    ) {
+                        if (isPosting) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                        } else {
+                            Text("Post")
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -736,6 +1112,7 @@ fun MessageActionBar(
     currentUsername: String?,
     replyActive: Boolean,
     onReplyClick: () -> Unit,
+    onPostClick: () -> Unit,
     onNextUnreadClick: () -> Unit,
     onAuthorClick: () -> Unit,
     onWithdrawClick: () -> Unit
@@ -805,6 +1182,13 @@ fun MessageActionBar(
                             tint = Color.White
                         )
                     }
+                }
+                IconButton(onClick = onPostClick) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "Post New Message",
+                        tint = Color.White
+                    )
                 }
                 IconButton(onClick = onReplyClick) {
                     Icon(
@@ -944,8 +1328,6 @@ fun MessageViewer(
                                 error = painterResource(android.R.drawable.stat_notify_error)
                             )
                         }
-                        // Note: Compose doesn't support true text-wrap around images in a single text layout easily.
-                        // This uses a Row/Column approach which flows text next to the image for that chunk.
                     }
                 }
             }
