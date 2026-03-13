@@ -102,7 +102,6 @@ fun ThreadScreen(
     var initialDraft by remember { mutableStateOf<Draft?>(null) }
     var showNoMoreUnreadDialog by remember { mutableStateOf(false) }
     var showVersionDialog by remember { mutableStateOf(false) }
-    var showDebugDialog by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -209,35 +208,6 @@ fun ThreadScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showNoMoreUnreadDialog = false }) {
-                    Text("Close")
-                }
-            }
-        )
-    }
-
-    if (showDebugDialog && selectedMessage != null) {
-        AlertDialog(
-            onDismissRequest = { showDebugDialog = false },
-            title = { Text("Debug Cache Info (#${selectedMessage!!.remoteId})") },
-            text = {
-                Column {
-                    Text("Database ID: ${selectedMessage!!.id}")
-                    Text("Remote ID: ${selectedMessage!!.remoteId}")
-                    Text("Author: ${selectedMessage!!.author}")
-                    Text("Date: ${selectedMessage!!.date}")
-                    Text("Unread (DB): ${selectedMessage!!.unread}")
-                    Text("isActuallyUnread (UI): ${selectedMessage!!.isActuallyUnread}")
-                    Text("Topic ID: ${selectedMessage!!.topicId}")
-                    Text("Comment ID: ${selectedMessage!!.commentId}")
-                    Text("Root ID: ${selectedMessage!!.rootId}")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { viewModel.logRawXml() }) {
-                        Text("Log All Topic XML")
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showDebugDialog = false }) {
                     Text("Close")
                 }
             }
@@ -435,8 +405,7 @@ fun ThreadScreen(
                                 }
                             },
                             onAuthorClick = { onProfileClick(selectedMessage!!.author) },
-                            onWithdrawClick = { viewModel.withdrawMessage(selectedMessage!!) },
-                            onDebugClick = { showDebugDialog = true }
+                            onWithdrawClick = { viewModel.withdrawMessage(selectedMessage!!) }
                         )
                     } else {
                         HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outlineVariant)
@@ -769,8 +738,7 @@ fun MessageActionBar(
     onReplyClick: () -> Unit,
     onNextUnreadClick: () -> Unit,
     onAuthorClick: () -> Unit,
-    onWithdrawClick: () -> Unit,
-    onDebugClick: () -> Unit = {}
+    onWithdrawClick: () -> Unit
 ) {
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy HH:mm", Locale.getDefault()) }
     val dateString = remember(message.date) { dateFormat.format(Date(message.date)) }
@@ -829,9 +797,6 @@ fun MessageActionBar(
                 )
             }
             Row {
-                IconButton(onClick = onDebugClick) {
-                    Icon(Icons.Default.BugReport, contentDescription = "Debug", tint = Color.White)
-                }
                 if (currentUsername != null && message.author.equals(currentUsername, ignoreCase = true) && !message.isWithdrawn()) {
                     IconButton(onClick = { showWithdrawConfirm = true }) {
                         Icon(
