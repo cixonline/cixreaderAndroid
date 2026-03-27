@@ -428,19 +428,19 @@ data class DirListing(
     constructor() : this(null, null, 0, null, null, null)
 }
 
-@Root(name = "MessageRange", strict = false)
+@Root(name = "Range", strict = false)
 @Namespace(reference = "http://cixonline.com")
-@Order(elements = ["Forum", "Topic", "Start", "End"])
+@Order(elements = ["End", "ForumName", "Start", "TopicName"])
 class MessageRangeRequest @JvmOverloads constructor(
-    @field:Element(name = "Forum")
+    @field:Element(name = "End")
+    var end: Int = 0,
+
+    @field:Element(name = "ForumName")
     var forum: String = "",
 
-    @field:Element(name = "Topic")
+    @field:Element(name = "TopicName")
     var topic: String = "",
 
     @field:Element(name = "Start")
     var start: Int = 0,
-
-    @field:Element(name = "End")
-    var end: Int = 0
 )

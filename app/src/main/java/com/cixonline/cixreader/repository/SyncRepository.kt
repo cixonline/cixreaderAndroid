@@ -38,20 +38,36 @@ class SyncRepository(
             
             do {
                 val resultSet = api.sync(count = maxResults, since = currentSince)
-                val messages = resultSet.messages
-                Log.d(tag, "sync API returned ${messages.size} messages")
+                val rawMessages = resultSet.messages
+                Log.d(tag, "sync.xml API returned ${rawMessages.size} messages. ResultSet: count=${resultSet.count}, start=${resultSet.start}")
+
+                rawMessages.forEach { msg ->
+                    Log.d(tag, "Sync Message: id=${msg.id}, author=${msg.author}, subject=${msg.subject}, dateTime=${msg.dateTime}, " +
+                            "replyTo=${msg.replyTo}, rootId=${msg.rootId}, depth=${msg.depth}, forum=${msg.forum}, topic=${msg.topic}, " +
+                            "status=${msg.status}, unread=${msg.unread}")
+                }
                 
-                if (messages.isEmpty()) break
+                if (rawMessages.isEmpty()) break
+
+                // Group by forum, topic, and remoteId to handle duplicates in the same response.
+                // If any record for the same message is marked read, we treat the message as read.
+                val groupedMessages = rawMessages.groupBy { 
+                    val f = HtmlUtils.normalizeName(it.forum ?: "")
+                    val t = HtmlUtils.normalizeName(it.topic ?: "")
+                    Triple(f, t, it.id)
+                }
                 
                 val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
                 
-                val cixMessages = messages.map { apiMsg ->
-                    val forum = HtmlUtils.normalizeName(apiMsg.forum ?: "")
-                    val topic = HtmlUtils.normalizeName(apiMsg.topic ?: "")
+                val cixMessages = groupedMessages.map { (key, apiMsgs) ->
+                    val (forum, topic, remoteId) = key
                     val topicId = HtmlUtils.calculateTopicId(forum, topic)
                     
+                    // Use the last message in the group as the primary source for content fields
+                    val apiMsg = apiMsgs.last()
+                    
                     // Preserve local state if message already exists
-                    val existing = messageDao.getByRemoteId(apiMsg.id, topicId)
+                    val existing = messageDao.getByRemoteId(remoteId, topicId)
                     
                     val messageDate = if (apiMsg.dateTime != null) DateUtils.parseCixDate(apiMsg.dateTime) else (existing?.date ?: 0L)
                     
@@ -60,11 +76,12 @@ class SyncRepository(
                     }
 
                     // CIX status "R" means read.
-                    val isReadFromServer = apiMsg.status?.contains("R", ignoreCase = true) == true
+                    // If ANY of the records in the batch for this message say it's read, then it's read.
+                    val isReadFromServer = apiMsgs.any { it.status?.contains("R", ignoreCase = true) == true }
                     val isOld = messageDate < thirtyDaysAgo
                     
                     // If message exists and is already read locally, KEEP it read.
-                    // Otherwise, follow server status or 30-day rule.
+                    // Otherwise, follow server status (any record read) or 30-day rule.
                     val isUnread = if (existing != null && !existing.unread) {
                         false
                     } else if (isReadFromServer || isOld) {
@@ -82,7 +99,7 @@ class SyncRepository(
 
                     CIXMessage(
                         id = existing?.id ?: 0,
-                        remoteId = apiMsg.id,
+                        remoteId = remoteId,
                         author = apiMsg.author?.let { HtmlUtils.decodeHtml(it) } ?: existing?.author ?: "",
                         body = apiMsg.body?.let { HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(it)) } ?: existing?.body ?: "",
                         date = messageDate,
@@ -107,7 +124,7 @@ class SyncRepository(
                 
                 messageDao.insertAll(cixMessages)
                 
-                fetchedTotal = messages.size
+                fetchedTotal = rawMessages.size
                 if (newestMessageDate > 0) {
                     currentSince = DateUtils.formatApiDate(newestMessageDate)
                 }
@@ -166,15 +183,23 @@ class SyncRepository(
             val encodedTopic = HtmlUtils.cixEncode(topicName)
             
             val resultSet = api.getMessages(encodedForum, encodedTopic, since = since)
-            Log.d(tag, "getMessages (allmessages) API returned ${resultSet.messages.size} messages for $forumName/$topicName")
+            val rawMessages = resultSet.messages
+            Log.d(tag, "getMessages (allmessages) API returned ${rawMessages.size} messages for $forumName/$topicName")
+
+            // Group by message ID to handle duplicates in the same response
+            val groupedMessages = rawMessages.groupBy { it.id }
 
             val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
             
-            val messages = resultSet.messages.map { apiMsg ->
-                val existing = messageDao.getByRemoteId(apiMsg.id, topicId)
+            val messages = groupedMessages.map { (remoteId, apiMsgs) ->
+                // Use the last message in the group for other fields
+                val apiMsg = apiMsgs.last()
+                
+                val existing = messageDao.getByRemoteId(remoteId, topicId)
                 val messageDate = if (apiMsg.dateTime != null) DateUtils.parseCixDate(apiMsg.dateTime) else (existing?.date ?: 0L)
                 
-                val isReadFromServer = apiMsg.status?.contains("R", ignoreCase = true) == true
+                // If ANY of the records for this message say it's read, then it's read.
+                val isReadFromServer = apiMsgs.any { it.status?.contains("R", ignoreCase = true) == true }
                 val isOld = messageDate < thirtyDaysAgo
                 
                 // If message exists and is already read locally, KEEP it read.
@@ -195,7 +220,7 @@ class SyncRepository(
 
                 CIXMessage(
                     id = existing?.id ?: 0,
-                    remoteId = apiMsg.id,
+                    remoteId = remoteId,
                     author = apiMsg.author?.let { HtmlUtils.decodeHtml(it) } ?: existing?.author ?: "",
                     body = apiMsg.body?.let { HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(it)) } ?: existing?.body ?: "",
                     date = messageDate,
