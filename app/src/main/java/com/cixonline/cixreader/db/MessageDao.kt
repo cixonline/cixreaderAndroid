@@ -54,6 +54,9 @@ interface MessageDao {
     @Query("UPDATE messages SET unread = :unread WHERE id = :id")
     suspend fun updateUnread(id: Int, unread: Boolean)
 
+    @Query("UPDATE messages SET unread = :unread, readPending = :readPending WHERE id = :id")
+    suspend fun updateUnreadAndPending(id: Int, unread: Boolean, readPending: Boolean)
+
     @Delete
     suspend fun delete(message: CIXMessage)
 

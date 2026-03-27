@@ -383,15 +383,19 @@ class MessageRepository(
 
     suspend fun markAsRead(message: CIXMessage) = withContext(Dispatchers.IO) {
         if (message.unread) {
-            messageDao.updateUnread(message.id, false)
+            // Optimistically mark as read and pending in local DB
+            messageDao.updateUnreadAndPending(message.id, unread = false, readPending = true)
             try {
                 api.markRead(
                     HtmlUtils.cixEncode(message.forumName),
                     HtmlUtils.cixEncode(message.topicName),
                     message.remoteId
                 )
+                // If API call succeeds, clear the pending flag
+                messageDao.updateUnreadAndPending(message.id, unread = false, readPending = false)
             } catch (e: Exception) {
-                Log.e(tag, "Mark as read on server failed", e)
+                Log.e(tag, "Mark as read on server failed, will remain pending", e)
+                // If it fails, readPending remains true, so it will be retried during sync
             }
         }
     }
