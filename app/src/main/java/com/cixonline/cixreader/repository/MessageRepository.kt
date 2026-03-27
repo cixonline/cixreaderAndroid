@@ -92,10 +92,10 @@ class MessageRepository(
 
             // Range is 1 to (oldestId - 1)
             var currentEnd = oldestId - 1
-            val batchSize = 1000 // Arbitrary safe batch size for range requests
+            val batchSize = 200 // Reduced batch size for better reliability
             
-            val encodedForum = HtmlUtils.cixEncode(forum)
-            val encodedTopic = HtmlUtils.cixEncode(topic)
+            val forumParam = HtmlUtils.normalizeName(forum)
+            val topicParam = HtmlUtils.normalizeName(topic)
 
             while (currentEnd >= 1) {
                 val currentStart = (currentEnd - batchSize + 1).coerceAtLeast(1)
@@ -103,9 +103,9 @@ class MessageRepository(
                 
                 val request = MessageRangeRequest(
                     end = currentEnd,
-                    forum = encodedForum,
+                    forum = forumParam,
                     start = currentStart,
-                    topic = encodedTopic
+                    topic = topicParam
                 )
 
                  // Log XML payload

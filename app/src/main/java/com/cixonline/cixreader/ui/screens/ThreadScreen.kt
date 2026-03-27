@@ -106,6 +106,7 @@ fun ThreadScreen(
     var initialDraft by remember { mutableStateOf<Draft?>(null) }
     var showNoMoreUnreadDialog by remember { mutableStateOf(false) }
     var showVersionDialog by remember { mutableStateOf(false) }
+    var showDebugDialog by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -150,7 +151,7 @@ fun ThreadScreen(
     LaunchedEffect(messages) {
         selectedMessage?.let { selected ->
             messages.find { it.remoteId == selected.remoteId }?.let { latest ->
-                if (latest.unread != selected.unread || latest.body != selected.body) {
+                if (latest.isActuallyUnread != selected.isActuallyUnread || latest.body != selected.body) {
                     selectedMessage = latest
                 }
             }
@@ -253,6 +254,10 @@ fun ThreadScreen(
         )
     }
 
+    if (showDebugDialog && selectedMessage != null) {
+        DebugMessageDialog(message = selectedMessage!!, onDismiss = { showDebugDialog = false })
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
@@ -286,6 +291,11 @@ fun ThreadScreen(
                     }
                 },
                 actions = {
+                    if (selectedMessage != null) {
+                        IconButton(onClick = { showDebugDialog = true }) {
+                            Icon(Icons.Default.BugReport, contentDescription = "Debug Cache")
+                        }
+                    }
                     Box {
                         IconButton(onClick = { showMenu = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = "Menu")
@@ -540,6 +550,40 @@ fun ThreadScreen(
             }
         )
     }
+}
+
+@Composable
+fun DebugMessageDialog(message: CIXMessage, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Cache Debug: #${message.remoteId}") },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text("Database ID: ${message.id}")
+                Text("Remote ID: ${message.remoteId}")
+                Text("Author: ${message.author}")
+                Text("Date: ${Date(message.date)}")
+                Text("Topic ID: ${message.topicId}")
+                Text("Forum: ${message.forumName}")
+                Text("Topic: ${message.topicName}")
+                Text("Comment ID: ${message.commentId}")
+                Text("Root ID: ${message.rootId}")
+                Text("Unread (DB): ${message.unread}")
+                Text("Is Actually Unread: ${message.isActuallyUnread}")
+                Text("Read Pending: ${message.readPending}")
+                Text("Starred: ${message.starred}")
+                Text("Priority: ${message.priority}")
+                Text("Ignored: ${message.ignored}")
+                Text("Post Pending: ${message.postPending}")
+                Text("Withdraw Pending: ${message.withdrawPending}")
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Body length: ${message.body.length}")
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
