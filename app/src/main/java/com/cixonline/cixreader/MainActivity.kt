@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
         
         val database = AppDatabase.getDatabase(this)
         val forumRepository = ForumRepository(NetworkClient.api, database.folderDao())
-        val messageRepository = MessageRepository(NetworkClient.api, database.messageDao())
+        val messageRepository = MessageRepository(NetworkClient.api, database.messageDao(), database.folderDao())
         settingsManager = SettingsManager(this)
         syncManager = SyncManager(this, settingsManager)
 

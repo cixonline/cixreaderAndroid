@@ -536,7 +536,7 @@ class WelcomeViewModelFactory(
     private val draftDao: DraftDao) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WelcomeViewModel::class.java)) {
-            val messageRepository = MessageRepository(api, messageDao)
+            val messageRepository = MessageRepository(api, messageDao, folderDao)
             @Suppress("UNCHECKED_CAST")
             return WelcomeViewModel(api, messageDao, messageRepository, folderDao, dirForumDao, draftDao) as T
         }

@@ -8,6 +8,7 @@ import com.cixonline.cixreader.api.MessageRangeRequest
 import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.api.PostAttachment
 import com.cixonline.cixreader.api.PostMessage2Request
+import com.cixonline.cixreader.db.FolderDao
 import com.cixonline.cixreader.db.MessageDao
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.utils.DateUtils
@@ -26,7 +27,8 @@ class NotAMemberException(val forumName: String) : Exception("Not a member of fo
 
 class MessageRepository(
     private val api: CixApi,
-    private val messageDao: MessageDao
+    private val messageDao: MessageDao,
+    private val folderDao: FolderDao
 ) {
     private val tag = "MessageRepository"
 
@@ -142,7 +144,7 @@ class MessageRepository(
             val existing = existingMessages[apiMsg.id]
             val messageDate = DateUtils.parseCixDate(apiMsg.dateTime)
             
-            val isReadFromServer = apiMsg.status?.equals("R", ignoreCase = true) == true
+            val isReadFromServer = apiMsg.status?.contains("R", ignoreCase = true) == true
             val isOld = messageDate < thirtyDaysAgo
             val isFromSelf = apiMsg.author?.equals(currentUsername, ignoreCase = true) == true
             
@@ -152,6 +154,13 @@ class MessageRepository(
                 false
             } else {
                 existing?.unread ?: true
+            }
+
+            // If it was unread locally but now it's read from server, we should update folder counts
+            if (existing != null && existing.unread && !isUnread) {
+                folderDao.decrementUnread(topicId)
+                val forumId = HtmlUtils.calculateForumId(forum)
+                folderDao.decrementUnread(forumId)
             }
 
             CIXMessage(
@@ -171,7 +180,7 @@ class MessageRepository(
                 starred = existing?.starred ?: false,
                 readLocked = existing?.readLocked ?: false,
                 ignored = existing?.ignored ?: false,
-                readPending = existing?.readPending ?: false,
+                readPending = if (isReadFromServer) false else (existing?.readPending ?: false),
                 postPending = existing?.postPending ?: false,
                 starPending = existing?.starPending ?: false,
                 withdrawPending = existing?.withdrawPending ?: false
@@ -257,7 +266,7 @@ class MessageRepository(
             val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
             val currentUsername = NetworkClient.getUsername()
             
-            val isReadFromServer = messageApi.status?.equals("R", ignoreCase = true) == true
+            val isReadFromServer = messageApi.status?.contains("R", ignoreCase = true) == true
             val isOld = messageDate < thirtyDaysAgo
             val isFromSelf = messageApi.author?.equals(currentUsername, ignoreCase = true) == true
             
@@ -267,6 +276,13 @@ class MessageRepository(
                 false
             } else {
                 existing?.unread ?: true
+            }
+
+            // If it was unread locally but now it's read from server, we should update folder counts
+            if (existing != null && existing.unread && !isUnread) {
+                folderDao.decrementUnread(topicId)
+                val forumId = HtmlUtils.calculateForumId(forum)
+                folderDao.decrementUnread(forumId)
             }
 
             val message = CIXMessage(
@@ -281,7 +297,8 @@ class MessageRepository(
                 forumName = forum,
                 topicName = topic,
                 subject = HtmlUtils.decodeHtml(messageApi.subject),
-                unread = isUnread
+                unread = isUnread,
+                readPending = if (isReadFromServer) false else (existing?.readPending ?: false)
             )
             messageDao.insert(message)
 

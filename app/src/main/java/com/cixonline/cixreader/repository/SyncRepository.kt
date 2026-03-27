@@ -2,6 +2,7 @@ package com.cixonline.cixreader.repository
 
 import android.util.Log
 import com.cixonline.cixreader.api.CixApi
+import com.cixonline.cixreader.api.MessageApi
 import com.cixonline.cixreader.db.FolderDao
 import com.cixonline.cixreader.db.MessageDao
 import com.cixonline.cixreader.models.CIXMessage
@@ -45,19 +46,21 @@ class SyncRepository(
                 val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
                 
                 val cixMessages = messages.map { apiMsg ->
-                    val forum = HtmlUtils.normalizeName(apiMsg.forum)
-                    val topic = HtmlUtils.normalizeName(apiMsg.topic)
+                    val forum = HtmlUtils.normalizeName(apiMsg.forum ?: "")
+                    val topic = HtmlUtils.normalizeName(apiMsg.topic ?: "")
                     val topicId = HtmlUtils.calculateTopicId(forum, topic)
-                    val messageDate = DateUtils.parseCixDate(apiMsg.dateTime)
+                    
+                    // Preserve local state if message already exists
+                    val existing = messageDao.getByRemoteId(apiMsg.id, topicId)
+                    
+                    val messageDate = if (apiMsg.dateTime != null) DateUtils.parseCixDate(apiMsg.dateTime) else (existing?.date ?: 0L)
                     
                     if (messageDate > newestMessageDate) {
                         newestMessageDate = messageDate
                     }
 
-                    // Preserve local state if message already exists
-                    val existing = messageDao.getByRemoteId(apiMsg.id, topicId)
-
-                    val isReadFromServer = apiMsg.status?.equals("R", ignoreCase = true) == true
+                    // CIX status "R" means read.
+                    val isReadFromServer = apiMsg.status?.contains("R", ignoreCase = true) == true
                     val isOld = messageDate < thirtyDaysAgo
                     
                     // If message exists and is already read locally, KEEP it read.
@@ -70,21 +73,35 @@ class SyncRepository(
                         existing?.unread ?: true
                     }
 
+                    // If it was unread locally but now it's read from server, we should update folder counts
+                    if (existing != null && existing.unread && !isUnread) {
+                        folderDao.decrementUnread(topicId)
+                        val forumId = HtmlUtils.calculateForumId(forum)
+                        folderDao.decrementUnread(forumId)
+                    }
+
                     CIXMessage(
                         id = existing?.id ?: 0,
                         remoteId = apiMsg.id,
-                        author = HtmlUtils.decodeHtml(apiMsg.author ?: ""),
-                        body = HtmlUtils.decodeHtml(apiMsg.body ?: ""),
+                        author = apiMsg.author?.let { HtmlUtils.decodeHtml(it) } ?: existing?.author ?: "",
+                        body = apiMsg.body?.let { HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(it)) } ?: existing?.body ?: "",
                         date = messageDate,
-                        commentId = apiMsg.replyTo,
-                        rootId = apiMsg.rootId,
+                        commentId = if (apiMsg.replyTo != 0) apiMsg.replyTo else existing?.commentId ?: 0,
+                        rootId = if (apiMsg.rootId != 0) apiMsg.rootId else existing?.rootId ?: 0,
                         topicId = topicId,
                         forumName = forum,
                         topicName = topic,
-                        subject = HtmlUtils.decodeHtml(apiMsg.subject),
+                        subject = apiMsg.subject?.let { HtmlUtils.decodeHtml(it) } ?: existing?.subject ?: "",
                         unread = isUnread,
+                        priority = existing?.priority ?: false,
                         starred = existing?.starred ?: false,
-                        readPending = existing?.readPending ?: false
+                        readLocked = existing?.readLocked ?: false,
+                        ignored = existing?.ignored ?: false,
+                        // If server says it's read, clear the pending flag.
+                        readPending = if (isReadFromServer) false else (existing?.readPending ?: false),
+                        postPending = existing?.postPending ?: false,
+                        starPending = existing?.starPending ?: false,
+                        withdrawPending = existing?.withdrawPending ?: false
                     )
                 }
                 
@@ -123,11 +140,11 @@ class SyncRepository(
                     api.markRead(encodedForum, encodedTopic, msg.remoteId)
 
                     // Clear pending flag on success
-                    messageDao.insertAll(listOf(msg.copy(readPending = false)))
+                    messageDao.updateUnreadAndPending(msg.id, unread = false, readPending = false)
 
                 } catch (e: CancellationException) {
                     throw e
-        } catch (e: Exception) {
+                } catch (e: Exception) {
                     Log.e(tag, "Failed to mark message ${msg.remoteId} as read", e)
                 }
             }
@@ -155,9 +172,9 @@ class SyncRepository(
             
             val messages = resultSet.messages.map { apiMsg ->
                 val existing = messageDao.getByRemoteId(apiMsg.id, topicId)
-                val messageDate = DateUtils.parseCixDate(apiMsg.dateTime)
+                val messageDate = if (apiMsg.dateTime != null) DateUtils.parseCixDate(apiMsg.dateTime) else (existing?.date ?: 0L)
                 
-                val isReadFromServer = apiMsg.status?.equals("R", ignoreCase = true) == true
+                val isReadFromServer = apiMsg.status?.contains("R", ignoreCase = true) == true
                 val isOld = messageDate < thirtyDaysAgo
                 
                 // If message exists and is already read locally, KEEP it read.
@@ -169,21 +186,34 @@ class SyncRepository(
                     existing?.unread ?: true
                 }
 
+                // If it was unread locally but now it's read from server, we should update folder counts
+                if (existing != null && existing.unread && !isUnread) {
+                    folderDao.decrementUnread(topicId)
+                    val forumId = HtmlUtils.calculateForumId(forumName)
+                    folderDao.decrementUnread(forumId)
+                }
+
                 CIXMessage(
                     id = existing?.id ?: 0,
                     remoteId = apiMsg.id,
-                    author = HtmlUtils.decodeHtml(apiMsg.author ?: ""),
-                    body = HtmlUtils.decodeHtml(apiMsg.body ?: ""),
+                    author = apiMsg.author?.let { HtmlUtils.decodeHtml(it) } ?: existing?.author ?: "",
+                    body = apiMsg.body?.let { HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(it)) } ?: existing?.body ?: "",
                     date = messageDate,
-                    commentId = apiMsg.replyTo,
-                    rootId = apiMsg.rootId,
+                    commentId = if (apiMsg.replyTo != 0) apiMsg.replyTo else existing?.commentId ?: 0,
+                    rootId = if (apiMsg.rootId != 0) apiMsg.rootId else existing?.rootId ?: 0,
                     topicId = topicId,
                     forumName = forumName,
                     topicName = topicName,
-                    subject = HtmlUtils.decodeHtml(apiMsg.subject),
+                    subject = apiMsg.subject?.let { HtmlUtils.decodeHtml(it) } ?: existing?.subject ?: "",
                     unread = isUnread,
+                    priority = existing?.priority ?: false,
                     starred = existing?.starred ?: false,
-                    readPending = existing?.readPending ?: false
+                    readLocked = existing?.readLocked ?: false,
+                    ignored = existing?.ignored ?: false,
+                    readPending = if (isReadFromServer) false else (existing?.readPending ?: false),
+                    postPending = existing?.postPending ?: false,
+                    starPending = existing?.starPending ?: false,
+                    withdrawPending = existing?.withdrawPending ?: false
                 )
             }
             
