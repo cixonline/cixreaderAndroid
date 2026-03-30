@@ -244,8 +244,13 @@ class ProfileDelegate(
                     val resumeJob = async {
                         try {
                             val response = api.getResume(serverUser)
-                            extractRawContent(response.string())?.let { HtmlUtils.decodeHtml(it).trim() }
-                        } catch (e: Exception) { null }
+                            val rawResponse = response.string()
+                            Log.d("ProfileDelegate", "resume.xml response: $rawResponse")
+                            extractRawContent(rawResponse)?.let { HtmlUtils.decodeHtml(it).trim() }
+                        } catch (e: Exception) { 
+                            Log.e("ProfileDelegate", "Error getting resume", e)
+                            null 
+                        }
                     }
                     
                     val resume = resumeJob.await()

@@ -59,111 +59,116 @@ fun ProfileDialog(
                         if (!profile.fullName.isNullOrBlank()) {
                             Text(text = profile.fullName!!, style = MaterialTheme.typography.titleMedium)
                         }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        profile.location?.takeIf { it.isNotBlank() }?.let {
+                            CompactProfileRow(label = "Location", value = it)
+                        }
+                        profile.firstOn?.takeIf { it.isNotBlank() }?.let {
+                            CompactProfileRow(label = "First On", value = it)
+                        }
+                        profile.lastOn?.takeIf { it.isNotBlank() }?.let {
+                            CompactProfileRow(label = "Last On", value = it)
+                        }
+                        profile.lastPost?.takeIf { it.isNotBlank() }?.let {
+                            CompactProfileRow(label = "Last Post", value = it)
+                        }
                     }
                     
                     val imageModel = mugshotUrl ?: profile.userName?.let { ProfileDelegate.getMugshotXmlUrl(it) }
                     
-                    if (imageModel != null) {
-                        var state by remember { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
-                        
-                        Box(contentAlignment = Alignment.Center) {
-                            AsyncImage(
-                                model = ImageRequest.Builder(LocalContext.current)
-                                    .data(imageModel)
-                                    .placeholder(R.drawable.cix_logo)
-                                    .error(R.drawable.cix_logo)
-                                    .crossfade(true)
-                                    .build(),
-                                imageLoader = NetworkClient.getImageLoader(LocalContext.current),
-                                contentDescription = "Mugshot",
-                                onState = { state = it },
-                                modifier = Modifier
-                                    .size(160.dp) // Increased from 80.dp to 160.dp
-                                    .clip(CircleShape),
-                                contentScale = ContentScale.Crop
-                            )
+                    Box(modifier = Modifier.padding(start = 16.dp)) {
+                        if (imageModel != null) {
+                            var state by remember { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
                             
-                            if (state is AsyncImagePainter.State.Loading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(32.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.primary
+                            Box(contentAlignment = Alignment.Center) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data(imageModel)
+                                        .placeholder(R.drawable.cix_logo)
+                                        .error(R.drawable.cix_logo)
+                                        .crossfade(true)
+                                        .build(),
+                                    imageLoader = NetworkClient.getImageLoader(LocalContext.current),
+                                    contentDescription = "Mugshot",
+                                    onState = { state = it },
+                                    modifier = Modifier
+                                        .size(120.dp)
+                                        .clip(CircleShape),
+                                    contentScale = ContentScale.Crop
                                 )
+                                
+                                if (state is AsyncImagePainter.State.Loading) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(32.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
+                        } else {
+                            Image(
+                                painter = painterResource(R.drawable.cix_logo),
+                                contentDescription = "No user",
+                                modifier = Modifier
+                                    .size(120.dp)
+                                    .clip(CircleShape)
+                            )
                         }
-                    } else {
-                        Image(
-                            painter = painterResource(R.drawable.cix_logo),
-                            contentDescription = "No user",
-                            modifier = Modifier
-                                .size(160.dp) // Increased from 80.dp to 160.dp
-                                .clip(CircleShape)
-                        )
                     }
                 }
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
                 
+                if (!resume.isNullOrBlank()) {
+                    Text(
+                        text = "Resume", 
+                        style = MaterialTheme.typography.titleMedium, 
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = resume,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                }
+
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    profile.location?.let {
-                        if (it.isNotBlank()) {
-                            ProfileRow(label = "Location", value = it)
-                        }
+                    profile.email?.takeIf { it.isNotBlank() }?.let {
+                        ProfileRow(label = "Email", value = it)
                     }
-                    profile.email?.let {
-                        if (it.isNotBlank()) {
-                            ProfileRow(label = "Email", value = it)
-                        }
+                    profile.about?.takeIf { it.isNotBlank() }?.let {
+                        ProfileRow(label = "About", value = it)
                     }
-                    profile.firstOn?.let {
-                        if (it.isNotBlank()) {
-                            ProfileRow(label = "First On", value = it)
-                        }
-                    }
-                    profile.lastOn?.let {
-                        if (it.isNotBlank()) {
-                            ProfileRow(label = "Last On", value = it)
-                        }
-                    }
-                    profile.lastPost?.let {
-                        if (it.isNotBlank()) {
-                            ProfileRow(label = "Last Post", value = it)
-                        }
-                    }
-                    profile.lastPost?.let {
-                        if (it.isNotBlank()) {
-                            ProfileRow(label = "Last Post", value = it)
-                        }
-                    }
-                    profile.about?.let {
-                        if (it.isNotBlank()) {
-                            ProfileRow(label = "About", value = it)
-                        }
-                    }
-                    
-                    if (!resume.isNullOrBlank()) {
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                        Text(
-                            text = "Resume", 
-                            style = MaterialTheme.typography.labelLarge, 
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = resume,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
+                    profile.experience?.takeIf { it.isNotBlank() }?.let {
+                        ProfileRow(label = "Experience", value = it)
                     }
                 }
                 
-                Spacer(modifier = Modifier.weight(1f, fill = false))
                 Spacer(modifier = Modifier.height(24.dp))
                 TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
                     Text("Close")
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CompactProfileRow(label: String, value: String) {
+    Column(modifier = Modifier.padding(bottom = 4.dp)) {
+        Text(
+            text = label, 
+            style = MaterialTheme.typography.labelSmall, 
+            color = MaterialTheme.colorScheme.secondary
+        )
+        Text(
+            text = value, 
+            style = MaterialTheme.typography.bodySmall
+        )
     }
 }
 
