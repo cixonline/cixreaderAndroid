@@ -56,7 +56,8 @@ fun WelcomeScreen(
     onLogout: () -> Unit,
     onSettingsClick: () -> Unit,
     onDraftsClick: () -> Unit,
-    onProfileClick: (String) -> Unit
+    onProfileClick: (String) -> Unit,
+    onActivityLogClick: () -> Unit
 ) {
     val threads by viewModel.interestingThreads.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -147,6 +148,13 @@ fun WelcomeScreen(
                                 onClick = {
                                     showMenu = false
                                     onSettingsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Activity Log") },
+                                onClick = {
+                                    showMenu = false
+                                    onActivityLogClick()
                                 }
                             )
                             DropdownMenuItem(

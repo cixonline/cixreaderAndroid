@@ -17,6 +17,7 @@ import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.DirForum
 import com.cixonline.cixreader.models.Draft
 import com.cixonline.cixreader.models.Folder
+import com.cixonline.cixreader.repository.LogRepository
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
@@ -533,10 +534,11 @@ class WelcomeViewModelFactory(
     private val folderDao: FolderDao,
     private val dirForumDao: DirForumDao,
     private val cachedProfileDao: CachedProfileDao,
-    private val draftDao: DraftDao) : ViewModelProvider.Factory {
+    private val draftDao: DraftDao,
+    private val logRepository: LogRepository) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WelcomeViewModel::class.java)) {
-            val messageRepository = MessageRepository(api, messageDao, folderDao)
+            val messageRepository = MessageRepository(api, messageDao, folderDao, logRepository)
             @Suppress("UNCHECKED_CAST")
             return WelcomeViewModel(api, messageDao, messageRepository, folderDao, dirForumDao, draftDao) as T
         }

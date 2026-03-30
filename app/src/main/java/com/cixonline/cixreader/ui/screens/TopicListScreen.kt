@@ -37,7 +37,8 @@ fun TopicListScreen(
     onLogout: () -> Unit,
     onSettingsClick: () -> Unit,
     onProfileClick: (String) -> Unit,
-    onDraftsClick: () -> Unit
+    onDraftsClick: () -> Unit,
+    onActivityLogClick: () -> Unit
 ) {
     val topics by viewModel.topics.collectAsState(initial = emptyList())
     var showMenu by remember { mutableStateOf(false) }
@@ -103,6 +104,13 @@ fun TopicListScreen(
                                 onClick = {
                                     showMenu = false
                                     onSettingsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Activity Log") },
+                                onClick = {
+                                    showMenu = false
+                                    onActivityLogClick()
                                 }
                             )
                             DropdownMenuItem(

@@ -28,7 +28,8 @@ class NotAMemberException(val forumName: String) : Exception("Not a member of fo
 class MessageRepository(
     private val api: CixApi,
     private val messageDao: MessageDao,
-    private val folderDao: FolderDao
+    private val folderDao: FolderDao,
+    private val logRepository: LogRepository
 ) {
     private val tag = "MessageRepository"
 
@@ -157,11 +158,17 @@ class MessageRepository(
                 folderDao.decrementUnread(topicId)
                 val forumId = HtmlUtils.calculateForumId(forum)
                 folderDao.decrementUnread(forumId)
+                logRepository.log("Updated read status for #$apiMsg.id in $forum/$topic: true -> false", "READ_STATUS")
             } else if (existing != null && !existing.unread && isUnread) {
                 // If it was read locally but now it's unread from server, we should increment folder counts
                 folderDao.incrementUnread(topicId)
                 val forumId = HtmlUtils.calculateForumId(forum)
                 folderDao.incrementUnread(forumId)
+                logRepository.log("Updated read status for #$apiMsg.id in $forum/$topic: false -> true", "READ_STATUS")
+            }
+
+            if (existing == null) {
+                logRepository.log("Inserted new message #$apiMsg.id in $forum/$topic. Unread: $isUnread", "INSERT")
             }
 
             CIXMessage(
@@ -280,11 +287,17 @@ class MessageRepository(
                 folderDao.decrementUnread(topicId)
                 val forumId = HtmlUtils.calculateForumId(forum)
                 folderDao.decrementUnread(forumId)
+                logRepository.log("Updated read status for #$msgId in $forum/$topic: true -> false", "READ_STATUS")
             } else if (existing != null && !existing.unread && isUnread) {
                 // If it was read locally but now it's unread from server, we should increment folder counts
                 folderDao.incrementUnread(topicId)
                 val forumId = HtmlUtils.calculateForumId(forum)
                 folderDao.incrementUnread(forumId)
+                logRepository.log("Updated read status for #$msgId in $forum/$topic: false -> true", "READ_STATUS")
+            }
+
+            if (existing == null) {
+                logRepository.log("Inserted new message #$msgId in $forum/$topic. Unread: $isUnread", "INSERT")
             }
 
             val message = CIXMessage(
@@ -367,6 +380,7 @@ class MessageRepository(
                 postPending = false
             )
             messageDao.insert(message)
+            logRepository.log("Posted new message #$response.id in $forum/$topic", "INSERT")
             
             response.id
         } catch (e: Exception) {
@@ -411,6 +425,7 @@ class MessageRepository(
         if (message.unread) {
             // Optimistically mark as read and pending in local DB
             messageDao.updateUnreadAndPending(message.id, unread = false, readPending = true)
+            logRepository.log("Marked #$message.remoteId as read (locally pending) in $message.forumName/$message.topicName", "READ_STATUS")
             try {
                 api.markRead(
                     HtmlUtils.cixEncode(message.forumName),

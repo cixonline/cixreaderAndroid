@@ -26,7 +26,8 @@ fun SettingsScreen(
     onBackClick: () -> Unit,
     onLogout: () -> Unit,
     onDraftsClick: () -> Unit,
-    onProfileClick: (String) -> Unit
+    onProfileClick: (String) -> Unit,
+    onActivityLogClick: () -> Unit
 ) {
     var fontSizeMultiplier by remember { mutableStateOf(settingsManager.getFontSize()) }
     var themeMode by remember { mutableStateOf(settingsManager.getThemeMode()) }
@@ -86,6 +87,13 @@ fun SettingsScreen(
                                 onClick = {
                                     showMenu = false
                                     // Already here
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Activity Log") },
+                                onClick = {
+                                    showMenu = false
+                                    onActivityLogClick()
                                 }
                             )
                             DropdownMenuItem(

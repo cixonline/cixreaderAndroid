@@ -17,6 +17,7 @@ import com.cixonline.cixreader.db.FolderDao
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.Draft
 import com.cixonline.cixreader.models.Folder
+import com.cixonline.cixreader.repository.LogRepository
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.repository.NotAMemberException
 import com.cixonline.cixreader.utils.DateUtils
@@ -38,6 +39,7 @@ class TopicViewModel(
     private val cachedProfileDao: CachedProfileDao,
     private val draftDao: DraftDao,
     private val folderDao: FolderDao,
+    private val logRepository: LogRepository,
     val rawForumName: String,
     val rawTopicName: String,
     val providedTopicId: Int,
@@ -228,31 +230,44 @@ class TopicViewModel(
         }
         currentRoots.forEach { walk(it) }
 
+        val nextItem: NextUnreadItem
         if (currentMessageId == null) {
             // Finding initial unread: return first unread in visual sequence
-            visualSequence.find { it.isActuallyUnread }?.let { return NextUnreadItem.Message(it) }
+            val msg = visualSequence.find { it.isActuallyUnread }
+            nextItem = if (msg != null) NextUnreadItem.Message(msg) else findNextUnreadOutsideTopic()
         } else {
             // Navigating from a specific message
             val currentIndex = visualSequence.indexOfFirst { it.remoteId == currentMessageId }
             if (currentIndex != -1) {
                 // Check messages FOLLOWING the current one in the thread view
+                var found: CIXMessage? = null
                 for (i in (currentIndex + 1) until visualSequence.size) {
-                    if (visualSequence[i].isActuallyUnread) return NextUnreadItem.Message(visualSequence[i])
+                    if (visualSequence[i].isActuallyUnread) {
+                        found = visualSequence[i]
+                        break
+                    }
+                }
+                nextItem = if (found != null) NextUnreadItem.Message(found) else {
+                    // Check messages BEFORE the current one (wrap around within topic)
+                    val before = visualSequence.take(currentIndex).find { it.isActuallyUnread }
+                    if (before != null) NextUnreadItem.Message(before) else findNextUnreadOutsideTopic()
                 }
             } else {
                 // If current message isn't in sequence for some reason, find first unread
-                visualSequence.find { it.isActuallyUnread }?.let { return NextUnreadItem.Message(it) }
+                val first = visualSequence.find { it.isActuallyUnread }
+                nextItem = if (first != null) NextUnreadItem.Message(first) else findNextUnreadOutsideTopic()
             }
         }
 
-        // If we reach here, we've exhausted all messages following the current one in the visual flow.
-        // Now check for any unread BEFORE the current one (handling cases where user jumped around)
-        val anyUnreadInTopic = visualSequence.find { it.isActuallyUnread }
-        if (anyUnreadInTopic != null) {
-            return NextUnreadItem.Message(anyUnreadInTopic)
+        val logMessage = when (nextItem) {
+            is NextUnreadItem.Message -> "Next Unread tapped (Current #$currentMessageId). Found message #${nextItem.message.remoteId} in current topic."
+            is NextUnreadItem.Topic -> "Next Unread tapped (Current #$currentMessageId). Moving to topic ${nextItem.forum}/${nextItem.topic}."
+            is NextUnreadItem.NoMoreUnread -> "Next Unread tapped (Current #$currentMessageId). No more unreads found."
+            else -> "Next Unread tapped (Current #$currentMessageId). Navigation result: $nextItem"
         }
+        logRepository.log(logMessage, "NAVIGATION")
 
-        return findNextUnreadOutsideTopic()
+        return nextItem
     }
 
     private suspend fun findNextUnreadOutsideTopic(): NextUnreadItem {
@@ -485,6 +500,7 @@ class TopicViewModelFactory(
     private val cachedProfileDao: CachedProfileDao,
     private val draftDao: DraftDao,
     private val folderDao: FolderDao,
+    private val logRepository: LogRepository,
     private val forumName: String,
     private val topicName: String,
     private val topicId: Int,
@@ -494,7 +510,7 @@ class TopicViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(TopicViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return TopicViewModel(api, repository, cachedProfileDao, draftDao, folderDao, forumName, topicName, topicId, initialMessageId, initialRootId) as T
+            return TopicViewModel(api, repository, cachedProfileDao, draftDao, folderDao, logRepository, forumName, topicName, topicId, initialMessageId, initialRootId) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

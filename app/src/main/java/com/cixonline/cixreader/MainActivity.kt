@@ -15,6 +15,7 @@ import androidx.navigation.compose.rememberNavController
 import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.db.AppDatabase
 import com.cixonline.cixreader.repository.ForumRepository
+import com.cixonline.cixreader.repository.LogRepository
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.ui.AppNavHost
 import com.cixonline.cixreader.ui.theme.CIXReaderTheme
@@ -32,12 +33,16 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         
         val database = AppDatabase.getDatabase(this)
+        val logRepository = LogRepository(database.logDao())
         val forumRepository = ForumRepository(NetworkClient.api, database.folderDao())
-        val messageRepository = MessageRepository(NetworkClient.api, database.messageDao(), database.folderDao())
+        val messageRepository = MessageRepository(NetworkClient.api, database.messageDao(), database.folderDao(), logRepository)
         settingsManager = SettingsManager(this)
         syncManager = SyncManager(this, settingsManager)
 
         lifecycleScope.launch {
+            // Cleanup old logs on startup
+            logRepository.deleteOldLogs(48)
+
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 settingsManager.backgroundSyncFlow.collect { enabled ->
                     if (settingsManager.hasCredentials()) {
@@ -63,7 +68,8 @@ class MainActivity : ComponentActivity() {
                 database = database,
                 forumRepository = forumRepository,
                 messageRepository = messageRepository,
-                syncManager = syncManager
+                syncManager = syncManager,
+                logRepository = logRepository
             )
         }
     }
@@ -75,7 +81,8 @@ fun MainContent(
     database: AppDatabase,
     forumRepository: ForumRepository,
     messageRepository: MessageRepository,
-    syncManager: SyncManager
+    syncManager: SyncManager,
+    logRepository: LogRepository
 ) {
     val fontSizeMultiplier by settingsManager.fontSizeFlow.collectAsState(initial = settingsManager.getFontSize())
     val themeMode by settingsManager.themeFlow.collectAsState(initial = settingsManager.getThemeMode())
@@ -112,7 +119,8 @@ fun MainContent(
             database = database,
             forumRepository = forumRepository,
             messageRepository = messageRepository,
-            currentUsername = currentUsername
+            currentUsername = currentUsername,
+            logRepository = logRepository
         )
     }
 }

@@ -39,7 +39,8 @@ fun DraftsScreen(
     onBackClick: () -> Unit,
     onLogout: () -> Unit,
     onSettingsClick: () -> Unit,
-    onProfileClick: (String) -> Unit
+    onProfileClick: (String) -> Unit,
+    onActivityLogClick: () -> Unit
 ) {
     val drafts by viewModel.drafts.collectAsState(initial = emptyList<Draft>())
     val isPosting by viewModel.isPosting.collectAsState()
@@ -105,6 +106,13 @@ fun DraftsScreen(
                                 onClick = {
                                     showMenu = false
                                     onSettingsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Activity Log") },
+                                onClick = {
+                                    showMenu = false
+                                    onActivityLogClick()
                                 }
                             )
                             DropdownMenuItem(

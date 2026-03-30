@@ -20,7 +20,8 @@ class SyncRepository(
     private val api: CixApi,
     private val folderDao: FolderDao,
     private val messageDao: MessageDao,
-    private val settingsManager: SettingsManager
+    private val settingsManager: SettingsManager,
+    private val logRepository: LogRepository
 ) {
     private val tag = "SyncRepository"
 
@@ -88,6 +89,7 @@ class SyncRepository(
                     // Log cache update
                     if (existing != null && existing.unread != isUnread) {
                         Log.d(tag, "Updating cache for message #$remoteId: local unread=${existing.unread} -> server unread=$isUnread")
+                        logRepository.log("Updated read status for #$remoteId in $forum/$topic: ${existing.unread} -> $isUnread", "READ_STATUS")
                     }
 
                     // If it was unread locally but now it's read from server, we should update folder counts
@@ -100,6 +102,10 @@ class SyncRepository(
                         folderDao.incrementUnread(topicId)
                         val forumId = HtmlUtils.calculateForumId(forum)
                         folderDao.incrementUnread(forumId)
+                    }
+
+                    if (existing == null) {
+                        logRepository.log("Inserted new message #$remoteId in $forum/$topic. Unread: $isUnread", "INSERT")
                     }
 
                     CIXMessage(
@@ -163,6 +169,7 @@ class SyncRepository(
 
                     // Clear pending flag on success
                     messageDao.updateUnreadAndPending(msg.id, unread = false, readPending = false)
+                    logRepository.log("Synced read status for #$msg.remoteId to server", "SYNC")
 
                 } catch (e: CancellationException) {
                     throw e
@@ -217,11 +224,17 @@ class SyncRepository(
                     folderDao.decrementUnread(topicId)
                     val forumId = HtmlUtils.calculateForumId(forumName)
                     folderDao.decrementUnread(forumId)
+                    logRepository.log("Updated read status for #$remoteId in $forumName/$topicName: true -> false", "READ_STATUS")
                 } else if (existing != null && !existing.unread && isUnread) {
                     // If it was read locally but now it's unread from server, we should increment folder counts
                     folderDao.incrementUnread(topicId)
                     val forumId = HtmlUtils.calculateForumId(forumName)
                     folderDao.incrementUnread(forumId)
+                    logRepository.log("Updated read status for #$remoteId in $forumName/$topicName: false -> true", "READ_STATUS")
+                }
+
+                if (existing == null) {
+                    logRepository.log("Inserted new message #$remoteId in $forumName/$topicName. Unread: $isUnread", "INSERT")
                 }
 
                 CIXMessage(

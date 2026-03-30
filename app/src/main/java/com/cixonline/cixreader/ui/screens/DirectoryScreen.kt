@@ -42,6 +42,7 @@ fun DirectoryScreen(
     onSettingsClick: () -> Unit,
     onProfileClick: (String) -> Unit,
     onDraftsClick: () -> Unit,
+    onActivityLogClick: () -> Unit,
     isOffline: Boolean = false
 ) {
     val forums by viewModel.forums.collectAsState()
@@ -164,6 +165,13 @@ fun DirectoryScreen(
                                 onClick = {
                                     showMenu = false
                                     onSettingsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Activity Log") },
+                                onClick = {
+                                    showMenu = false
+                                    onActivityLogClick()
                                 }
                             )
                             DropdownMenuItem(

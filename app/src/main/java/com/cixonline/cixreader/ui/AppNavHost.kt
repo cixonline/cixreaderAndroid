@@ -3,6 +3,7 @@ package com.cixonline.cixreader.ui
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -12,9 +13,9 @@ import androidx.navigation.navArgument
 import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.db.AppDatabase
 import com.cixonline.cixreader.repository.ForumRepository
+import com.cixonline.cixreader.repository.LogRepository
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.ui.screens.*
-import com.cixonline.cixreader.utils.HtmlUtils
 import com.cixonline.cixreader.utils.SettingsManager
 import com.cixonline.cixreader.utils.SyncManager
 import com.cixonline.cixreader.viewmodel.*
@@ -28,7 +29,8 @@ fun AppNavHost(
     database: AppDatabase,
     forumRepository: ForumRepository,
     messageRepository: MessageRepository,
-    currentUsername: String?
+    currentUsername: String?,
+    logRepository: LogRepository
 ) {
     val actions = remember(navController, settingsManager) { 
         NavigationActions(navController, settingsManager) 
@@ -57,7 +59,8 @@ fun AppNavHost(
                     folderDao = database.folderDao(),
                     dirForumDao = database.dirForumDao(),
                     cachedProfileDao = database.cachedProfileDao(),
-                    draftDao = database.draftDao()
+                    draftDao = database.draftDao(),
+                    logRepository = logRepository
                 )
             )
             WelcomeScreen(
@@ -69,7 +72,17 @@ fun AppNavHost(
                 onLogout = actions.onLogout,
                 onSettingsClick = actions.onSettingsClick,
                 onDraftsClick = actions.onDraftsClick,
-                onProfileClick = actions.onProfileClick
+                onProfileClick = actions.onProfileClick,
+                onActivityLogClick = actions.navigateToActivityLog
+            )
+        }
+        composable("activity_log") {
+            val activityLogViewModel: ActivityLogViewModel = viewModel(
+                factory = GenericViewModelFactory<ActivityLogViewModel> { ActivityLogViewModel(logRepository) }
+            )
+            ActivityLogScreen(
+                viewModel = activityLogViewModel,
+                onBackClick = actions.onBackClick
             )
         }
         composable("forums") {
@@ -90,7 +103,8 @@ fun AppNavHost(
                 onLogout = actions.onLogout,
                 onSettingsClick = actions.onSettingsClick,
                 onProfileClick = actions.onProfileClick,
-                onDraftsClick = actions.onDraftsClick
+                onDraftsClick = actions.onDraftsClick,
+                onActivityLogClick = actions.navigateToActivityLog
             )
         }
         composable("directory") {
@@ -113,7 +127,8 @@ fun AppNavHost(
                 onLogout = actions.onLogout,
                 onSettingsClick = actions.onSettingsClick,
                 onProfileClick = actions.onProfileClick,
-                onDraftsClick = actions.onDraftsClick
+                onDraftsClick = actions.onDraftsClick,
+                onActivityLogClick = actions.navigateToActivityLog
             )
         }
         composable("settings") {
@@ -122,7 +137,8 @@ fun AppNavHost(
                 onBackClick = actions.onBackClick,
                 onLogout = actions.onLogout,
                 onDraftsClick = actions.onDraftsClick,
-                onProfileClick = actions.onProfileClick
+                onProfileClick = actions.onProfileClick,
+                onActivityLogClick = actions.navigateToActivityLog
             )
         }
         composable("drafts") {
@@ -137,7 +153,8 @@ fun AppNavHost(
                 onBackClick = actions.onBackClick,
                 onLogout = actions.onLogout,
                 onSettingsClick = actions.onSettingsClick,
-                onProfileClick = actions.onProfileClick
+                onProfileClick = actions.onProfileClick,
+                onActivityLogClick = actions.navigateToActivityLog
             )
         }
         composable(
@@ -167,7 +184,8 @@ fun AppNavHost(
                 onLogout = actions.onLogout,
                 onSettingsClick = actions.onSettingsClick,
                 onProfileClick = actions.onProfileClick,
-                onDraftsClick = actions.onDraftsClick
+                onDraftsClick = actions.onDraftsClick,
+                onActivityLogClick = actions.navigateToActivityLog
             )
         }
         composable(
@@ -199,6 +217,7 @@ fun AppNavHost(
                     cachedProfileDao = database.cachedProfileDao(),
                     draftDao = database.draftDao(),
                     folderDao = database.folderDao(),
+                    logRepository = logRepository,
                     forumName = forumNameArg,
                     topicName = topicNameArg,
                     topicId = topicIdArg,
@@ -220,7 +239,8 @@ fun AppNavHost(
                 onNavigateToThread = actions.navigateToThread,
                 onNavigateToDirectory = actions.navigateToDirectory,
                 onDraftsClick = actions.onDraftsClick,
-                onProfileClick = actions.onProfileClick
+                onProfileClick = actions.onProfileClick,
+                onActivityLogClick = actions.navigateToActivityLog
             )
         }
         composable(
@@ -243,7 +263,8 @@ fun AppNavHost(
                 onLogout = actions.onLogout,
                 onSettingsClick = actions.onSettingsClick,
                 onDraftsClick = actions.onDraftsClick,
-                onProfileClick = actions.onProfileClick
+                onProfileClick = actions.onProfileClick,
+                onActivityLogClick = actions.navigateToActivityLog
             )
         }
     }
@@ -286,5 +307,16 @@ class NavigationActions(private val navController: NavHostController, private va
         val encodedTopic = Uri.encode(topic)
         // Using query parameters for forum and topic names to safely handle special characters (like slashes)
         navController.navigate("thread/$topicId?forumName=$encodedForum&topicName=$encodedTopic&rootId=$rootId&msgId=$msgId")
+    }
+
+    val navigateToActivityLog: () -> Unit = {
+        navController.navigate("activity_log")
+    }
+}
+
+class GenericViewModelFactory<T : ViewModel>(private val create: () -> T) : androidx.lifecycle.ViewModelProvider.Factory {
+    override fun <V : ViewModel> create(modelClass: Class<V>): V {
+        @Suppress("UNCHECKED_CAST")
+        return create() as V
     }
 }

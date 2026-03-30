@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.work.*
 import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.db.AppDatabase
+import com.cixonline.cixreader.repository.LogRepository
 import com.cixonline.cixreader.repository.SyncRepository
 import com.cixonline.cixreader.utils.SettingsManager
 import kotlinx.coroutines.CancellationException
@@ -25,12 +26,18 @@ class SyncWorker(appContext: Context, workerParams: WorkerParameters):
         Log.d("SyncWorker", "Starting background sync (Run attempt: $runAttemptCount)")
         try {
             val database = AppDatabase.getDatabase(applicationContext)
+            val logRepository = LogRepository(database.logDao())
             val syncRepository = SyncRepository(
                 api = NetworkClient.api,
                 folderDao = database.folderDao(),
                 messageDao = database.messageDao(),
-                settingsManager = settingsManager
+                settingsManager = settingsManager,
+                logRepository = logRepository
             )
+            
+            // Delete old logs (48 hours)
+            logRepository.deleteOldLogs(48)
+
             syncRepository.syncLatestMessages()
             Log.d("SyncWorker", "Background sync finished successfully")
 

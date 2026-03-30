@@ -50,6 +50,7 @@ fun ForumListScreen(
     onSettingsClick: () -> Unit,
     onProfileClick: (String) -> Unit,
     onDraftsClick: () -> Unit,
+    onActivityLogClick: () -> Unit,
     isOffline: Boolean = false
 ) {
     val folders by viewModel.allFolders.collectAsState(initial = emptyList())
@@ -169,6 +170,13 @@ fun ForumListScreen(
                                     onClick = {
                                         showMenu = false
                                         onSettingsClick()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Activity Log") },
+                                    onClick = {
+                                        showMenu = false
+                                        onActivityLogClick()
                                     }
                                 )
                                 DropdownMenuItem(
