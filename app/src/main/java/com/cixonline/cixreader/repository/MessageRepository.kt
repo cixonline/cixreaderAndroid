@@ -137,23 +137,19 @@ class MessageRepository(
     private suspend fun saveMessagesToDb(apiMessages: List<MessageApi>, forum: String, topic: String, topicId: Int) {
         val currentMessages = messageDao.getByTopic(topicId).first()
         val existingMessages = currentMessages.associateBy { it.remoteId }
-        val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
         val currentUsername = NetworkClient.getUsername()
         
         val messagesToInsert = apiMessages.map { apiMsg ->
             val existing = existingMessages[apiMsg.id]
             val messageDate = DateUtils.parseCixDate(apiMsg.dateTime)
             
-            val isReadFromServer = apiMsg.status?.contains("R", ignoreCase = true) == true
-            val isOld = messageDate < thirtyDaysAgo
+            val isReadFromServer = apiMsg.status?.contains("R", ignoreCase = true) == true || apiMsg.unread == false
             val isFromSelf = apiMsg.author?.equals(currentUsername, ignoreCase = true) == true
             
-            val isUnread = if (existing != null && !existing.unread) {
-                false
-            } else if (isReadFromServer || isOld || isFromSelf) {
+            val isUnread = if (isReadFromServer || isFromSelf) {
                 false
             } else {
-                existing?.unread ?: true
+                apiMsg.unread
             }
 
             // If it was unread locally but now it's read from server, we should update folder counts
@@ -161,6 +157,11 @@ class MessageRepository(
                 folderDao.decrementUnread(topicId)
                 val forumId = HtmlUtils.calculateForumId(forum)
                 folderDao.decrementUnread(forumId)
+            } else if (existing != null && !existing.unread && isUnread) {
+                // If it was read locally but now it's unread from server, we should increment folder counts
+                folderDao.incrementUnread(topicId)
+                val forumId = HtmlUtils.calculateForumId(forum)
+                folderDao.incrementUnread(forumId)
             }
 
             CIXMessage(
@@ -263,19 +264,15 @@ class MessageRepository(
             val existing = messageDao.getByRemoteId(msgId, topicId)
             
             val messageDate = DateUtils.parseCixDate(messageApi.dateTime)
-            val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
             val currentUsername = NetworkClient.getUsername()
             
-            val isReadFromServer = messageApi.status?.contains("R", ignoreCase = true) == true
-            val isOld = messageDate < thirtyDaysAgo
+            val isReadFromServer = messageApi.status?.contains("R", ignoreCase = true) == true || messageApi.unread == false
             val isFromSelf = messageApi.author?.equals(currentUsername, ignoreCase = true) == true
             
-            val isUnread = if (existing != null && !existing.unread) {
-                false
-            } else if (isReadFromServer || isOld || isFromSelf) {
+            val isUnread = if (isReadFromServer || isFromSelf) {
                 false
             } else {
-                existing?.unread ?: true
+                messageApi.unread
             }
 
             // If it was unread locally but now it's read from server, we should update folder counts
@@ -283,6 +280,11 @@ class MessageRepository(
                 folderDao.decrementUnread(topicId)
                 val forumId = HtmlUtils.calculateForumId(forum)
                 folderDao.decrementUnread(forumId)
+            } else if (existing != null && !existing.unread && isUnread) {
+                // If it was read locally but now it's unread from server, we should increment folder counts
+                folderDao.incrementUnread(topicId)
+                val forumId = HtmlUtils.calculateForumId(forum)
+                folderDao.incrementUnread(forumId)
             }
 
             val message = CIXMessage(
@@ -298,7 +300,14 @@ class MessageRepository(
                 topicName = topic,
                 subject = HtmlUtils.decodeHtml(messageApi.subject),
                 unread = isUnread,
-                readPending = if (isReadFromServer) false else (existing?.readPending ?: false)
+                readPending = if (isReadFromServer) false else (existing?.readPending ?: false),
+                priority = existing?.priority ?: false,
+                starred = existing?.starred ?: false,
+                readLocked = existing?.readLocked ?: false,
+                ignored = existing?.ignored ?: false,
+                postPending = existing?.postPending ?: false,
+                starPending = existing?.starPending ?: false,
+                withdrawPending = existing?.withdrawPending ?: false
             )
             messageDao.insert(message)
 

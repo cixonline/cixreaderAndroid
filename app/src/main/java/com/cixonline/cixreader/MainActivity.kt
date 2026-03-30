@@ -1,12 +1,14 @@
 package com.cixonline.cixreader
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.compose.rememberNavController
@@ -44,6 +46,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+
+        // Add observer to trigger sync when device wakes up / app comes to foreground
+        lifecycle.addObserver(LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                Log.d("MainActivity", "App resumed, triggering immediate sync")
+                if (settingsManager.hasCredentials()) {
+                    syncManager.triggerImmediateSync()
+                }
+            }
+        })
 
         setContent {
             MainContent(
@@ -85,7 +97,7 @@ fun MainContent(
             val (user, pass) = settingsManager.getCredentials()
             if (user != null && pass != null) {
                 NetworkClient.setCredentials(user, pass)
-                syncManager.triggerImmediateSync()
+                // syncManager.triggerImmediateSync() // Already handled by Lifecycle observer
                 "welcome"
             } else {
                 "login"

@@ -50,14 +50,11 @@ class SyncRepository(
                 if (rawMessages.isEmpty()) break
 
                 // Group by forum, topic, and remoteId to handle duplicates in the same response.
-                // If any record for the same message is marked read, we treat the message as read.
-                val groupedMessages = rawMessages.groupBy { 
+                val groupedMessages = rawMessages.groupBy {
                     val f = HtmlUtils.normalizeName(it.forum ?: "")
                     val t = HtmlUtils.normalizeName(it.topic ?: "")
                     Triple(f, t, it.id)
                 }
-                
-                val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
                 
                 val cixMessages = groupedMessages.map { (key, apiMsgs) ->
                     val (forum, topic, remoteId) = key
@@ -76,18 +73,21 @@ class SyncRepository(
                     }
 
                     // CIX status "R" means read.
-                    // If ANY of the records in the batch for this message say it's read, then it's read.
-                    val isReadFromServer = apiMsgs.any { it.status?.contains("R", ignoreCase = true) == true }
-                    val isOld = messageDate < thirtyDaysAgo
+                    // The API 'unread' field is also checked.
+                    val isReadFromServer = apiMsgs.any { it.status?.contains("R", ignoreCase = true) == true || it.unread == false }
                     
-                    // If message exists and is already read locally, KEEP it read.
-                    // Otherwise, follow server status (any record read) or 30-day rule.
-                    val isUnread = if (existing != null && !existing.unread) {
-                        false
-                    } else if (isReadFromServer || isOld) {
+                    // Follow server status.
+                    // The 30-day rule is handled in the UI via CIXMessage.isActuallyUnread.
+                    val isUnread = if (isReadFromServer) {
                         false
                     } else {
-                        existing?.unread ?: true
+                        // If server says unread (isReadFromServer is false), we check the API unread status.
+                        apiMsgs.any { it.unread == true }
+                    }
+
+                    // Log cache update
+                    if (existing != null && existing.unread != isUnread) {
+                        Log.d(tag, "Updating cache for message #$remoteId: local unread=${existing.unread} -> server unread=$isUnread")
                     }
 
                     // If it was unread locally but now it's read from server, we should update folder counts
@@ -95,6 +95,11 @@ class SyncRepository(
                         folderDao.decrementUnread(topicId)
                         val forumId = HtmlUtils.calculateForumId(forum)
                         folderDao.decrementUnread(forumId)
+                    } else if (existing != null && !existing.unread && isUnread) {
+                        // If it was read locally but now it's unread from server, we should increment folder counts
+                        folderDao.incrementUnread(topicId)
+                        val forumId = HtmlUtils.calculateForumId(forum)
+                        folderDao.incrementUnread(forumId)
                     }
 
                     CIXMessage(
@@ -189,8 +194,6 @@ class SyncRepository(
             // Group by message ID to handle duplicates in the same response
             val groupedMessages = rawMessages.groupBy { it.id }
 
-            val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
-            
             val messages = groupedMessages.map { (remoteId, apiMsgs) ->
                 // Use the last message in the group for other fields
                 val apiMsg = apiMsgs.last()
@@ -199,16 +202,14 @@ class SyncRepository(
                 val messageDate = if (apiMsg.dateTime != null) DateUtils.parseCixDate(apiMsg.dateTime) else (existing?.date ?: 0L)
                 
                 // If ANY of the records for this message say it's read, then it's read.
-                val isReadFromServer = apiMsgs.any { it.status?.contains("R", ignoreCase = true) == true }
-                val isOld = messageDate < thirtyDaysAgo
+                val isReadFromServer = apiMsgs.any { it.status?.contains("R", ignoreCase = true) == true || it.unread == false }
                 
-                // If message exists and is already read locally, KEEP it read.
-                val isUnread = if (existing != null && !existing.unread) {
-                    false
-                } else if (isReadFromServer || isOld) {
+                // Follow server status.
+                // The 30-day rule is handled in the UI via CIXMessage.isActuallyUnread.
+                val isUnread = if (isReadFromServer) {
                     false
                 } else {
-                    existing?.unread ?: true
+                    apiMsgs.any { it.unread == true }
                 }
 
                 // If it was unread locally but now it's read from server, we should update folder counts
@@ -216,6 +217,11 @@ class SyncRepository(
                     folderDao.decrementUnread(topicId)
                     val forumId = HtmlUtils.calculateForumId(forumName)
                     folderDao.decrementUnread(forumId)
+                } else if (existing != null && !existing.unread && isUnread) {
+                    // If it was read locally but now it's unread from server, we should increment folder counts
+                    folderDao.incrementUnread(topicId)
+                    val forumId = HtmlUtils.calculateForumId(forumName)
+                    folderDao.incrementUnread(forumId)
                 }
 
                 CIXMessage(

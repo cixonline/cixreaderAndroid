@@ -27,6 +27,9 @@ interface FolderDao {
     @Query("UPDATE folders SET unread = MAX(0, unread - 1) WHERE id = :id")
     suspend fun decrementUnread(id: Int)
 
+    @Query("UPDATE folders SET unread = unread + 1 WHERE id = :id")
+    suspend fun incrementUnread(id: Int)
+
     @Delete
     suspend fun delete(folder: Folder)
 
