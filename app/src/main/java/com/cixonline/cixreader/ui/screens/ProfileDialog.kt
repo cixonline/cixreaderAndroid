@@ -94,7 +94,7 @@ fun ProfileDialog(
                                     contentDescription = "Mugshot",
                                     onState = { state = it },
                                     modifier = Modifier
-                                        .size(120.dp)
+                                        .size(160.dp)
                                         .clip(CircleShape),
                                     contentScale = ContentScale.Crop
                                 )
@@ -112,7 +112,7 @@ fun ProfileDialog(
                                 painter = painterResource(R.drawable.cix_logo),
                                 contentDescription = "No user",
                                 modifier = Modifier
-                                    .size(120.dp)
+                                    .size(160.dp)
                                     .clip(CircleShape)
                             )
                         }

@@ -164,7 +164,7 @@ class ProfileViewModel(
                 val out = ByteArrayOutputStream()
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                 val resizedBytes = out.toByteArray()
-                api.setMugshot(resizedBytes.toRequestBody("image/png".toMediaTypeOrNull()))
+                api.setMugshot(resizedBytes.toRequestBody("image/png".toRequestBody().contentType()))
                 bitmap.recycle()
                 return
             }
@@ -287,9 +287,18 @@ class ProfileDelegate(
     private fun extractRawContent(xml: String): String? {
         val trimmedXml = xml.trim()
         if (!trimmedXml.startsWith("<")) return trimmedXml
-        Regex("<Body[^>]*>(.*?)</Body>", RegexOption.DOT_MATCHES_ALL).find(xml)?.let { return it.groupValues[1] }
-        Regex("<Resume[^>]*>(.*?)</Resume>", RegexOption.DOT_MATCHES_ALL).find(xml)?.let { return it.groupValues[1] }
-        return null
+        
+        // CIX API often wraps the response in a <string> tag
+        val stringContent = Regex("<string[^>]*>(.*?)</string>", RegexOption.DOT_MATCHES_ALL).find(trimmedXml)?.groupValues?.get(1)
+        val contentToSearch = stringContent ?: trimmedXml
+        
+        Regex("<Body[^>]*>(.*?)</Body>", RegexOption.DOT_MATCHES_ALL).find(contentToSearch)?.let { return it.groupValues[1] }
+        Regex("<Resume[^>]*>(.*?)</Resume>", RegexOption.DOT_MATCHES_ALL).find(contentToSearch)?.let { return it.groupValues[1] }
+        
+        // If it's a <string> tag but doesn't contain <Body> or <Resume>, return the content of the string tag
+        if (stringContent != null) return stringContent
+        
+        return trimmedXml
     }
 
     fun dismissProfile() {

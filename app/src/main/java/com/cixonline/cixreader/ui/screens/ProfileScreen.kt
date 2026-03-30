@@ -362,6 +362,23 @@ fun ProfileScreen(
                             } else if (!p.fullName.isNullOrBlank()) {
                                 Text(text = p.fullName!!, style = MaterialTheme.typography.titleMedium)
                             }
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            if (!isEditing) {
+                                p.location?.takeIf { it.isNotBlank() }?.let {
+                                    CompactProfileRow(label = "Location", value = it)
+                                }
+                                p.firstOn?.takeIf { it.isNotBlank() }?.let {
+                                    CompactProfileRow(label = "First On", value = it)
+                                }
+                                p.lastOn?.takeIf { it.isNotBlank() }?.let {
+                                    CompactProfileRow(label = "Last On", value = it)
+                                }
+                                p.lastPost?.takeIf { it.isNotBlank() }?.let {
+                                    CompactProfileRow(label = "Last Post", value = it)
+                                }
+                            }
                         }
 
                         // Use key(mugshotUrl, pendingMugshotUri, pendingMugshotBitmap) to force complete reset of AsyncImage when URL or pending image changes
@@ -370,6 +387,7 @@ fun ProfileScreen(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
                                     .size(160.dp) // Increased from 80.dp to 160.dp (4 times the area)
+                                    .padding(start = 16.dp)
                                     .then(
                                         if (isOwnProfile && isEditing) {
                                             Modifier.clickable { showImageSourceDialog = true }
@@ -437,8 +455,8 @@ fun ProfileScreen(
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (isEditing) {
+                    if (isEditing) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
                                 value = editLocation,
                                 onValueChange = { editLocation = it },
@@ -458,28 +476,6 @@ fun ProfileScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 minLines = 3
                             )
-                        } else {
-                            p.location?.takeIf { it.isNotBlank() }?.let {
-                                ProfileRow(label = "Location", value = it)
-                            }
-                            p.email?.takeIf { it.isNotBlank() }?.let {
-                                ProfileRow(label = "Email", value = it)
-                            }
-                            p.firstOn?.takeIf { it.isNotBlank() }?.let {
-                                ProfileRow(label = "First On", value = it)
-                            }
-                            p.lastOn?.takeIf { it.isNotBlank() }?.let {
-                                ProfileRow(label = "Last On", value = it)
-                            }
-                            p.lastPost?.takeIf { it.isNotBlank() }?.let {
-                                ProfileRow(label = "Last Post", value = it)
-                            }
-                            p.about?.takeIf { it.isNotBlank() }?.let {
-                                ProfileRow(label = "About", value = it)
-                            }
-                        }
-
-                        if (isEditing) {
                             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                             OutlinedTextField(
                                 value = editResume,
@@ -488,19 +484,31 @@ fun ProfileScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 minLines = 5
                             )
-                        } else if (!resume.isNullOrBlank()) {
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        }
+                    } else {
+                        // Display Resume first as requested
+                        if (!resume.isNullOrBlank()) {
                             Text(
                                 text = "Resume",
-                                style = MaterialTheme.typography.labelLarge,
+                                style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
                                 text = resume!!,
                                 style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(top = 4.dp)
+                                modifier = Modifier.padding(top = 8.dp)
                             )
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                        }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            p.email?.takeIf { it.isNotBlank() }?.let {
+                                ProfileRow(label = "Email", value = it)
+                            }
+                            p.about?.takeIf { it.isNotBlank() }?.let {
+                                ProfileRow(label = "About", value = it)
+                            }
                         }
                     }
                 }
@@ -528,13 +536,27 @@ fun ProfileScreen(
 }
 
 @Composable
-private fun ProfileRow(label: String, value: String) {
-    Row {
+private fun CompactProfileRow(label: String, value: String) {
+    Column(modifier = Modifier.padding(bottom = 4.dp)) {
         Text(
-            text = "$label: ",
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.secondary
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall
+        )
+    }
+}
+
+@Composable
+private fun ProfileRow(label: String, value: String) {
+    Column {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.secondary
         )
         Text(text = value, style = MaterialTheme.typography.bodyMedium)
     }
