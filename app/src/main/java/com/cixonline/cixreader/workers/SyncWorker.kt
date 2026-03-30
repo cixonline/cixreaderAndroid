@@ -36,7 +36,7 @@ class SyncWorker(appContext: Context, workerParams: WorkerParameters):
             )
             
             // Delete old logs (48 hours)
-            logRepository.deleteOldLogs(48)
+            logRepository.deleteOldLogs(12)
 
             syncRepository.syncLatestMessages()
             Log.d("SyncWorker", "Background sync finished successfully")

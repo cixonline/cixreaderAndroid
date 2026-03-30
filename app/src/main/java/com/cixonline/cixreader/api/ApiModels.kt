@@ -438,9 +438,9 @@ class MessageRangeRequest @JvmOverloads constructor(
     @field:Element(name = "ForumName")
     var forum: String = "",
 
-    @field:Element(name = "TopicName")
-    var topic: String = "",
-
     @field:Element(name = "Start")
     var start: Int = 0,
+
+    @field:Element(name = "TopicName")
+    var topic: String = ""
 )
