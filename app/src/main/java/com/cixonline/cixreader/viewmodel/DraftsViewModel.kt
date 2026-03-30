@@ -11,6 +11,7 @@ import com.cixonline.cixreader.api.PostAttachment
 import com.cixonline.cixreader.db.DraftDao
 import com.cixonline.cixreader.models.Draft
 import com.cixonline.cixreader.repository.MessageRepository
+import com.cixonline.cixreader.utils.HtmlUtils
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,9 +53,11 @@ class DraftsViewModel(
                 }
             } else null
 
+            val topicId = HtmlUtils.calculateTopicId(draft.forumName, draft.topicName)
             val resultId = repository.postMessage(
                 forum = draft.forumName,
                 topic = draft.topicName,
+                topicId = topicId,
                 body = draft.body,
                 replyTo = draft.replyToId,
                 author = author,

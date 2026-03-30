@@ -513,7 +513,8 @@ class WelcomeViewModel(
                  return false
             }
             val author = NetworkClient.getUsername()
-            val messageId = messageRepository.postMessage(forum, topic, body, 0, author, attachments)
+            val topicId = HtmlUtils.calculateTopicId(forum, topic)
+            val messageId = messageRepository.postMessage(forum, topic, topicId, body, 0, author, attachments)
             if (messageId > 0) draftDao.deleteDraftForContext(forum, topic, 0)
             messageId > 0
         } catch (e: Exception) { e.printStackTrace(); false } finally { _isLoading.value = false }

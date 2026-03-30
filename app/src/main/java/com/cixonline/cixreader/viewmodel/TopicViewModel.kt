@@ -374,7 +374,8 @@ class TopicViewModel(
         } else null
 
         val currentAuthor = NetworkClient.getUsername()
-        val resultId = repository.postMessage(forum, topic, body, 0, currentAuthor, attachments)
+        val postTopicId = HtmlUtils.calculateTopicId(forum, topic)
+        val resultId = repository.postMessage(forum, topic, postTopicId, body, 0, currentAuthor, attachments)
         
         if (resultId != 0) {
             draftDao.deleteDraftForContext(forum, topic, 0)
@@ -407,7 +408,7 @@ class TopicViewModel(
         } else null
 
         val currentAuthor = NetworkClient.getUsername()
-        val resultId = repository.postMessage(forumName, topicName, body, replyToId, currentAuthor, attachments)
+        val resultId = repository.postMessage(forumName, topicName, topicId, body, replyToId, currentAuthor, attachments)
         
         if (resultId != 0) {
             draftDao.deleteDraftForContext(forumName, topicName, replyToId)

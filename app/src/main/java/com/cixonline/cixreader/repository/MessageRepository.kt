@@ -334,6 +334,7 @@ class MessageRepository(
     suspend fun postMessage(
         forum: String, 
         topic: String, 
+        topicId: Int,
         body: String, 
         replyTo: Int,
         author: String,
@@ -364,6 +365,14 @@ class MessageRepository(
             )
 
             val response = JsonNetworkClient.api.postMessageJson(request)
+
+            var rootId = 0
+            if (replyTo != 0) {
+                val parentMessage = messageDao.getByRemoteId(replyTo, topicId)
+                rootId = parentMessage?.rootId ?: 0
+            } else {
+                rootId = response.id
+            }
             
             val message = CIXMessage(
                 remoteId = response.id,
@@ -371,8 +380,8 @@ class MessageRepository(
                 body = body,
                 date = System.currentTimeMillis(),
                 commentId = replyTo,
-                rootId = if (replyTo == 0) response.id else 0, // Simplified: if new message, it is its own root
-                topicId = 0,
+                rootId = rootId,
+                topicId = topicId,
                 forumName = forum,
                 topicName = topic,
                 subject = "",
@@ -380,7 +389,7 @@ class MessageRepository(
                 postPending = false
             )
             messageDao.insert(message)
-            logRepository.log("Posted new message #$response.id in $forum/$topic", "INSERT")
+            logRepository.log("Posted new message #${response.id} in $forum/$topic", "INSERT")
             
             response.id
         } catch (e: Exception) {

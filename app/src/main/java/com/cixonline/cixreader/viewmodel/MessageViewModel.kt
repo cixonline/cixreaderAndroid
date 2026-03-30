@@ -40,7 +40,7 @@ class MessageViewModel(
             isLoading = true
             try {
                 val author = NetworkClient.getUsername()
-                val resultId = repository.postMessage(forumName, topicName, body, replyTo, author)
+                val resultId = repository.postMessage(forumName, topicName, topicId, body, replyTo, author)
                 val success = resultId > 0
                 if (success) {
                     // No need to call refreshMessages() here because postMessage()
