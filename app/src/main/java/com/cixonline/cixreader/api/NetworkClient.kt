@@ -92,6 +92,7 @@ object NetworkClient {
             .baseUrl(BASE_URL)
             .client(okHttpClient)
             .addConverterFactory(ScalarsConverterFactory.create())
+            // XML must come before GSON to avoid GSON trying to parse XML responses
             .addConverterFactory(SimpleXmlConverterFactory.create(serializer))
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()

@@ -1,5 +1,6 @@
 package com.cixonline.cixreader.api
 
+import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
@@ -17,13 +18,16 @@ object JsonNetworkClient {
     private val okHttpClient: OkHttpClient = NetworkClient.okHttpClient
 
     /**
+     * Shared Gson instance for consistency.
+     */
+    val gson: Gson = GsonBuilder()
+        .setLenient()
+        .create()
+
+    /**
      * A CixApi service instance configured exclusively for JSON.
      */
     val api: CixApi by lazy {
-        val gson = GsonBuilder()
-            .setLenient()
-            .create()
-
         Retrofit.Builder()
             .baseUrl("https://api.cixonline.com/v2.0/cix.svc/")
             .client(okHttpClient)

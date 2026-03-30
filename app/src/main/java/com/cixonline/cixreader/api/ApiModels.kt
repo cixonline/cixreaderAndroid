@@ -244,51 +244,66 @@ class UserForumTopic2 {
 @Root(name = "MessageResultSet", strict = false)
 @Namespace(reference = "http://cixonline.com")
 class MessageResultSet {
+    @SerializedName("Count")
     @field:Attribute(name = "Count", required = false)
     var count: String? = null
 
+    @SerializedName("Start")
     @field:Attribute(name = "Start", required = false)
     var start: String? = null
 
+    @SerializedName("Messages")
     @field:ElementList(name = "Messages", entry = "Message", inline = false, required = false)
     var messages: List<MessageApi> = mutableListOf()
 }
 
 @Root(name = "Message", strict = false)
 class MessageApi {
+    @SerializedName("ID")
     @field:Element(name = "ID", required = false)
     var id: Int = 0
 
+    @SerializedName("Author")
     @field:Element(name = "Author", required = false)
     var author: String? = null
 
+    @SerializedName("Subject")
     @field:Element(name = "Subject", required = false)
     var subject: String? = null
 
+    @SerializedName("Body")
     @field:Element(name = "Body", required = false)
     var body: String? = null
 
+    @SerializedName("DateTime")
     @field:Element(name = "DateTime", required = false)
     var dateTime: String? = null
 
+    @SerializedName("ReplyTo")
     @field:Element(name = "ReplyTo", required = false)
     var replyTo: Int = 0
 
+    @SerializedName("RootID")
     @field:Element(name = "RootID", required = false)
     var rootId: Int = 0
 
+    @SerializedName("Depth")
     @field:Element(name = "Depth", required = false)
     var depth: String? = "0"
 
+    @SerializedName("Forum")
     @field:Element(name = "Forum", required = false)
     var forum: String? = null
 
+    @SerializedName("Topic")
     @field:Element(name = "Topic", required = false)
     var topic: String? = null
 
+    @SerializedName("Status")
     @field:Element(name = "Status", required = false)
     var status: String? = null
 
+    @SerializedName("Unread")
     @field:Element(name = "Unread", required = false)
     var unread: Boolean = false
 }
@@ -432,15 +447,19 @@ data class DirListing(
 @Namespace(reference = "http://cixonline.com")
 @Order(elements = ["End", "ForumName", "Start", "TopicName"])
 class MessageRangeRequest @JvmOverloads constructor(
+    @SerializedName("End")
     @field:Element(name = "End")
     var end: Int = 0,
 
+    @SerializedName("ForumName")
     @field:Element(name = "ForumName")
     var forum: String = "",
 
+    @SerializedName("Start")
     @field:Element(name = "Start")
     var start: Int = 0,
 
+    @SerializedName("TopicName")
     @field:Element(name = "TopicName")
     var topic: String = ""
 )

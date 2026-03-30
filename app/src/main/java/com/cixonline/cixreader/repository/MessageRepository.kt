@@ -4,7 +4,7 @@ import android.util.Log
 import com.cixonline.cixreader.api.CixApi
 import com.cixonline.cixreader.api.JsonNetworkClient
 import com.cixonline.cixreader.api.MessageApi
-import com.cixonline.cixreader.api.MessageRangeRequest
+import com.cixonline.cixreader.api.MessageResultSet
 import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.api.PostAttachment
 import com.cixonline.cixreader.api.PostMessage2Request
@@ -84,54 +84,25 @@ class MessageRepository(
     suspend fun backfillToMessageOne(forum: String, topic: String, topicId: Int) = withContext(Dispatchers.IO) {
         try {
             val oldestLocal = messageDao.getOldestMessage(topicId)
-            val oldestId = oldestLocal?.remoteId ?: return@withContext
-            
-            if (oldestId <= 1) {
+            if (oldestLocal != null && oldestLocal.remoteId <= 1) {
                 Log.d(tag, "Already have message 1 for $forum/$topic")
                 return@withContext
             }
 
-            // Range is 1 to (oldestId - 1)
-            var currentEnd = oldestId - 1
-            val batchSize = 200 // Reduced batch size for better reliability
-            
-            val forumParam = HtmlUtils.normalizeName(forum)
-            val topicParam = HtmlUtils.normalizeName(topic)
+            val encodedForum = HtmlUtils.cixEncode(forum)
+            val encodedTopic = HtmlUtils.cixEncode(topic)
 
-            while (currentEnd >= 1) {
-                val currentStart = (currentEnd - batchSize + 1).coerceAtLeast(1)
-                Log.d(tag, "Backfilling $forum/$topic range: $currentStart to $currentEnd")
-                
-                val request = MessageRangeRequest(
-                    end = currentEnd,
-                    forum = forumParam,
-                    start = currentStart,
-                    topic = topicParam
-                )
+            Log.d(tag, "Backfilling $forum/$topic using allmessages.xml")
+            // Passing null for since should get all messages in the topic (subject to API limits)
+            val resultSet = api.getMessages(encodedForum, encodedTopic, since = null)
 
-                 // Log XML payload
-                try {
-                    val serializer = Persister()
-                    val writer = StringWriter()
-                    serializer.write(request, writer)
-                    Log.d(tag, "messagerange.xml POST payload: ${writer.toString()}")
-                } catch (e: Exception) {
-                    Log.e(tag, "Failed to log messagerange.xml payload", e)
-                }
-                
-                val resultSet = api.getMessageRange(request)
-                if (resultSet.messages.isNotEmpty()) {
-                    saveMessagesToDb(resultSet.messages, forum, topic, topicId)
-                } else {
-                    // If no messages in this range (e.g. gap), we just move on
-                    Log.d(tag, "No messages in range $currentStart to $currentEnd for $forum/$topic")
-                }
-                
-                currentEnd = currentStart - 1
+            if (resultSet.messages.isNotEmpty()) {
+                Log.d(tag, "Backfill fetched ${resultSet.messages.size} messages for $forum/$topic")
+                saveMessagesToDb(resultSet.messages, forum, topic, topicId)
             }
             Log.d(tag, "Backfill complete for $forum/$topic")
         } catch (e: Exception) {
-            Log.e(tag, "Backfill to message 1 failed for $forum/$topic", e)
+            Log.e(tag, "Backfill failed for $forum/$topic", e)
         }
     }
 
@@ -292,7 +263,7 @@ class MessageRepository(
                 // If it was read locally but now it's unread from server, we should increment folder counts
                 folderDao.incrementUnread(topicId)
                 val forumId = HtmlUtils.calculateForumId(forum)
-                folderDao.incrementUnread(forumId)
+                folderDao.decrementUnread(forumId)
                 logRepository.log("Updated read status for #$msgId in $forum/$topic: false -> true", "READ_STATUS")
             }
 
