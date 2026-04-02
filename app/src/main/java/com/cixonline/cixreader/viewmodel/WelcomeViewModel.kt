@@ -21,6 +21,7 @@ import com.cixonline.cixreader.repository.LogRepository
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
+import com.cixonline.cixreader.utils.SyncManager
 import com.google.ai.client.generativeai.GenerativeModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -53,7 +54,8 @@ class WelcomeViewModel(
     private val messageRepository: MessageRepository,
     private val folderDao: FolderDao,
     private val dirForumDao: DirForumDao,
-    private val draftDao: DraftDao
+    private val draftDao: DraftDao,
+    private val syncManager: SyncManager? = null
 ) : ViewModel() {
 
     private val _interestingThreads = MutableStateFlow<List<InterestingThreadUI>>(emptyList())
@@ -536,12 +538,13 @@ class WelcomeViewModelFactory(
     private val dirForumDao: DirForumDao,
     private val cachedProfileDao: CachedProfileDao,
     private val draftDao: DraftDao,
+    private val syncManager: SyncManager?,
     private val logRepository: LogRepository) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WelcomeViewModel::class.java)) {
             val messageRepository = MessageRepository(api, messageDao, folderDao, logRepository)
             @Suppress("UNCHECKED_CAST")
-            return WelcomeViewModel(api, messageDao, messageRepository, folderDao, dirForumDao, draftDao) as T
+            return WelcomeViewModel(api, messageDao, messageRepository, folderDao, dirForumDao, draftDao, syncManager) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

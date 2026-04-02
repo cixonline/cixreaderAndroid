@@ -60,6 +60,7 @@ fun AppNavHost(
                     dirForumDao = database.dirForumDao(),
                     cachedProfileDao = database.cachedProfileDao(),
                     draftDao = database.draftDao(),
+                    syncManager = syncManager,
                     logRepository = logRepository
                 )
             )
@@ -218,6 +219,7 @@ fun AppNavHost(
                     draftDao = database.draftDao(),
                     folderDao = database.folderDao(),
                     logRepository = logRepository,
+                    syncManager = syncManager,
                     forumName = forumNameArg,
                     topicName = topicNameArg,
                     topicId = topicIdArg,

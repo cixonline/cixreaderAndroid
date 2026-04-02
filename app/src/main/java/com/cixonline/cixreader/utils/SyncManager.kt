@@ -14,6 +14,10 @@ class SyncManager(private val context: Context, private val settingsManager: Set
         }
     }
 
+    /**
+     * Triggers a sync immediately. Used for periodic refreshes when the app is active.
+     * Respects the background sync setting.
+     */
     fun triggerImmediateSync() {
         if (!settingsManager.isBackgroundSyncEnabled()) return
 
@@ -30,6 +34,14 @@ class SyncManager(private val context: Context, private val settingsManager: Set
             ExistingWorkPolicy.REPLACE,
             syncRequest
         )
+    }
+
+    /**
+     * Triggers a sync specifically to process pending local changes (like mark-read).
+     * This will run even if background sync is disabled, as it's a direct result of user action.
+     */
+    fun triggerPendingSync() {
+        SyncWorker.enqueueImmediateSync(context)
     }
 
     private fun cancelBackgroundSync() {

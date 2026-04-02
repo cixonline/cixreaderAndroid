@@ -406,18 +406,8 @@ class MessageRepository(
             // Optimistically mark as read and pending in local DB
             messageDao.updateUnreadAndPending(message.id, unread = false, readPending = true)
             logRepository.log("Marked #$message.remoteId as read (locally pending) in $message.forumName/$message.topicName", "READ_STATUS")
-            try {
-                api.markRead(
-                    HtmlUtils.cixEncode(message.forumName),
-                    HtmlUtils.cixEncode(message.topicName),
-                    message.remoteId
-                )
-                // If API call succeeds, clear the pending flag
-                messageDao.updateUnreadAndPending(message.id, unread = false, readPending = false)
-            } catch (e: Exception) {
-                Log.e(tag, "Mark as read on server failed, will remain pending", e)
-                // If it fails, readPending remains true, so it will be retried during sync
-            }
+            // Immediate server sync removed to improve UI responsiveness.
+            // Read status will be synced to server by SyncWorker in the background.
         }
     }
 }

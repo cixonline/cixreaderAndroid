@@ -17,13 +17,23 @@ class SyncWorker(appContext: Context, workerParams: WorkerParameters):
     override suspend fun doWork(): Result {
         val settingsManager = SettingsManager(applicationContext)
         
-        // Don't sync if background sync is disabled or if we don't have credentials
-        if (!settingsManager.isBackgroundSyncEnabled() || !NetworkClient.hasCredentials()) {
-            Log.d("SyncWorker", "Skipping sync: background sync enabled=${settingsManager.isBackgroundSyncEnabled()}, has credentials=${NetworkClient.hasCredentials()}")
+        // Don't sync if we don't have credentials
+        if (!NetworkClient.hasCredentials()) {
+            Log.d("SyncWorker", "Skipping sync: no credentials")
             return Result.success()
         }
 
-        Log.d("SyncWorker", "Starting background sync (Run attempt: $runAttemptCount)")
+        // For direct triggers (like marking read), we might want to proceed even if background sync is disabled.
+        // But the 1-minute periodic sync should respect the setting.
+        // We can distinguish by looking at the tags or input data if needed, but for now let's just 
+        // check the setting here.
+        val isManualTrigger = tags.contains("ManualTrigger")
+        if (!settingsManager.isBackgroundSyncEnabled() && !isManualTrigger) {
+            Log.d("SyncWorker", "Skipping periodic sync: background sync disabled")
+            return Result.success()
+        }
+
+        Log.d("SyncWorker", "Starting sync (Run attempt: $runAttemptCount, Manual: $isManualTrigger)")
         try {
             val database = AppDatabase.getDatabase(applicationContext)
             val logRepository = LogRepository(database.logDao())
@@ -39,26 +49,25 @@ class SyncWorker(appContext: Context, workerParams: WorkerParameters):
             logRepository.deleteOldLogs(12)
 
             syncRepository.syncLatestMessages()
-            Log.d("SyncWorker", "Background sync finished successfully")
+            Log.d("SyncWorker", "Sync finished successfully")
 
             // Re-schedule itself for 1 minute later if enabled
-            // Use APPEND_OR_REPLACE to avoid cancelling the current worker
             if (settingsManager.isBackgroundSyncEnabled()) {
                 scheduleNextSync(applicationContext, ExistingWorkPolicy.APPEND_OR_REPLACE)
             }
 
             return Result.success()
         } catch (e: CancellationException) {
-            Log.d("SyncWorker", "Background sync cancelled")
+            Log.d("SyncWorker", "Sync cancelled")
             throw e
         } catch (e: Exception) {
-            Log.e("SyncWorker", "Background sync failed", e)
+            Log.e("SyncWorker", "Sync failed", e)
             
             return if (runAttemptCount < 3) {
                 // WorkManager will handle the retry with backoff
                 Result.retry()
             } else {
-                // Retries exhausted, schedule next sync to maintain the 1-minute cadence
+                // Retries exhausted, schedule next sync to maintain the 1-minute cadence if enabled
                 if (settingsManager.isBackgroundSyncEnabled()) {
                     scheduleNextSync(applicationContext, ExistingWorkPolicy.APPEND_OR_REPLACE)
                 }
@@ -85,6 +94,28 @@ class SyncWorker(appContext: Context, workerParams: WorkerParameters):
             WorkManager.getInstance(context).enqueueUniqueWork(
                 "CixBackgroundSync",
                 policy,
+                syncRequest
+            )
+        }
+
+        /**
+         * Enqueues an immediate sync to process pending items (like mark-read) as soon as possible.
+         */
+        fun enqueueImmediateSync(context: Context) {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
+            val syncRequest = OneTimeWorkRequestBuilder<SyncWorker>()
+                .addTag("ManualTrigger")
+                .setConstraints(constraints)
+                .build()
+
+            // We use KEEP here because if a sync is already running, it will process the pending items anyway.
+            // If one is scheduled with a delay, we might want to REPLACE it with an immediate one.
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                "CixBackgroundSync",
+                ExistingWorkPolicy.REPLACE,
                 syncRequest
             )
         }

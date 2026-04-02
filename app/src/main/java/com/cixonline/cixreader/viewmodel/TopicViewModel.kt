@@ -22,6 +22,7 @@ import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.repository.NotAMemberException
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
+import com.cixonline.cixreader.utils.SyncManager
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.net.UnknownHostException
@@ -40,6 +41,7 @@ class TopicViewModel(
     private val draftDao: DraftDao,
     private val folderDao: FolderDao,
     private val logRepository: LogRepository,
+    private val syncManager: SyncManager?,
     val rawForumName: String,
     val rawTopicName: String,
     val providedTopicId: Int,
@@ -142,7 +144,7 @@ class TopicViewModel(
                         Log.d("TopicViewModel", "No unread found. Checking firstunread API.")
                         val serverFirstUnreadId = repository.getFirstUnreadMessageId(forumName, topicName)
                         if (serverFirstUnreadId > 0) {
-                            // Fetch specific message metadata to get its date/unread status properly cached
+                            // Fetch specific message metadata to get its unread status properly cached
                             repository.fetchMessageAndChildren(forumName, topicName, serverFirstUnreadId, topicId)
                             targetMessage = repository.getMessagesForTopic(topicId).first().find { it.remoteId == serverFirstUnreadId }
                         }
@@ -395,29 +397,37 @@ class TopicViewModel(
         attachmentName: String?
     ): Boolean {
         _isLoading.value = true
-        val attachments = if (attachmentUri != null && attachmentName != null) {
-            try {
-                context.contentResolver.openInputStream(attachmentUri)?.use { inputStream ->
-                    val bytes = inputStream.readBytes()
-                    listOf(PostAttachment(data = Base64.encodeToString(bytes, Base64.NO_WRAP), filename = attachmentName))
+        return try {
+            val attachments = if (attachmentUri != null && attachmentName != null) {
+                try {
+                    context.contentResolver.openInputStream(attachmentUri)?.use { inputStream ->
+                        val bytes = inputStream.readBytes()
+                        listOf(PostAttachment(data = Base64.encodeToString(bytes, Base64.NO_WRAP), filename = attachmentName))
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    null
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                null
-            }
-        } else null
+            } else null
 
-        val currentAuthor = NetworkClient.getUsername()
-        val resultId = repository.postMessage(forumName, topicName, topicId, body, replyToId, currentAuthor, attachments)
-        
-        if (resultId != 0) {
-            draftDao.deleteDraftForContext(forumName, topicName, replyToId)
-            if (resultId > 0) {
-                _scrollToMessageId.value = resultId
+            val currentAuthor = NetworkClient.getUsername()
+            val resultId = repository.postMessage(forumName, topicName, topicId, body, replyToId, currentAuthor, attachments)
+            
+            if (resultId != 0) {
+                draftDao.deleteDraftForContext(forumName, topicName, replyToId)
+                if (resultId > 0) {
+                    _scrollToMessageId.value = resultId
+                }
+                true
+            } else {
+                false
             }
+        } catch (e: Exception) {
+            Log.e("TopicViewModel", "Post reply failed", e)
+            false
+        } finally {
+            _isLoading.value = false
         }
-        _isLoading.value = false
-        return resultId != 0
     }
 
     fun saveDraft(replyToId: Int, body: String, attachmentUri: Uri? = null, attachmentName: String? = null) {
@@ -471,7 +481,10 @@ class TopicViewModel(
 
     fun toggleStar(message: CIXMessage) = viewModelScope.launch { repository.toggleStar(message) }
 
-    fun markAsRead(message: CIXMessage) = viewModelScope.launch { repository.markAsRead(message) }
+    fun markAsRead(message: CIXMessage) = viewModelScope.launch { 
+        repository.markAsRead(message)
+        syncManager?.triggerPendingSync()
+    }
 
     fun withdrawMessage(message: CIXMessage) = viewModelScope.launch {
         _isLoading.value = true
@@ -502,6 +515,7 @@ class TopicViewModelFactory(
     private val draftDao: DraftDao,
     private val folderDao: FolderDao,
     private val logRepository: LogRepository,
+    private val syncManager: SyncManager?,
     private val forumName: String,
     private val topicName: String,
     private val topicId: Int,
@@ -511,7 +525,7 @@ class TopicViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(TopicViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return TopicViewModel(api, repository, cachedProfileDao, draftDao, folderDao, logRepository, forumName, topicName, topicId, initialMessageId, initialRootId) as T
+            return TopicViewModel(api, repository, cachedProfileDao, draftDao, folderDao, logRepository, syncManager, forumName, topicName, topicId, initialMessageId, initialRootId) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
