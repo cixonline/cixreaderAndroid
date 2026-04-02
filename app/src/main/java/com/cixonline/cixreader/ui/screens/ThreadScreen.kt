@@ -1076,7 +1076,7 @@ fun ThreadItem(
             .clickable(onClick = onClick)
     ) {
         Row(
-            modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp, end = 8.dp),
+            modifier = Modifier.padding(start = 4.dp, top = 0.dp, bottom = 0.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onClick, modifier = Modifier.size(24.dp)) {
@@ -1159,7 +1159,7 @@ fun ThreadRow(
         Row(
             modifier = Modifier.padding(
                 start = if (onToggleExpand != null) 4.dp else (level * 6 + 32).dp,
-                top = 4.dp, bottom = 4.dp, end = 8.dp
+                top = 2.dp, bottom = 2.dp, end = 8.dp
             ),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1479,6 +1479,7 @@ fun VideoPlayer(url: String) {
     ) { AndroidView(factory = { ctx -> PlayerView(ctx).apply { player = exoPlayer } }, modifier = Modifier.fillMaxSize()) }
 }
 
+@OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 fun AudioPlayer(url: String) {
     val context = LocalContext.current
