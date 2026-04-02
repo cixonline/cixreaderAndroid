@@ -1291,7 +1291,11 @@ fun MessageActionBar(
                 }
                 if (!replyActive) {
                     IconButton(onClick = onNextUnreadClick) {
-                        Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = "Next Unread")
+                        Icon(
+                            Icons.AutoMirrored.Filled.NavigateNext,
+                            contentDescription = "Next Unread",
+                            modifier = Modifier.size(36.dp)
+                        )
                     }
                 }
             }
@@ -1579,36 +1583,39 @@ fun ReplyPane(
             title = { Text("Add Attachment") },
             text = { Text("Choose a source for your attachment") },
             confirmButton = {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    TextButton(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            showAttachmentSourceDialog = false
-                            val uri = createTempImageUri(context)
-                            tempPhotoUri = uri
-                            cameraLauncher.launch(uri)
+                val columnContent = @Composable {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        TextButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                showAttachmentSourceDialog = false
+                                val uri = createTempImageUri(context)
+                                tempPhotoUri = uri
+                                cameraLauncher.launch(uri)
+                            }
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.PhotoCamera, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Camera")
+                            }
                         }
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.PhotoCamera, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Camera")
-                        }
-                    }
-                    TextButton(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            showAttachmentSourceDialog = false
-                            fileLauncher.launch("*/*")
-                        }
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.AttachFile, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Files")
+                        TextButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                showAttachmentSourceDialog = false
+                                fileLauncher.launch("*/*")
+                            }
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.AttachFile, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Files")
+                            }
                         }
                     }
                 }
+                columnContent()
             },
             dismissButton = {
                 TextButton(onClick = { showAttachmentSourceDialog = false }) {
