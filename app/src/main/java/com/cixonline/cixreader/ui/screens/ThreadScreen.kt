@@ -11,6 +11,7 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -1058,21 +1059,12 @@ fun ThreadItem(
     onClick: () -> Unit
 ) {
     val isDark = LocalIsDarkTheme.current
-    val selectedBrush = if (isSelected) {
-        val centerColor = Color(0xFFD91B5C)
-        val edgeColor = if (isDark) Color(0xFF5A0B26) else Color.White
-        Brush.verticalGradient(
-            0.0f to edgeColor,
-            0.5f to centerColor,
-            1.0f to edgeColor
-        )
-    } else null
 
     Surface(
-        color = if (isSelected) Color.Transparent else MaterialTheme.colorScheme.surface,
+        color = if (isSelected) Color(0xFFD91B5C) else MaterialTheme.colorScheme.surface,
+        border = if (isSelected) BorderStroke(2.dp, if (isDark) Color.Black else Color.White) else null,
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (selectedBrush != null) Modifier.background(selectedBrush) else Modifier)
             .clickable(onClick = onClick)
     ) {
         Row(
@@ -1131,29 +1123,11 @@ fun ThreadRow(
 ) {
     val isDark = LocalIsDarkTheme.current
     
-    val selectedBrush = if (isSelected) {
-        val centerColor = Color(0xFFD91B5C)
-        val edgeColor = if (isDark) {
-            // Darker towards edges in dark mode
-            Color(0xFF5A0B26) 
-        } else {
-            // Whiter towards edges in light mode
-            Color.White
-        }
-        Brush.verticalGradient(
-            0.0f to edgeColor,
-            0.5f to centerColor,
-            1.0f to edgeColor
-        )
-    } else {
-        null
-    }
-
     Surface(
-        color = if (isSelected) Color.Transparent else MaterialTheme.colorScheme.surface,
+        color = if (isSelected) Color(0xFFD91B5C) else MaterialTheme.colorScheme.surface,
+        border = if (isSelected) BorderStroke(2.dp, if (isDark) Color.Black else Color.White) else null,
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (selectedBrush != null) Modifier.background(selectedBrush) else Modifier)
             .clickable(onClick = onClick)
     ) {
         Row(
@@ -1286,7 +1260,7 @@ fun MessageActionBar(
                     Icon(
                         if (replyActive) Icons.Default.Close else Icons.AutoMirrored.Filled.Reply,
                         contentDescription = "Reply",
-                        tint = if (replyActive) MaterialTheme.colorScheme.error else LocalContentColor.current
+                        tint = if (replyActive) MaterialTheme.colorScheme.error else Color.White
                     )
                 }
                 if (!replyActive) {
@@ -1294,6 +1268,7 @@ fun MessageActionBar(
                         Icon(
                             Icons.AutoMirrored.Filled.NavigateNext,
                             contentDescription = "Next Unread",
+                            tint = Color.White,
                             modifier = Modifier.size(36.dp)
                         )
                     }
