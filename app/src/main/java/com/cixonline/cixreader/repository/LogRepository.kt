@@ -2,13 +2,19 @@ package com.cixonline.cixreader.repository
 
 import com.cixonline.cixreader.db.LogDao
 import com.cixonline.cixreader.models.LogEntry
+import com.cixonline.cixreader.utils.SettingsManager
 import kotlinx.coroutines.flow.Flow
 
-class LogRepository(private val logDao: LogDao) {
+class LogRepository(
+    private val logDao: LogDao,
+    private val settingsManager: SettingsManager
+) {
     fun getAllLogs(): Flow<List<LogEntry>> = logDao.getAll()
 
     suspend fun log(message: String, type: String = "INFO") {
-        logDao.insert(LogEntry(message = message, type = type))
+        if (settingsManager.isDebugModeEnabled()) {
+            logDao.insert(LogEntry(message = message, type = type))
+        }
     }
 
     suspend fun clearLogs() {

@@ -33,10 +33,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         
         val database = AppDatabase.getDatabase(this)
-        val logRepository = LogRepository(database.logDao())
+        settingsManager = SettingsManager(this)
+        val logRepository = LogRepository(database.logDao(), settingsManager)
         val forumRepository = ForumRepository(NetworkClient.api, database.folderDao())
         val messageRepository = MessageRepository(NetworkClient.api, database.messageDao(), database.folderDao(), logRepository)
-        settingsManager = SettingsManager(this)
         syncManager = SyncManager(this, settingsManager)
 
         lifecycleScope.launch {

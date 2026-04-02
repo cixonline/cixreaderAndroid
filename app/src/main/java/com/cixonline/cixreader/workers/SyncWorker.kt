@@ -36,7 +36,7 @@ class SyncWorker(appContext: Context, workerParams: WorkerParameters):
         Log.d("SyncWorker", "Starting sync (Run attempt: $runAttemptCount, Manual: $isManualTrigger)")
         try {
             val database = AppDatabase.getDatabase(applicationContext)
-            val logRepository = LogRepository(database.logDao())
+            val logRepository = LogRepository(database.logDao(), settingsManager)
             val syncRepository = SyncRepository(
                 api = NetworkClient.api,
                 folderDao = database.folderDao(),
