@@ -71,6 +71,14 @@ object NetworkClient {
     }
 
     val okHttpClient: OkHttpClient by lazy {
+        val logging = HttpLoggingInterceptor().apply {
+            level = if (BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.HEADERS
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
+        }
+
         OkHttpClient.Builder()
             .protocols(listOf(Protocol.HTTP_1_1))
             .connectTimeout(90, TimeUnit.SECONDS)
@@ -78,9 +86,7 @@ object NetworkClient {
             .writeTimeout(120, TimeUnit.SECONDS)
             .addInterceptor(authInterceptor)
             .addInterceptor(mugshotInterceptor)
-            .addInterceptor(HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.HEADERS
-            })
+            .addInterceptor(logging)
             .build()
     }
 
@@ -110,7 +116,7 @@ object NetworkClient {
                 }
                 .crossfade(false)
                 .allowHardware(false)
-                .logger(DebugLogger())
+                .logger(if (BuildConfig.DEBUG) DebugLogger() else null)
                 .build().also { imageLoader = it }
         }
     }
