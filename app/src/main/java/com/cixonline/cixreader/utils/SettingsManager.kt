@@ -38,6 +38,9 @@ class SettingsManager(context: Context) {
     private val _backgroundSyncFlow = MutableStateFlow(isBackgroundSyncEnabled())
     val backgroundSyncFlow: StateFlow<Boolean> = _backgroundSyncFlow.asStateFlow()
 
+    private val _debugModeFlow = MutableStateFlow(isDebugModeEnabled())
+    val debugModeFlow: StateFlow<Boolean> = _debugModeFlow.asStateFlow()
+
     private val _usernameFlow = MutableStateFlow(sharedPreferences.getString("username", null))
     val usernameFlow: StateFlow<String?> = _usernameFlow.asStateFlow()
 
@@ -108,6 +111,17 @@ class SettingsManager(context: Context) {
 
     fun isBackgroundSyncEnabled(): Boolean {
         return sharedPreferences.getBoolean("background_sync_enabled", true)
+    }
+
+    fun saveDebugModeEnabled(enabled: Boolean) {
+        sharedPreferences.edit()
+            .putBoolean("debug_mode_enabled", enabled)
+            .apply()
+        _debugModeFlow.value = enabled
+    }
+
+    fun isDebugModeEnabled(): Boolean {
+        return sharedPreferences.getBoolean("debug_mode_enabled", false)
     }
 
     fun saveLastSyncDate(date: String) {

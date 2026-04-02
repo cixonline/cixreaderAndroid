@@ -3,6 +3,8 @@ package com.cixonline.cixreader.ui.screens
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
@@ -32,9 +34,11 @@ fun SettingsScreen(
     var fontSizeMultiplier by remember { mutableStateOf(settingsManager.getFontSize()) }
     var themeMode by remember { mutableStateOf(settingsManager.getThemeMode()) }
     var backgroundSyncEnabled by remember { mutableStateOf(settingsManager.isBackgroundSyncEnabled()) }
+    var debugModeEnabled by remember { mutableStateOf(settingsManager.isDebugModeEnabled()) }
     var showMenu by remember { mutableStateOf(false) }
     var showVersionDialog by remember { mutableStateOf(false) }
     val currentUsername = NetworkClient.getUsername()
+    val scrollState = rememberScrollState()
 
     Scaffold(
         topBar = {
@@ -126,6 +130,7 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .verticalScroll(scrollState)
                 .padding(16.dp)
         ) {
             Text(
@@ -260,6 +265,50 @@ fun SettingsScreen(
                         onCheckedChange = {
                             backgroundSyncEnabled = it
                             settingsManager.saveBackgroundSyncEnabled(it)
+                        }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = "Advanced",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Debug Mode",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Text(
+                            text = "Enable additional diagnostic information and tools",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = debugModeEnabled,
+                        onCheckedChange = {
+                            debugModeEnabled = it
+                            settingsManager.saveDebugModeEnabled(it)
                         }
                     )
                 }
