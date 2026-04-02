@@ -40,13 +40,6 @@ class SyncRepository(
             do {
                 val resultSet = api.sync(count = maxResults, since = currentSince)
                 val rawMessages = resultSet.messages
-                Log.d(tag, "sync.xml API returned ${rawMessages.size} messages. ResultSet: count=${resultSet.count}, start=${resultSet.start}")
-
-                rawMessages.forEach { msg ->
-                    Log.d(tag, "Sync Message: id=${msg.id}, author=${msg.author}, subject=${msg.subject}, dateTime=${msg.dateTime}, " +
-                            "replyTo=${msg.replyTo}, rootId=${msg.rootId}, depth=${msg.depth}, forum=${msg.forum}, topic=${msg.topic}, " +
-                            "status=${msg.status}, unread=${msg.unread}")
-                }
                 
                 if (rawMessages.isEmpty()) break
 
@@ -196,7 +189,6 @@ class SyncRepository(
             
             val resultSet = api.getMessages(encodedForum, encodedTopic, since = since)
             val rawMessages = resultSet.messages
-            Log.d(tag, "getMessages (allmessages) API returned ${rawMessages.size} messages for $forumName/$topicName")
 
             // Group by message ID to handle duplicates in the same response
             val groupedMessages = rawMessages.groupBy { it.id }
