@@ -15,6 +15,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -35,6 +36,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -66,6 +68,7 @@ import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.viewmodel.NextUnreadItem
 import com.cixonline.cixreader.viewmodel.TopicViewModel
 import com.cixonline.cixreader.utils.SettingsManager
+import com.cixonline.cixreader.ui.theme.LocalIsDarkTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
@@ -73,8 +76,8 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 sealed class ThreadDisplayItem {
-    data class Collapsed(val message: CIXMessage, val totalCount: Int, val unreadCount: Int) : ThreadDisplayItem()
-    data class Expanded(val message: CIXMessage, val depth: Int) : ThreadDisplayItem()
+    data class Collapsed(val message: CIXMessage, val totalCount: Int, val unreadCount: Int, val isSelected: Boolean) : ThreadDisplayItem()
+    data class Expanded(val message: CIXMessage, val depth: Int, val isSelected: Boolean) : ThreadDisplayItem()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -152,7 +155,7 @@ fun ThreadScreen(
     LaunchedEffect(messages) {
         selectedMessage?.let { selected ->
             messages.find { it.remoteId == selected.remoteId }?.let { latest ->
-                if (latest.isActuallyUnread != selected.isActuallyUnread || latest.body != selected.body) {
+                if (latest.isActuallyUnread || latest.body != selected.body) {
                     selectedMessage = latest
                 }
             }
@@ -957,7 +960,7 @@ fun CombinedThreadList(
     onToggleExpand: (Int) -> Unit,
     listState: LazyListState
 ) {
-    val displayItems = remember(messages, expandedRootIds) {
+    val displayItems = remember(messages, expandedRootIds, selectedMessageId) {
         if (messages.isEmpty()) return@remember emptyList()
         val result = mutableListOf<ThreadDisplayItem>()
         val messageIds = messages.map { it.remoteId }.toSet()
@@ -970,10 +973,10 @@ fun CombinedThreadList(
 
             if (expandedRootIds.contains(root.remoteId)) {
                 tree.forEach { (msg, depth) ->
-                    result.add(ThreadDisplayItem.Expanded(msg, depth))
+                    result.add(ThreadDisplayItem.Expanded(msg, depth, msg.remoteId == selectedMessageId))
                 }
             } else {
-                result.add(ThreadDisplayItem.Collapsed(root, tree.size, unreadCount))
+                result.add(ThreadDisplayItem.Collapsed(root, tree.size, unreadCount, root.remoteId == selectedMessageId))
             }
         }
         result
@@ -1016,19 +1019,18 @@ fun CombinedThreadList(
                         message = item.message,
                         totalMessages = item.totalCount,
                         unreadCount = item.unreadCount,
+                        isSelected = item.isSelected,
                         onClick = { onToggleExpand(item.message.remoteId) }
                     )
-                    HorizontalDivider()
                 }
                 is ThreadDisplayItem.Expanded -> {
                     ThreadRow(
                         message = item.message,
                         level = item.depth,
-                        isSelected = item.message.remoteId == selectedMessageId,
+                        isSelected = item.isSelected,
                         onClick = { onMessageClick(item.message) },
                         onToggleExpand = if (item.depth == 0) { { onToggleExpand(item.message.remoteId) } } else null
                     )
-                    HorizontalDivider(modifier = Modifier.padding(start = (item.depth * 6 + 32).dp))
                 }
             }
         }
@@ -1052,11 +1054,26 @@ fun ThreadItem(
     message: CIXMessage,
     totalMessages: Int,
     unreadCount: Int,
+    isSelected: Boolean,
     onClick: () -> Unit
 ) {
+    val isDark = LocalIsDarkTheme.current
+    val selectedBrush = if (isSelected) {
+        val centerColor = Color(0xFFD91B5C)
+        val edgeColor = if (isDark) Color(0xFF5A0B26) else Color.White
+        Brush.verticalGradient(
+            0.0f to edgeColor,
+            0.5f to centerColor,
+            1.0f to edgeColor
+        )
+    } else null
+
     Surface(
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+        color = if (isSelected) Color.Transparent else MaterialTheme.colorScheme.surface,
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (selectedBrush != null) Modifier.background(selectedBrush) else Modifier)
+            .clickable(onClick = onClick)
     ) {
         Row(
             modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp, end = 8.dp),
@@ -1066,7 +1083,7 @@ fun ThreadItem(
                 Icon(
                     Icons.Default.ExpandMore,
                     contentDescription = "Expand",
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = if (isSelected) Color.White else MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -1081,14 +1098,14 @@ fun ThreadItem(
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = "$unreadCount/$totalMessages",
                 style = MaterialTheme.typography.labelSmall,
-                color = if (unreadCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                color = if (isSelected) Color.White else if (unreadCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                 fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal
             )
             Spacer(modifier = Modifier.width(8.dp))
@@ -1097,7 +1114,7 @@ fun ThreadItem(
                 maxLines = 1,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
-                color = MaterialTheme.colorScheme.secondary,
+                color = if (isSelected) Color.White else MaterialTheme.colorScheme.secondary,
                 textAlign = TextAlign.End
             )
         }
@@ -1112,9 +1129,32 @@ fun ThreadRow(
     onClick: () -> Unit,
     onToggleExpand: (() -> Unit)? = null
 ) {
+    val isDark = LocalIsDarkTheme.current
+    
+    val selectedBrush = if (isSelected) {
+        val centerColor = Color(0xFFD91B5C)
+        val edgeColor = if (isDark) {
+            // Darker towards edges in dark mode
+            Color(0xFF5A0B26) 
+        } else {
+            // Whiter towards edges in light mode
+            Color.White
+        }
+        Brush.verticalGradient(
+            0.0f to edgeColor,
+            0.5f to centerColor,
+            1.0f to edgeColor
+        )
+    } else {
+        null
+    }
+
     Surface(
-        color = if (isSelected) Color(0xFFD91B5C) else MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+        color = if (isSelected) Color.Transparent else MaterialTheme.colorScheme.surface,
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (selectedBrush != null) Modifier.background(selectedBrush) else Modifier)
+            .clickable(onClick = onClick)
     ) {
         Row(
             modifier = Modifier.padding(

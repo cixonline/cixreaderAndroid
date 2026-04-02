@@ -7,6 +7,8 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.sp
 
@@ -21,6 +23,8 @@ private val LightColorScheme = lightColorScheme(
     secondary = PurpleGrey40,
     tertiary = Pink40
 )
+
+val LocalIsDarkTheme = staticCompositionLocalOf { false }
 
 @Composable
 fun CIXReaderTheme(
@@ -60,15 +64,17 @@ fun CIXReaderTheme(
         labelSmall = Typography.labelSmall
     )
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = scaledTypography,
-        content = {
-            SelectionContainer {
-                content()
+    CompositionLocalProvider(LocalIsDarkTheme provides darkTheme) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = scaledTypography,
+            content = {
+                SelectionContainer {
+                    content()
+                }
             }
-        }
-    )
+        )
+    }
 }
 
 private fun TextStyle.scale(multiplier: Float): TextStyle {
