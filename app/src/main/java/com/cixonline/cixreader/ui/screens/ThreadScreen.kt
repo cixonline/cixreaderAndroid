@@ -98,6 +98,7 @@ fun ThreadScreen(
 ) {
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val isBackfilling by viewModel.isBackfilling.collectAsState()
     val error by viewModel.error.collectAsState()
     val scrollToMessageId by viewModel.scrollToMessageId.collectAsState()
     val context = LocalContext.current
@@ -445,12 +446,15 @@ fun ThreadScreen(
 
                     // Message viewer: Keeps significant portion of screen
                     Box(modifier = Modifier.weight(if (showReplyPane) 0.45f else 1f)) {
-                        if (isLoading && messages.isEmpty()) {
+                        if ((isLoading || isBackfilling) && messages.isEmpty()) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     CircularProgressIndicator()
                                     Spacer(modifier = Modifier.height(8.dp))
-                                    Text("Fetching messages...", style = MaterialTheme.typography.bodySmall)
+                                    Text(
+                                        text = if (isBackfilling) "Backfilling messages..." else "Fetching messages...",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
                                 }
                             }
                         } else if (error != null && messages.isEmpty()) {
@@ -523,9 +527,15 @@ fun ThreadScreen(
                     }
                 }
 
-                if (isLoading && messages.isNotEmpty()) {
+                if ((isLoading || isBackfilling) && messages.isNotEmpty()) {
                     Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            if (isBackfilling) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Backfilling...", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
                     }
                 }
             }

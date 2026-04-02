@@ -66,6 +66,9 @@ class TopicViewModel(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
+    private val _isBackfilling = MutableStateFlow(false)
+    val isBackfilling: StateFlow<Boolean> = _isBackfilling
+
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
@@ -174,7 +177,12 @@ class TopicViewModel(
 
                 // Background task: Backfill to message 1
                 viewModelScope.launch {
-                    repository.backfillToMessageOne(forumName, topicName, topicId)
+                    _isBackfilling.value = true
+                    try {
+                        repository.backfillToMessageOne(forumName, topicName, topicId)
+                    } finally {
+                        _isBackfilling.value = false
+                    }
                 }
 
             } catch (e: Exception) {
