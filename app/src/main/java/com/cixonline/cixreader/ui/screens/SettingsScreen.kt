@@ -93,13 +93,15 @@ fun SettingsScreen(
                                     // Already here
                                 }
                             )
-                            DropdownMenuItem(
-                                text = { Text("Activity Log") },
-                                onClick = {
-                                    showMenu = false
-                                    onActivityLogClick()
-                                }
-                            )
+                            if (debugModeEnabled) {
+                                DropdownMenuItem(
+                                    text = { Text("Activity Log") },
+                                    onClick = {
+                                        showMenu = false
+                                        onActivityLogClick()
+                                    }
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Version") },
                                 onClick = {

@@ -66,7 +66,8 @@ fun ProfileScreen(
     onSettingsClick: () -> Unit,
     onDraftsClick: () -> Unit,
     onProfileClick: (String) -> Unit,
-    onActivityLogClick: () -> Unit
+    onActivityLogClick: () -> Unit,
+    debugModeEnabled: Boolean = false
 ) {
     val context = LocalContext.current
     val profile by viewModel.selectedProfile.collectAsState()
@@ -257,13 +258,15 @@ fun ProfileScreen(
                                     onSettingsClick()
                                 }
                             )
-                            DropdownMenuItem(
-                                text = { Text("Activity Log") },
-                                onClick = {
-                                    showMenu = false
-                                    onActivityLogClick()
-                                }
-                            )
+                            if (debugModeEnabled) {
+                                DropdownMenuItem(
+                                    text = { Text("Activity Log") },
+                                    onClick = {
+                                        showMenu = false
+                                        onActivityLogClick()
+                                    }
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Version") },
                                 onClick = {

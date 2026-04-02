@@ -2,6 +2,8 @@ package com.cixonline.cixreader.ui
 
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -35,6 +37,8 @@ fun AppNavHost(
     val actions = remember(navController, settingsManager) { 
         NavigationActions(navController, settingsManager) 
     }
+
+    val debugModeEnabled by settingsManager.debugModeFlow.collectAsState(initial = settingsManager.isDebugModeEnabled())
 
     NavHost(navController = navController, startDestination = startDestination) {
         composable("login") {
@@ -74,7 +78,8 @@ fun AppNavHost(
                 onSettingsClick = actions.onSettingsClick,
                 onDraftsClick = actions.onDraftsClick,
                 onProfileClick = actions.onProfileClick,
-                onActivityLogClick = actions.navigateToActivityLog
+                onActivityLogClick = actions.navigateToActivityLog,
+                debugModeEnabled = debugModeEnabled
             )
         }
         composable("activity_log") {
@@ -105,7 +110,8 @@ fun AppNavHost(
                 onSettingsClick = actions.onSettingsClick,
                 onProfileClick = actions.onProfileClick,
                 onDraftsClick = actions.onDraftsClick,
-                onActivityLogClick = actions.navigateToActivityLog
+                onActivityLogClick = actions.navigateToActivityLog,
+                debugModeEnabled = debugModeEnabled
             )
         }
         composable("directory") {
@@ -129,7 +135,8 @@ fun AppNavHost(
                 onSettingsClick = actions.onSettingsClick,
                 onProfileClick = actions.onProfileClick,
                 onDraftsClick = actions.onDraftsClick,
-                onActivityLogClick = actions.navigateToActivityLog
+                onActivityLogClick = actions.navigateToActivityLog,
+                debugModeEnabled = debugModeEnabled
             )
         }
         composable("settings") {
@@ -155,7 +162,8 @@ fun AppNavHost(
                 onLogout = actions.onLogout,
                 onSettingsClick = actions.onSettingsClick,
                 onProfileClick = actions.onProfileClick,
-                onActivityLogClick = actions.navigateToActivityLog
+                onActivityLogClick = actions.navigateToActivityLog,
+                debugModeEnabled = debugModeEnabled
             )
         }
         composable(
@@ -186,7 +194,8 @@ fun AppNavHost(
                 onSettingsClick = actions.onSettingsClick,
                 onProfileClick = actions.onProfileClick,
                 onDraftsClick = actions.onDraftsClick,
-                onActivityLogClick = actions.navigateToActivityLog
+                onActivityLogClick = actions.navigateToActivityLog,
+                debugModeEnabled = debugModeEnabled
             )
         }
         composable(
@@ -266,7 +275,8 @@ fun AppNavHost(
                 onSettingsClick = actions.onSettingsClick,
                 onDraftsClick = actions.onDraftsClick,
                 onProfileClick = actions.onProfileClick,
-                onActivityLogClick = actions.navigateToActivityLog
+                onActivityLogClick = actions.navigateToActivityLog,
+                debugModeEnabled = debugModeEnabled
             )
         }
     }

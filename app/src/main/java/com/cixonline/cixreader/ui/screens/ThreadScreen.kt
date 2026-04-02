@@ -101,7 +101,7 @@ fun ThreadScreen(
     val isBackfilling by viewModel.isBackfilling.collectAsState()
     val error by viewModel.error.collectAsState()
     val scrollToMessageId by viewModel.scrollToMessageId.collectAsState()
-    val debugModeEnabled by settingsManager.debugModeFlow.collectAsState()
+    val debugModeEnabled by settingsManager.debugModeFlow.collectAsState(initial = settingsManager.isDebugModeEnabled())
     val context = LocalContext.current
 
     var expandedRootIds by remember { mutableStateOf(setOf<Int>()) }
@@ -325,13 +325,15 @@ fun ThreadScreen(
                                     onSettingsClick()
                                 }
                             )
-                            DropdownMenuItem(
-                                text = { Text("Activity Log") },
-                                onClick = {
-                                    showMenu = false
-                                    onActivityLogClick()
-                                }
-                            )
+                            if (debugModeEnabled) {
+                                DropdownMenuItem(
+                                    text = { Text("Activity Log") },
+                                    onClick = {
+                                        showMenu = false
+                                        onActivityLogClick()
+                                    }
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Drafts") },
                                 onClick = {

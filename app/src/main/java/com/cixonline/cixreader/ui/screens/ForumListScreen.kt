@@ -51,7 +51,8 @@ fun ForumListScreen(
     onProfileClick: (String) -> Unit,
     onDraftsClick: () -> Unit,
     onActivityLogClick: () -> Unit,
-    isOffline: Boolean = false
+    isOffline: Boolean = false,
+    debugModeEnabled: Boolean = false
 ) {
     val folders by viewModel.allFolders.collectAsState(initial = emptyList())
     val expandedForums by viewModel.expandedForums.collectAsState()
@@ -172,13 +173,15 @@ fun ForumListScreen(
                                         onSettingsClick()
                                     }
                                 )
-                                DropdownMenuItem(
-                                    text = { Text("Activity Log") },
-                                    onClick = {
-                                        showMenu = false
-                                        onActivityLogClick()
-                                    }
-                                )
+                                if (debugModeEnabled) {
+                                    DropdownMenuItem(
+                                        text = { Text("Activity Log") },
+                                        onClick = {
+                                            showMenu = false
+                                            onActivityLogClick()
+                                        }
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = { Text("Version") },
                                     onClick = {

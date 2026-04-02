@@ -38,7 +38,8 @@ fun TopicListScreen(
     onSettingsClick: () -> Unit,
     onProfileClick: (String) -> Unit,
     onDraftsClick: () -> Unit,
-    onActivityLogClick: () -> Unit
+    onActivityLogClick: () -> Unit,
+    debugModeEnabled: Boolean = false
 ) {
     val topics by viewModel.topics.collectAsState(initial = emptyList())
     var showMenu by remember { mutableStateOf(false) }
@@ -106,13 +107,15 @@ fun TopicListScreen(
                                     onSettingsClick()
                                 }
                             )
-                            DropdownMenuItem(
-                                text = { Text("Activity Log") },
-                                onClick = {
-                                    showMenu = false
-                                    onActivityLogClick()
-                                }
-                            )
+                            if (debugModeEnabled) {
+                                DropdownMenuItem(
+                                    text = { Text("Activity Log") },
+                                    onClick = {
+                                        showMenu = false
+                                        onActivityLogClick()
+                                    }
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Version") },
                                 onClick = {

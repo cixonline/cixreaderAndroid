@@ -43,7 +43,8 @@ fun DirectoryScreen(
     onProfileClick: (String) -> Unit,
     onDraftsClick: () -> Unit,
     onActivityLogClick: () -> Unit,
-    isOffline: Boolean = false
+    isOffline: Boolean = false,
+    debugModeEnabled: Boolean = false
 ) {
     val forums by viewModel.forums.collectAsState()
     val joinedForumNames by viewModel.joinedForumNames.collectAsState()
@@ -167,13 +168,15 @@ fun DirectoryScreen(
                                     onSettingsClick()
                                 }
                             )
-                            DropdownMenuItem(
-                                text = { Text("Activity Log") },
-                                onClick = {
-                                    showMenu = false
-                                    onActivityLogClick()
-                                }
-                            )
+                            if (debugModeEnabled) {
+                                DropdownMenuItem(
+                                    text = { Text("Activity Log") },
+                                    onClick = {
+                                        showMenu = false
+                                        onActivityLogClick()
+                                    }
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Version") },
                                 onClick = {
