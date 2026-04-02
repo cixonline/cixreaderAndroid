@@ -325,7 +325,8 @@ fun WelcomeScreen(
                             .weight(1f)
                             .clickable { onExploreForums() },
                         colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFFD91B5C)
+                            containerColor = Color(0xFFD91B5C),
+                            contentColor = Color.White
                         )
                     ) {
                         Column(
@@ -351,7 +352,8 @@ fun WelcomeScreen(
                             .weight(1f)
                             .clickable { onDirectoryClick() },
                         colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFFD91B5C)
+                            containerColor = Color(0xFFD91B5C),
+                            contentColor = Color.White
                         )
                     ) {
                         Column(
@@ -377,7 +379,8 @@ fun WelcomeScreen(
                             .weight(1f)
                             .clickable { showPostDialog = true },
                         colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFFD91B5C)
+                            containerColor = Color(0xFFD91B5C),
+                            contentColor = Color.White
                         )
                     ) {
                         Column(
