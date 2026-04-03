@@ -42,10 +42,10 @@ data class CIXMessage(
     val isActuallyUnread: Boolean
         get() {
             val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
-            val result = unread && date >= thirtyDaysAgo
-            // Only log if it would have been unread but is now read due to the 30-day rule
+            val result = unread && date >= thirtyDaysAgo && !isWithdrawn()
+            // Only log if it would have been unread but is now read due to the 30-day rule or withdrawn
             if (unread && !result) {
-                Log.d("CIXMessage", "Message #$remoteId is unread in DB but > 30 days old. Marking as read in UI.")
+                Log.d("CIXMessage", "Message #$remoteId is unread in DB but filtered in UI (old or withdrawn).")
             }
             return result
         }

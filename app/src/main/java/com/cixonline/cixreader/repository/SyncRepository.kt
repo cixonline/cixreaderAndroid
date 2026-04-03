@@ -25,6 +25,12 @@ class SyncRepository(
 ) {
     private val tag = "SyncRepository"
 
+    private suspend fun recalculateCounts() {
+        val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+        folderDao.recalculateTopicUnreadCounts(thirtyDaysAgo)
+        folderDao.recalculateForumUnreadCounts()
+    }
+
     suspend fun syncLatestMessages() = withContext(Dispatchers.IO) {
         try {
             // 1. Sync local read status to server
@@ -85,18 +91,6 @@ class SyncRepository(
                         logRepository.log("Updated #$remoteId in $forum/$topic: ${existing.unread} -> $isUnread", "READ_STATUS")
                     }
 
-                    // If it was unread locally but now it's read from server, we should update folder counts
-                    if (existing != null && existing.unread && !isUnread) {
-                        folderDao.decrementUnread(topicId)
-                        val forumId = HtmlUtils.calculateForumId(forum)
-                        folderDao.decrementUnread(forumId)
-                    } else if (existing != null && !existing.unread && isUnread) {
-                        // If it was read locally but now it's unread from server, we should increment folder counts
-                        folderDao.incrementUnread(topicId)
-                        val forumId = HtmlUtils.calculateForumId(forum)
-                        folderDao.incrementUnread(forumId)
-                    }
-
                     if (existing == null) {
                         logRepository.log("Message #$remoteId in $forum/$topic. Unread: $isUnread", "INSERT")
                     }
@@ -138,6 +132,9 @@ class SyncRepository(
             if (newestMessageDate > 0) {
                 settingsManager.saveLastSyncDate(DateUtils.formatApiDate(newestMessageDate))
             }
+
+            // Recalculate folder unread counts after sync to ensure consistency with our 30-day rule
+            recalculateCounts()
 
         } catch (e: CancellationException) {
             throw e
@@ -209,20 +206,6 @@ class SyncRepository(
                     false
                 } else {
                     apiMsgs.any { it.unread == true }
-                }
-
-                // If it was unread locally but now it's read from server, we should update folder counts
-                if (existing != null && existing.unread && !isUnread) {
-                    folderDao.decrementUnread(topicId)
-                    val forumId = HtmlUtils.calculateForumId(forumName)
-                    folderDao.decrementUnread(forumId)
-                    logRepository.log("Updated #$remoteId in $forumName/$topicName: true -> false", "READ_STATUS")
-                } else if (existing != null && !existing.unread && isUnread) {
-                    // If it was read locally but now it's unread from server, we should increment folder counts
-                    folderDao.incrementUnread(topicId)
-                    val forumId = HtmlUtils.calculateForumId(forumName)
-                    folderDao.incrementUnread(forumId)
-                    logRepository.log("Updated #$remoteId in $forumName/$topicName: false -> true", "READ_STATUS")
                 }
 
                 if (existing == null) {
@@ -305,6 +288,9 @@ class SyncRepository(
                 }
             }
             
+            // 4. Recalculate counts based on 30-day rule
+            recalculateCounts()
+
             // Update last sync date on successful full sync
             settingsManager.saveLastSyncDate(DateUtils.formatApiDate(System.currentTimeMillis()))
             

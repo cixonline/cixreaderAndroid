@@ -246,7 +246,16 @@ fun ForumListScreen(
                         val filteredFolders = if (showOnlyUnread) {
                             // Keep forums if they have unread messages OR if any of their topics have unread messages
                             folders.filter { folder ->
-                                folder.unread > 0 || (folder.parentId == -1 && folders.any { it.parentId == folder.id && it.unread > 0 })
+                                if (folder.parentId == -1) {
+                                    val forumTopics = folders.filter { it.parentId == folder.id }
+                                    if (forumTopics.isNotEmpty()) {
+                                        forumTopics.any { it.unread > 0 }
+                                    } else {
+                                        folder.unread > 0
+                                    }
+                                } else {
+                                    folder.unread > 0
+                                }
                             }
                         } else {
                             folders
@@ -360,9 +369,13 @@ fun ForumListScreen(
                                         )
                                     }
                                 } else if (item != null) {
-                                    // Calculate total unread from children
-                                    val topicsUnread = folders.filter { it.parentId == item.id }.sumOf { it.unread }
-                                    val totalUnread = if (topicsUnread > 0) topicsUnread else item.unread
+                                    // Calculate total unread from children if we have them
+                                    val forumTopics = folders.filter { it.parentId == item.id }
+                                    val totalUnread = if (forumTopics.isNotEmpty()) {
+                                        forumTopics.sumOf { it.unread }
+                                    } else {
+                                        item.unread
+                                    }
 
                                     SwipeToResignRow(
                                         item = item,

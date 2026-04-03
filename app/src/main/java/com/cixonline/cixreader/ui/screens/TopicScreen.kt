@@ -87,7 +87,6 @@ fun TopicScreen(
                             .clickable { onTitleClick(viewModel.forumName) }
                             .padding(vertical = 4.dp)
                     ) {
-                        Text( text = "TopicScreen" )
                         Text(
                             text = viewModel.forumName,
                             style = MaterialTheme.typography.labelMedium,
@@ -119,7 +118,7 @@ fun TopicScreen(
                                 text = { Text("Mark All Read") },
                                 onClick = {
                                     showMenu = false
-                                    // Implementation for Mark Topic Read
+                                    viewModel.markTopicAsRead()
                                 }
                             )
                             DropdownMenuItem(

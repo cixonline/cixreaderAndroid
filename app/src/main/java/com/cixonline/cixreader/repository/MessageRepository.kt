@@ -54,6 +54,12 @@ class MessageRepository(
         allMessages.filter { it.isActuallyUnread }.minByOrNull { it.date }
     }
 
+    private suspend fun recalculateCounts() {
+        val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+        folderDao.recalculateTopicUnreadCounts(thirtyDaysAgo)
+        folderDao.recalculateForumUnreadCounts()
+    }
+
     suspend fun refreshMessages(forum: String, topic: String, topicId: Int, force: Boolean = false, sinceOverride: String? = null) = withContext(Dispatchers.IO) {
         try {
             val encodedForum = HtmlUtils.cixEncode(forum)
@@ -124,20 +130,6 @@ class MessageRepository(
                 apiMsg.unread
             }
 
-            // If it was unread locally but now it's read from server, we should update folder counts
-            if (existing != null && existing.unread && !isUnread) {
-                folderDao.decrementUnread(topicId)
-                val forumId = HtmlUtils.calculateForumId(forum)
-                folderDao.decrementUnread(forumId)
-                logRepository.log("Updated read status for #$apiMsg.id in $forum/$topic: true -> false", "READ_STATUS")
-            } else if (existing != null && !existing.unread && isUnread) {
-                // If it was read locally but now it's unread from server, we should increment folder counts
-                folderDao.incrementUnread(topicId)
-                val forumId = HtmlUtils.calculateForumId(forum)
-                folderDao.incrementUnread(forumId)
-                logRepository.log("Updated read status for #$apiMsg.id in $forum/$topic: false -> true", "READ_STATUS")
-            }
-
             if (existing == null) {
                 logRepository.log("Inserted new message #$apiMsg.id in $forum/$topic. Unread: $isUnread", "INSERT")
             }
@@ -166,6 +158,7 @@ class MessageRepository(
             )
         }
         messageDao.insertAll(messagesToInsert)
+        recalculateCounts()
     }
 
     suspend fun fetchThreadThenBackfill(forum: String, topic: String, msgId: Int, topicId: Int) = withContext(Dispatchers.IO) {
@@ -251,20 +244,6 @@ class MessageRepository(
                 false
             } else {
                 messageApi.unread
-            }
-
-            // If it was unread locally but now it's read from server, we should update folder counts
-            if (existing != null && existing.unread && !isUnread) {
-                folderDao.decrementUnread(topicId)
-                val forumId = HtmlUtils.calculateForumId(forum)
-                folderDao.decrementUnread(forumId)
-                logRepository.log("Updated read status for #$msgId in $forum/$topic: true -> false", "READ_STATUS")
-            } else if (existing != null && !existing.unread && isUnread) {
-                // If it was read locally but now it's unread from server, we should increment folder counts
-                folderDao.incrementUnread(topicId)
-                val forumId = HtmlUtils.calculateForumId(forum)
-                folderDao.decrementUnread(forumId)
-                logRepository.log("Updated read status for #$msgId in $forum/$topic: false -> true", "READ_STATUS")
             }
 
             if (existing == null) {
@@ -405,9 +384,27 @@ class MessageRepository(
         if (message.unread) {
             // Optimistically mark as read and pending in local DB
             messageDao.updateUnreadAndPending(message.id, unread = false, readPending = true)
+            
+            // Recalculate folder unread counts to ensure consistency
+            recalculateCounts()
+
             logRepository.log("Marked #$message.remoteId as read (locally pending) in $message.forumName/$message.topicName", "READ_STATUS")
             // Immediate server sync removed to improve UI responsiveness.
             // Read status will be synced to server by SyncWorker in the background.
+        }
+    }
+
+    suspend fun markTopicAsRead(forumName: String, topicName: String, topicId: Int) = withContext(Dispatchers.IO) {
+        try {
+            // 1. Update local messages
+            messageDao.markTopicAsRead(topicId)
+
+            // 2. Recalculate folder unread counts
+            recalculateCounts()
+
+            logRepository.log("Marked topic $forumName/$topicName as read", "READ_STATUS")
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to mark topic as read", e)
         }
     }
 }

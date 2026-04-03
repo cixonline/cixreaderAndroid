@@ -494,6 +494,11 @@ class TopicViewModel(
         syncManager?.triggerPendingSync()
     }
 
+    fun markTopicAsRead() = viewModelScope.launch {
+        repository.markTopicAsRead(forumName, topicName, topicId)
+        syncManager?.triggerPendingSync()
+    }
+
     fun withdrawMessage(message: CIXMessage) = viewModelScope.launch {
         _isLoading.value = true
         if (repository.withdrawMessage(message)) refresh()
