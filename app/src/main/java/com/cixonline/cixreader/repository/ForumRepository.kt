@@ -1,11 +1,14 @@
 package com.cixonline.cixreader.repository
 
+import android.util.Log
 import com.cixonline.cixreader.api.CixApi
 import com.cixonline.cixreader.api.TopicResult
 import com.cixonline.cixreader.db.FolderDao
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.utils.HtmlUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.StringReader
 
@@ -63,6 +66,22 @@ class ForumRepository(
             )
         }
         folderDao.insertAll(topics)
+    }
+
+    suspend fun refreshAllTopicUnreads() = withContext(Dispatchers.IO) {
+        try {
+            Log.d("ForumRepository", "Refreshing all topic unread counts from server using User.AllTopics")
+            val resultSet = api.getAllTopics()
+            resultSet.userTopics.forEach { result ->
+                val forumName = result.forum ?: return@forEach
+                val topicName = result.topic ?: return@forEach
+                val topicId = HtmlUtils.calculateTopicId(forumName, topicName)
+                folderDao.setUnread(topicId, result.unread)
+            }
+            folderDao.recalculateForumUnreadCounts()
+        } catch (e: Exception) {
+            Log.e("ForumRepository", "Failed to refresh all topic unreads", e)
+        }
     }
 
     suspend fun resignForum(forumName: String, forumId: Int): Boolean {

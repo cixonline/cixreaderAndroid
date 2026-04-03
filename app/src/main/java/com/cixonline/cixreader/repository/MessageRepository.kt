@@ -407,4 +407,20 @@ class MessageRepository(
             Log.e(tag, "Failed to mark topic as read", e)
         }
     }
+
+    suspend fun refreshAllTopicUnreads() = withContext(Dispatchers.IO) {
+        try {
+            Log.d(tag, "Refreshing all topic unread counts from server using User.AllTopics")
+            val resultSet = api.getAllTopics()
+            resultSet.userTopics.forEach { result ->
+                val forumName = result.forum ?: return@forEach
+                val topicName = result.topic ?: return@forEach
+                val topicId = HtmlUtils.calculateTopicId(forumName, topicName)
+                folderDao.setUnread(topicId, result.unread)
+            }
+            folderDao.recalculateForumUnreadCounts()
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to refresh all topic unreads", e)
+        }
+    }
 }

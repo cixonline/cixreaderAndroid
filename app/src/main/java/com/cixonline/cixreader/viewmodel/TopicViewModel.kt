@@ -294,6 +294,9 @@ class TopicViewModel(
     }
 
     private suspend fun findNextUnreadOutsideTopic(): NextUnreadItem {
+        // Refresh all topic unread counts from server to ensure we have the latest status
+        repository.refreshAllTopicUnreads()
+
         val allFolders = folderDao.getAll().first()
         val rootFolders = allFolders.filter { it.isRootFolder }.sortedBy { it.name.lowercase() }
         val currentForum = rootFolders.find { it.name.equals(forumName, ignoreCase = true) }

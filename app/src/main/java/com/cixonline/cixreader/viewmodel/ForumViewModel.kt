@@ -60,7 +60,10 @@ class ForumViewModel(
                 // First sync forums from server
                 repository.refreshForums()
                 
-                // Then, for any currently expanded forums, refresh their topics too
+                // Refresh topic unread status for all topics (more efficient than individual topic refresh)
+                repository.refreshAllTopicUnreads()
+                
+                // Then, for any currently expanded forums, refresh their topics list too (to get any new topics)
                 val expanded = _expandedForums.value
                 if (expanded.isNotEmpty()) {
                     val allCurrentFolders = repository.allFolders.first()

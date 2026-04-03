@@ -67,6 +67,11 @@ fun ForumListScreen(
     // Track which forum is currently swiped to reveal the Resign button
     var swipedForumId by remember { mutableStateOf<Int?>(null) }
 
+    // Refresh unread counts when entering the screen
+    LaunchedEffect(Unit) {
+        viewModel.refresh()
+    }
+
     Scaffold(
         modifier = Modifier.pointerInput(Unit) {
             // Detect taps outside of items to close any swiped Resign button

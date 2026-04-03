@@ -49,7 +49,8 @@ interface CixApi {
     suspend fun setMugshot(@Body body: RequestBody): ResponseBody
 
     @GET("user/alltopics.xml")
-    suspend fun getAllTopics(@Query("maxResults") maxResults: Int = 5000): UserForumTopicResultSet2
+    //suspend fun getAllTopics(@Query("maxResults") maxResults: Int = 5000): UserForumTopicResultSet2
+    suspend fun getAllTopics(): UserForumTopicResultSet2
 
     @GET("forums/{forum}/{topic}/{msgid}/message.xml")
     suspend fun getMessage(
