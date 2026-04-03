@@ -223,6 +223,19 @@ class TopicViewModel(
         }
     }
 
+    fun refreshMessage(message: CIXMessage) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                repository.fetchMessageAndChildren(forumName, topicName, message.remoteId, topicId)
+            } catch (e: Exception) {
+                Log.e("TopicViewModel", "Message refresh failed", e)
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
     suspend fun findNextUnreadItem(currentMessageId: Int?): NextUnreadItem {
         val allMessages = messages.value
         if (allMessages.isEmpty()) return NextUnreadItem.NoMoreUnread

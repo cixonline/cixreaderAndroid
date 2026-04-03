@@ -362,15 +362,15 @@ fun ThreadScreen(
             )
         }
     ) { padding ->
-        PullToRefreshBox(
-            isRefreshing = isLoading,
-            onRefresh = { viewModel.refresh() },
-            modifier = Modifier.fillMaxSize().padding(padding)
-        ) {
-            Box(modifier = Modifier.fillMaxSize().imePadding()) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    // Thread list: Shrinks further when replying to prioritize viewer and input
-                    Box(modifier = Modifier.weight(if (showReplyPane) 0.35f else 1f)) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding).imePadding()) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Thread list part with topic refresh
+                Box(modifier = Modifier.weight(if (showReplyPane) 0.35f else 1f)) {
+                    PullToRefreshBox(
+                        isRefreshing = isLoading,
+                        onRefresh = { viewModel.refresh() },
+                        modifier = Modifier.fillMaxSize()
+                    ) {
                         CombinedThreadList(
                             messages = messages,
                             expandedRootIds = expandedRootIds,
@@ -396,60 +396,66 @@ fun ThreadScreen(
                             listState = listState
                         )
                     }
+                }
 
-                    if (selectedMessage != null) {
-                        MessageActionBar(
-                            message = selectedMessage!!,
-                            currentUsername = currentUsername,
-                            replyActive = showReplyPane,
-                            onReplyClick = {
-                                if (showReplyPane) {
-                                    handleBackAction()
-                                } else {
-                                    replyingToMessage = selectedMessage
-                                    showReplyPane = true
+                if (selectedMessage != null) {
+                    MessageActionBar(
+                        message = selectedMessage!!,
+                        currentUsername = currentUsername,
+                        replyActive = showReplyPane,
+                        onReplyClick = {
+                            if (showReplyPane) {
+                                handleBackAction()
+                            } else {
+                                replyingToMessage = selectedMessage
+                                showReplyPane = true
+                            }
+                        },
+                        onPostClick = {
+                            viewModel.preparePostDialog()
+                            showPostDialog = true
+                        },
+                        onNextUnreadClick = {
+                            coroutineScope.launch {
+                                val nextItem = viewModel.findNextUnreadItem(selectedMessage?.remoteId)
+                                if (selectedMessage!!.isActuallyUnread) {
+                                    viewModel.markAsRead(selectedMessage!!)
                                 }
-                            },
-                            onPostClick = {
-                                viewModel.preparePostDialog()
-                                showPostDialog = true
-                            },
-                            onNextUnreadClick = {
-                                coroutineScope.launch {
-                                    val nextItem = viewModel.findNextUnreadItem(selectedMessage?.remoteId)
-                                    if (selectedMessage!!.isActuallyUnread) {
-                                        viewModel.markAsRead(selectedMessage!!)
+                                
+                                when (nextItem) {
+                                    is NextUnreadItem.Message -> {
+                                        selectedMessage = nextItem.message
+                                        val rootId = findRootForMessage(nextItem.message, messages)
+                                        expandedRootIds = expandedRootIds + rootId
+                                        showReplyPane = false
+                                        replyingToMessage = null
                                     }
-                                    
-                                    when (nextItem) {
-                                        is NextUnreadItem.Message -> {
-                                            selectedMessage = nextItem.message
-                                            val rootId = findRootForMessage(nextItem.message, messages)
-                                            expandedRootIds = expandedRootIds + rootId
-                                            showReplyPane = false
-                                            replyingToMessage = null
-                                        }
-                                        is NextUnreadItem.Topic -> {
-                                            onNavigateToThread(nextItem.forum, nextItem.topic, nextItem.topicId, 0, 0)
-                                        }
-                                        is NextUnreadItem.Forum -> {
-                                            // This case is handled via NextUnreadItem.Topic which also knows the forum
-                                        }
-                                        is NextUnreadItem.NoMoreUnread -> {
-                                            showNoMoreUnreadDialog = true
-                                        }
+                                    is NextUnreadItem.Topic -> {
+                                        onNavigateToThread(nextItem.forum, nextItem.topic, nextItem.topicId, 0, 0)
+                                    }
+                                    is NextUnreadItem.Forum -> {
+                                        // This case is handled via NextUnreadItem.Topic which also knows the forum
+                                    }
+                                    is NextUnreadItem.NoMoreUnread -> {
+                                        showNoMoreUnreadDialog = true
                                     }
                                 }
-                            },
-                            onAuthorClick = { onProfileClick(selectedMessage!!.author) },
-                            onWithdrawClick = { viewModel.withdrawMessage(selectedMessage!!) }
-                        )
-                    } else {
-                        HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                    }
+                            }
+                        },
+                        onAuthorClick = { onProfileClick(selectedMessage!!.author) },
+                        onWithdrawClick = { viewModel.withdrawMessage(selectedMessage!!) }
+                    )
+                } else {
+                    HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                }
 
-                    // Message viewer: Keeps significant portion of screen
-                    Box(modifier = Modifier.weight(if (showReplyPane) 0.45f else 1f)) {
+                // Message viewer part with single message refresh
+                Box(modifier = Modifier.weight(if (showReplyPane) 0.45f else 1f)) {
+                    PullToRefreshBox(
+                        isRefreshing = isLoading,
+                        onRefresh = { selectedMessage?.let { viewModel.refreshMessage(it) } },
+                        modifier = Modifier.fillMaxSize()
+                    ) {
                         if ((isLoading || isBackfilling) && messages.isEmpty()) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -496,49 +502,49 @@ fun ThreadScreen(
                             }
                         }
                     }
-
-                    // Reply pane: Compact 3-line input with buttons snug against keyboard
-                    if (showReplyPane && replyingToMessage != null) {
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .wrapContentHeight(), // Let it be compact
-                            tonalElevation = 4.dp,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
-                        ) {
-                            ReplyPane(
-                                replyTo = replyingToMessage!!,
-                                text = replyText,
-                                onTextChange = { replyText = it },
-                                attachmentUri = replyAttachmentUri,
-                                onAttachmentUriChange = { replyAttachmentUri = it },
-                                attachmentName = replyAttachmentName,
-                                onAttachmentNameChange = { replyAttachmentName = it },
-                                onCancel = handleBackAction,
-                                onPost = { body, uri, name ->
-                                    coroutineScope.launch {
-                                        if (viewModel.postReply(context, replyingToMessage!!.remoteId, body, uri, name)) {
-                                            showReplyPane = false
-                                            replyingToMessage = null
-                                        }
-                                    }
-                                },
-                                onSaveDraft = { body, uri, name ->
-                                    viewModel.saveDraft(replyingToMessage!!.remoteId, body, uri, name)
-                                }
-                            )
-                        }
-                    }
                 }
 
-                if ((isLoading || isBackfilling) && messages.isNotEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator()
-                            if (isBackfilling) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text("Backfilling...", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                // Reply pane: Compact 3-line input with buttons snug against keyboard
+                if (showReplyPane && replyingToMessage != null) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .wrapContentHeight(), // Let it be compact
+                        tonalElevation = 4.dp,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+                    ) {
+                        ReplyPane(
+                            replyTo = replyingToMessage!!,
+                            text = replyText,
+                            onTextChange = { replyText = it },
+                            attachmentUri = replyAttachmentUri,
+                            onAttachmentUriChange = { replyAttachmentUri = it },
+                            attachmentName = replyAttachmentName,
+                            onAttachmentNameChange = { replyAttachmentName = it },
+                            onCancel = handleBackAction,
+                            onPost = { body, uri, name ->
+                                coroutineScope.launch {
+                                    if (viewModel.postReply(context, replyingToMessage!!.remoteId, body, uri, name)) {
+                                        showReplyPane = false
+                                        replyingToMessage = null
+                                    }
+                                }
+                            },
+                            onSaveDraft = { body, uri, name ->
+                                viewModel.saveDraft(replyingToMessage!!.remoteId, body, uri, name)
                             }
+                        )
+                    }
+                }
+            }
+
+            if ((isLoading || isBackfilling) && messages.isNotEmpty()) {
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator()
+                        if (isBackfilling) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Backfilling...", color = Color.White, style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
@@ -593,7 +599,7 @@ fun DebugMessageDialog(message: CIXMessage, onDismiss: () -> Unit) {
                 Text("Forum: ${message.forumName}")
                 Text("Topic: ${message.topicName}")
                 Text("Comment ID: ${message.commentId}")
-                Text("Root ID: ${message.rootId}")
+                Text("Root ID: ${message.remoteId}")
                 Text("Unread (DB): ${message.unread}")
                 Text("Is Actually Unread: ${message.isActuallyUnread}")
                 Text("Read Pending: ${message.readPending}")
@@ -1227,7 +1233,7 @@ fun MessageActionBar(
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp).fillMaxWidth(),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 0.dp).fillMaxWidth().height(56.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -1253,7 +1259,7 @@ fun MessageActionBar(
                     color = Color.White
                 )
             }
-            Row {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 if (currentUsername != null && message.author.equals(currentUsername, ignoreCase = true) && !message.isWithdrawn()) {
                     IconButton(onClick = { showWithdrawConfirm = true }) {
                         Icon(
@@ -1278,12 +1284,15 @@ fun MessageActionBar(
                     )
                 }
                 if (!replyActive) {
-                    IconButton(onClick = onNextUnreadClick) {
+                    IconButton(
+                        onClick = onNextUnreadClick,
+                        modifier = Modifier.size(54.dp)
+                    ) {
                         Icon(
                             Icons.AutoMirrored.Filled.NavigateNext,
                             contentDescription = "Next Unread",
                             tint = Color.White,
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(54.dp)
                         )
                     }
                 }
