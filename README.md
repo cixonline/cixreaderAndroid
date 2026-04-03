@@ -20,3 +20,11 @@ The easiest way to make contributions is to create your own branch and work
 in that, then submit pull requests. The source code should be pretty well
 documented by its structure and comments but feel free to ask in the
 cix.developer forum on CIX if you have any questions.
+
+These are some things that I intend to add:
+o Notifications of comments in threads you are involved with and / or direct comments to your messages.
+o Who is currently online.
+o Real time chat facility.
+o Read message history so you can go back.
+o Bookmarked messsges.
+o Search.
