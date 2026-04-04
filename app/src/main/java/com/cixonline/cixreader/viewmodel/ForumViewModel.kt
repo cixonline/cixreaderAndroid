@@ -49,7 +49,8 @@ class ForumViewModel(
     override val isProfileLoading: StateFlow<Boolean> = profileDelegate.isLoading
 
     init {
-        refresh()
+        // Removed refresh() from init as it is called by LaunchedEffect in the UI, 
+        // preventing double API calls on first load.
     }
 
     fun refresh() {

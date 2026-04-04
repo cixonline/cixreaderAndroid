@@ -45,7 +45,7 @@ class ForumRepository(
                 id = HtmlUtils.calculateForumId(normalizedName),
                 name = normalizedName,
                 parentId = -1,
-                unread = row.unread?.toIntOrNull() ?: 0,
+                unread = row.effectiveUnread?.toIntOrNull() ?: 0,
                 unreadPriority = row.priority?.toIntOrNull() ?: 0
             )
         }
@@ -62,7 +62,7 @@ class ForumRepository(
                 id = HtmlUtils.calculateTopicId(forumName, normalizedTopicName),
                 name = normalizedTopicName,
                 parentId = forumId,
-                unread = result.unread?.toIntOrNull() ?: 0
+                unread = result.effectiveUnread?.toIntOrNull() ?: 0
             )
         }
         folderDao.insertAll(topics)
@@ -76,7 +76,8 @@ class ForumRepository(
                 val forumName = result.forum ?: return@forEach
                 val topicName = result.topic ?: return@forEach
                 val topicId = HtmlUtils.calculateTopicId(forumName, topicName)
-                folderDao.setUnread(topicId, result.unread)
+                val unreadCount = result.effectiveUnread?.toIntOrNull() ?: 0
+                folderDao.setUnread(topicId, unreadCount)
             }
             folderDao.recalculateForumUnreadCounts()
         } catch (e: Exception) {

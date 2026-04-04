@@ -137,6 +137,12 @@ class ForumResultSetRow {
 
     @field:Element(name = "Unread", required = false)
     var unread: String? = null
+
+    @field:Element(name = "UnRead", required = false)
+    var unRead: String? = null
+
+    val effectiveUnread: String?
+        get() = unread ?: unRead
 }
 
 @Root(name = "TopicResultSet", strict = false)
@@ -195,7 +201,13 @@ class UserTopicApi {
     var status: String? = null
 
     @field:Element(name = "UnRead", required = false)
+    var unRead: String? = null
+
+    @field:Element(name = "Unread", required = false)
     var unread: String? = null
+
+    val effectiveUnread: String?
+        get() = unread ?: unRead
 }
 
 @Root(name = "UserForumTopicResultSet2", strict = false)
@@ -207,14 +219,14 @@ class UserForumTopicResultSet2 {
     @field:Element(name = "Start", required = false)
     var start: String? = null
 
-    @field:ElementList(name = "UserTopics", entry = "UserForumTopic2", inline = false, required = false)
+    @field:ElementList(entry = "UserForumTopic2", inline = true, required = false)
     var userTopics: List<UserForumTopic2> = mutableListOf()
 }
 
 @Root(name = "UserForumTopic2", strict = false)
 class UserForumTopic2 {
     @field:Element(name = "Flags", required = false)
-    var flags: Int = 0
+    var flags: String? = null
 
     @field:Element(name = "Forum", required = false)
     var forum: String? = null
@@ -228,8 +240,11 @@ class UserForumTopic2 {
     @field:Element(name = "Topic", required = false)
     var topic: String? = null
 
+    @field:Element(name = "Unread", required = false)
+    var unread: String? = null
+
     @field:Element(name = "UnRead", required = false)
-    var unread: Int = 0
+    var unRead: String? = null
 
     @field:Element(name = "Recent", required = false)
     var recent: String? = null
@@ -239,6 +254,9 @@ class UserForumTopic2 {
 
     @field:Element(name = "Latest", required = false)
     var latest: String? = null
+
+    val effectiveUnread: String?
+        get() = unread ?: unRead
 }
 
 @Root(name = "MessageResultSet", strict = false)

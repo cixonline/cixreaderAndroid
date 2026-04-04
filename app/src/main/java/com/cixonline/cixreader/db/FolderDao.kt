@@ -61,6 +61,7 @@ interface FolderDao {
             WHERE f2.parentId = folders.id
         ) 
         WHERE parentId = -1
+          AND id IN (SELECT DISTINCT parentId FROM folders WHERE parentId != -1)
     """)
     suspend fun recalculateForumUnreadCounts()
 

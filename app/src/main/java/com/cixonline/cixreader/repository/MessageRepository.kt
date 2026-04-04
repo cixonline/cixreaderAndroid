@@ -416,7 +416,8 @@ class MessageRepository(
                 val forumName = result.forum ?: return@forEach
                 val topicName = result.topic ?: return@forEach
                 val topicId = HtmlUtils.calculateTopicId(forumName, topicName)
-                folderDao.setUnread(topicId, result.unread)
+                val unreadCount = result.effectiveUnread?.toIntOrNull() ?: 0
+                folderDao.setUnread(topicId, unreadCount)
             }
             folderDao.recalculateForumUnreadCounts()
         } catch (e: Exception) {
