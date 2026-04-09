@@ -1173,7 +1173,7 @@ fun ThreadRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall.copy(
-                    textAlign = if (isSelected) TextAlign.Center else TextAlign.Start
+                    textAlign = if (isSelected) TextAlign.Start else TextAlign.Start
                 ),
                 fontWeight = if (message.isActuallyUnread) FontWeight.Bold else FontWeight.Normal,
                 color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
