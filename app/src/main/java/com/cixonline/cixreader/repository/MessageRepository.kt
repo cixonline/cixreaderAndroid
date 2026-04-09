@@ -98,13 +98,12 @@ class MessageRepository(
             val encodedForum = HtmlUtils.cixEncode(forum)
             val encodedTopic = HtmlUtils.cixEncode(topic)
 
-            Log.d(tag, "Backfilling $forum/$topic using allmessages.xml")
-            // Passing null for since should get all messages in the topic (subject to API limits)
-            val resultSet = api.getMessages(encodedForum, encodedTopic, since = null)
+            Log.d(tag, "Backfilling $forum/$topic using threads.xml")
+            val resultSet = api.getTopicThreads(encodedForum, encodedTopic)
 
             if (resultSet.messages.isNotEmpty()) {
-                Log.d(tag, "Backfill fetched ${resultSet.messages.size} messages for $forum/$topic")
-                saveMessagesToDb(resultSet.messages, forum, topic, topicId)
+                Log.d(tag, "Backfill fetched ${resultSet.messages.size} roots for $forum/$topic")
+                saveMessagesToDb(resultSet.messages, forum, topic, topicId, isRootOnly = true)
             }
             Log.d(tag, "Backfill complete for $forum/$topic")
         } catch (e: Exception) {
@@ -112,7 +111,13 @@ class MessageRepository(
         }
     }
 
-    private suspend fun saveMessagesToDb(apiMessages: List<MessageApi>, forum: String, topic: String, topicId: Int) {
+    private suspend fun saveMessagesToDb(
+        apiMessages: List<MessageApi>, 
+        forum: String, 
+        topic: String, 
+        topicId: Int,
+        isRootOnly: Boolean = false
+    ) {
         val currentMessages = messageDao.getByTopic(topicId).first()
         val existingMessages = currentMessages.associateBy { it.remoteId }
         val currentUsername = NetworkClient.getUsername()
@@ -131,7 +136,7 @@ class MessageRepository(
             }
 
             if (existing == null) {
-                logRepository.log("Inserted new message #$apiMsg.id in $forum/$topic. Unread: $isUnread", "INSERT")
+                logRepository.log("Inserted new message #${apiMsg.id} in $forum/$topic. Unread: $isUnread", "INSERT")
             }
 
             CIXMessage(
@@ -140,8 +145,8 @@ class MessageRepository(
                 author = HtmlUtils.decodeHtml(apiMsg.author ?: ""),
                 body = HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(apiMsg.body ?: "")),
                 date = messageDate,
-                commentId = apiMsg.replyTo,
-                rootId = apiMsg.rootId,
+                commentId = if (isRootOnly) 0 else apiMsg.replyTo,
+                rootId = if (isRootOnly) apiMsg.id else (if (apiMsg.rootId != 0) apiMsg.rootId else (if (apiMsg.replyTo == 0) apiMsg.id else (existing?.rootId ?: 0))),
                 topicId = topicId,
                 forumName = forum,
                 topicName = topic,
@@ -247,7 +252,7 @@ class MessageRepository(
             }
 
             if (existing == null) {
-                logRepository.log("Inserted new message #$msgId in $forum/$topic. Unread: $isUnread", "INSERT")
+                logRepository.log("Inserted new message #${msgId} in $forum/$topic. Unread: $isUnread", "INSERT")
             }
 
             val message = CIXMessage(
@@ -257,7 +262,7 @@ class MessageRepository(
                 body = HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(messageApi.body ?: "")),
                 date = messageDate,
                 commentId = messageApi.replyTo,
-                rootId = messageApi.rootId,
+                rootId = if (messageApi.rootId != 0) messageApi.rootId else (if (messageApi.replyTo == 0) messageApi.id else (existing?.rootId ?: 0)),
                 topicId = topicId,
                 forumName = forum,
                 topicName = topic,
@@ -388,7 +393,7 @@ class MessageRepository(
             // Recalculate folder unread counts to ensure consistency
             recalculateCounts()
 
-            logRepository.log("Marked #$message.remoteId as read (locally pending) in $message.forumName/$message.topicName", "READ_STATUS")
+            logRepository.log("Marked #${message.remoteId} as read (locally pending) in ${message.forumName}/${message.topicName}", "READ_STATUS")
             // Immediate server sync removed to improve UI responsiveness.
             // Read status will be synced to server by SyncWorker in the background.
         }

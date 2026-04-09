@@ -102,7 +102,7 @@ class SyncRepository(
                         body = apiMsg.body?.let { HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(it)) } ?: existing?.body ?: "",
                         date = messageDate,
                         commentId = if (apiMsg.replyTo != 0) apiMsg.replyTo else existing?.commentId ?: 0,
-                        rootId = if (apiMsg.rootId != 0) apiMsg.rootId else existing?.rootId ?: 0,
+                        rootId = if (apiMsg.rootId != 0) apiMsg.rootId else (if (apiMsg.replyTo == 0) remoteId else (existing?.rootId ?: 0)),
                         topicId = topicId,
                         forumName = forum,
                         topicName = topic,
@@ -174,17 +174,13 @@ class SyncRepository(
         }
     }
 
-    private suspend fun refreshMessages(forumName: String, topicName: String, topicId: Int) {
+    private suspend fun backfillTopic(forumName: String, topicName: String, topicId: Int) {
         try {
-            val latestMessage = messageDao.getLatestMessage(topicId)
-            
-            // The CIX API expects a date string for 'since' in allmessages.xml, not a message ID.
-            val since = if (latestMessage == null) null else DateUtils.formatApiDate(latestMessage.date)
-            
             val encodedForum = HtmlUtils.cixEncode(forumName)
             val encodedTopic = HtmlUtils.cixEncode(topicName)
             
-            val resultSet = api.getMessages(encodedForum, encodedTopic, since = since)
+            Log.d(tag, "Backfilling $forumName/$topicName using threads.xml")
+            val resultSet = api.getTopicThreads(encodedForum, encodedTopic)
             val rawMessages = resultSet.messages
 
             // Group by message ID to handle duplicates in the same response
@@ -218,8 +214,9 @@ class SyncRepository(
                     author = apiMsg.author?.let { HtmlUtils.decodeHtml(it) } ?: existing?.author ?: "",
                     body = apiMsg.body?.let { HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(it)) } ?: existing?.body ?: "",
                     date = messageDate,
-                    commentId = if (apiMsg.replyTo != 0) apiMsg.replyTo else existing?.commentId ?: 0,
-                    rootId = if (apiMsg.rootId != 0) apiMsg.rootId else existing?.rootId ?: 0,
+                    // For threads.xml backfill, these are roots, so commentId should be 0.
+                    commentId = 0,
+                    rootId = remoteId,
                     topicId = topicId,
                     forumName = forumName,
                     topicName = topicName,
@@ -242,7 +239,7 @@ class SyncRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(tag, "Failed to refresh messages for $forumName/$topicName", e)
+            Log.e(tag, "Failed to backfill for $forumName/$topicName", e)
             throw e
         }
     }
@@ -261,13 +258,13 @@ class SyncRepository(
                     id = HtmlUtils.calculateForumId(normalizedName),
                     name = normalizedName,
                     parentId = -1,
-                    unread = row.unread?.toIntOrNull() ?: 0,
+                    unread = row.effectiveUnread?.toIntOrNull() ?: 0,
                     unreadPriority = row.priority?.toIntOrNull() ?: 0
                 )
             }
             folderDao.insertAll(forums)
 
-            // 3. Refresh Topics and Messages
+            // 3. Refresh Topics and Backfill
             for (forum in forums) {
                 val encodedForumName = HtmlUtils.cixEncode(forum.name)
                 val topicResultSet = api.getUserForumTopics(encodedForumName)
@@ -278,13 +275,13 @@ class SyncRepository(
                         id = HtmlUtils.calculateTopicId(forum.name, normalizedTopicName),
                         name = normalizedTopicName,
                         parentId = forum.id,
-                        unread = result.unread?.toIntOrNull() ?: 0
+                        unread = result.effectiveUnread?.toIntOrNull() ?: 0
                     )
                 }
                 folderDao.insertAll(topics)
                 
                 for (topic in topics) {
-                    refreshMessages(forum.name, topic.name, topic.id)
+                    backfillTopic(forum.name, topic.name, topic.id)
                 }
             }
             
