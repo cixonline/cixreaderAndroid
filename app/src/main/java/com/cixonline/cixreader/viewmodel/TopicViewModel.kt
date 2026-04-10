@@ -222,6 +222,25 @@ class TopicViewModel(
         }
     }
 
+    fun onThreadExpand(rootMsg: CIXMessage) {
+        val currentThreadMessages = messages.value.filter { it.rootId == rootMsg.remoteId }
+        val expectedCount = rootMsg.threadReplies + 1
+        
+        if (rootMsg.threadReplies != -1 && currentThreadMessages.size < expectedCount) {
+            Log.d("TopicViewModel", "Expanding thread #${rootMsg.remoteId}. Cache has ${currentThreadMessages.size}, server says $expectedCount. Fetching thread.xml")
+            viewModelScope.launch {
+                _isLoading.value = true
+                try {
+                    repository.fetchThreadThenBackfill(forumName, topicName, rootMsg.remoteId, topicId)
+                } catch (e: Exception) {
+                    Log.e("TopicViewModel", "Thread expansion fetch failed", e)
+                } finally {
+                    _isLoading.value = false
+                }
+            }
+        }
+    }
+
     suspend fun findNextUnreadItem(currentMessageId: Int?): NextUnreadItem {
         val allMessages = messages.value
         if (allMessages.isEmpty()) return NextUnreadItem.NoMoreUnread

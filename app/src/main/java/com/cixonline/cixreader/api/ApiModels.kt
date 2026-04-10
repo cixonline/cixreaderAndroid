@@ -324,6 +324,9 @@ class MessageApi {
     @SerializedName("Unread")
     @field:Element(name = "Unread", required = false)
     var unread: Boolean = false
+
+    var threadReplies: Int = -1
+    var threadUnread: Int = -1
 }
 
 @Root(name = "ThreadResultSet", strict = false)

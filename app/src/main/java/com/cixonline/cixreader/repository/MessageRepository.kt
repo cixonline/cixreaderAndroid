@@ -116,9 +116,11 @@ class MessageRepository(
                         rootId = thread.rootId
                         replyTo = 0 // threads.xml returns roots
                         unread = thread.unread > 0
+                        threadReplies = thread.replies
+                        threadUnread = thread.unread
                     }
                 }
-                saveMessagesToDb(mappedMessages, forumName, topicName, topicId)
+                saveMessagesToDb(mappedMessages, forumName, topicName, topicId, isFromThreadsXml = true)
             }
             Log.d(tag, "Backfill complete for $forumName/$topicName")
         } catch (e: Exception) {
@@ -130,7 +132,8 @@ class MessageRepository(
         apiMessages: List<MessageApi>, 
         forum: String, 
         topic: String, 
-        topicId: Int
+        topicId: Int,
+        isFromThreadsXml: Boolean = false
     ) {
         val currentMessages = messageDao.getByTopic(topicId).first()
         val existingMessages = currentMessages.associateBy { it.remoteId }
@@ -173,7 +176,9 @@ class MessageRepository(
                 readPending = if (isReadFromServer) false else (existing?.readPending ?: false),
                 postPending = existing?.postPending ?: false,
                 starPending = existing?.starPending ?: false,
-                withdrawPending = existing?.withdrawPending ?: false
+                withdrawPending = existing?.withdrawPending ?: false,
+                threadReplies = if (isFromThreadsXml) apiMsg.threadReplies else (existing?.threadReplies ?: -1),
+                threadUnread = if (isFromThreadsXml) apiMsg.threadUnread else (existing?.threadUnread ?: -1)
             )
         }
         messageDao.insertAll(messagesToInsert)
@@ -289,7 +294,9 @@ class MessageRepository(
                 ignored = existing?.ignored ?: false,
                 postPending = existing?.postPending ?: false,
                 starPending = existing?.starPending ?: false,
-                withdrawPending = existing?.withdrawPending ?: false
+                withdrawPending = existing?.withdrawPending ?: false,
+                threadReplies = existing?.threadReplies ?: -1,
+                threadUnread = existing?.threadUnread ?: -1
             )
             messageDao.insert(message)
 

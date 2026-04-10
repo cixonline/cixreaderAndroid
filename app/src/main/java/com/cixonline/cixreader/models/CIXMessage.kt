@@ -34,7 +34,9 @@ data class CIXMessage(
     val readPending: Boolean = false,
     val postPending: Boolean = false,
     val starPending: Boolean = false,
-    val withdrawPending: Boolean = false
+    val withdrawPending: Boolean = false,
+    val threadReplies: Int = -1,
+    val threadUnread: Int = -1
 ) {
     @Ignore
     var level: Int = 0

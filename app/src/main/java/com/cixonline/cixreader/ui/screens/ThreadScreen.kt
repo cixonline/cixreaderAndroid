@@ -395,9 +395,12 @@ fun ThreadScreen(
                                 } else {
                                     expandedRootIds - rootId
                                 }
-                                if (expanding && !showReplyPane) {
+                                if (expanding) {
                                     messages.find { it.remoteId == rootId }?.let { rootMsg ->
-                                        selectedMessage = rootMsg
+                                        viewModel.onThreadExpand(rootMsg)
+                                        if (!showReplyPane) {
+                                            selectedMessage = rootMsg
+                                        }
                                     }
                                 }
                             },
@@ -434,6 +437,9 @@ fun ThreadScreen(
                                     is NextUnreadItem.Message -> {
                                         selectedMessage = nextItem.message
                                         val rootId = findRootForMessage(nextItem.message, messages)
+                                        if (!expandedRootIds.contains(rootId)) {
+                                            viewModel.onThreadExpand(nextItem.message)
+                                        }
                                         expandedRootIds = expandedRootIds + rootId
                                         showReplyPane = false
                                         replyingToMessage = null
@@ -616,6 +622,8 @@ fun DebugMessageDialog(message: CIXMessage, onDismiss: () -> Unit) {
                 Text("Ignored: ${message.ignored}")
                 Text("Post Pending: ${message.postPending}")
                 Text("Withdraw Pending: ${message.withdrawPending}")
+                Text("Thread Replies (Cached): ${message.threadReplies}")
+                Text("Thread Unread (Cached): ${message.threadUnread}")
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Body length: ${message.body.length}")
             }
@@ -998,14 +1006,17 @@ fun CombinedThreadList(
 
         roots.forEach { root ->
             val tree = buildThreadTree(messages, root.remoteId)
-            val unreadCount = tree.count { it.first.isActuallyUnread }
+            
+            // Use server-provided unread count for roots if available, otherwise fallback to local calculation
+            val unreadCount = if (root.threadUnread > 0) root.threadUnread else tree.count { it.first.isActuallyUnread }
+            val totalCount = if (root.threadReplies > 0) root.threadReplies + 1 else tree.size
 
             if (expandedRootIds.contains(root.remoteId)) {
                 tree.forEach { (msg, depth) ->
                     result.add(ThreadDisplayItem.Expanded(msg, depth, msg.remoteId == selectedMessageId))
                 }
             } else {
-                result.add(ThreadDisplayItem.Collapsed(root, tree.size, unreadCount, root.remoteId == selectedMessageId))
+                result.add(ThreadDisplayItem.Collapsed(root, totalCount, unreadCount, root.remoteId == selectedMessageId))
             }
         }
         result

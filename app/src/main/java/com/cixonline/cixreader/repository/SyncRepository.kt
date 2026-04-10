@@ -116,7 +116,9 @@ class SyncRepository(
                         readPending = if (isReadFromServer) false else (existing?.readPending ?: false),
                         postPending = existing?.postPending ?: false,
                         starPending = existing?.starPending ?: false,
-                        withdrawPending = existing?.withdrawPending ?: false
+                        withdrawPending = existing?.withdrawPending ?: false,
+                        threadReplies = existing?.threadReplies ?: -1,
+                        threadUnread = existing?.threadUnread ?: -1
                     )
                 }
                 
@@ -194,6 +196,8 @@ class SyncRepository(
                     this.rootId = thread.rootId
                     this.replyTo = 0
                     this.unread = thread.unread > 0
+                    this.threadReplies = thread.replies
+                    this.threadUnread = thread.unread
                 }
             }
 
@@ -243,7 +247,9 @@ class SyncRepository(
                     readPending = if (isReadFromServer) false else (existing?.readPending ?: false),
                     postPending = existing?.postPending ?: false,
                     starPending = existing?.starPending ?: false,
-                    withdrawPending = existing?.withdrawPending ?: false
+                    withdrawPending = existing?.withdrawPending ?: false,
+                    threadReplies = apiMsg.threadReplies,
+                    threadUnread = apiMsg.threadUnread
                 )
             }
             
