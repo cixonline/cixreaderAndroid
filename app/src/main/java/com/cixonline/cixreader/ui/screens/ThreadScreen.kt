@@ -177,6 +177,14 @@ fun ThreadScreen(
         }
     }
 
+    // NEW: Collapse all other roots when backfilling completes
+    LaunchedEffect(isBackfilling) {
+        if (!isBackfilling && messages.isNotEmpty() && selectedMessage != null) {
+            val rootId = findRootForMessage(selectedMessage!!, messages)
+            expandedRootIds = setOf(rootId)
+        }
+    }
+
     LaunchedEffect(showReplyPane, replyingToMessage) {
         if (showReplyPane && replyingToMessage != null) {
             initialDraft = viewModel.getDraft(replyingToMessage!!.remoteId)

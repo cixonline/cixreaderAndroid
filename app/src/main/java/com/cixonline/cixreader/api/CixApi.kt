@@ -85,6 +85,12 @@ interface CixApi {
         @Path("topic", encoded = true) topic: String
     ): MessageResultSet
 
+    @GET("forums/{forum}/{topic}/threads.xml")
+    suspend fun getTopicThreadsRaw(
+        @Path("forum", encoded = true) forum: String,
+        @Path("topic", encoded = true) topic: String
+    ): ResponseBody
+
     @GET("forums/{forum}/{topic}/allmessages.xml")
     suspend fun getMessagesRaw(
         @Path("forum", encoded = true) forum: String,

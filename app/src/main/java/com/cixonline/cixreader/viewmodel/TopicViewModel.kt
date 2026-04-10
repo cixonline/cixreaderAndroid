@@ -118,9 +118,20 @@ class TopicViewModel(
                 _isLoading.value = true
                 _error.value = null
                 
-                val currentCount = repository.getMessageCount(topicId)
-                Log.d("TopicViewModel", "Initial cache count: $currentCount")
+                // Log raw threads.xml for debugging
+                viewModelScope.launch {
+                    try {
+                        val encodedForum = HtmlUtils.cixEncode(forumName)
+                        val encodedTopic = HtmlUtils.cixEncode(topicName)
+                        val response = api.getTopicThreadsRaw(encodedForum, encodedTopic)
+                        Log.d("THREADS_XML", response.string())
+                    } catch (e: Exception) {
+                        Log.e("THREADS_XML", "Failed to get raw threads XML", e)
+                    }
+                }
 
+                // 1. App displays any messages from the message cache (via 'messages' Flow)
+                
                 if (initialRootId != 0 || initialMessageId != 0) {
                     repository.fetchMessageAndChildren(
                         forumName,
@@ -129,66 +140,41 @@ class TopicViewModel(
                         topicId
                     )
                 } else {
-                    // Scenario: Entering topic normally or via Next Unread
-                    if (currentCount == 0) {
-                        Log.d("TopicViewModel", "Cache empty. Fetching last 30 days.")
-                        val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
-                        val since = DateUtils.formatApiDate(thirtyDaysAgo)
-                        repository.refreshMessages(forumName, topicName, topicId, sinceOverride = since)
-                    } else {
-                        Log.d("TopicViewModel", "Cache exists. Refreshing for latest.")
-                        repository.refreshMessages(forumName, topicName, topicId)
-                    }
+                    // 2. Backfill root messages using the threads.xml command
+                    repository.backfillToMessageOne(forumName, topicName, topicId)
 
-                    // Look for oldest unread
+                    // 3. Refresh for latest messages
+                    repository.refreshMessages(forumName, topicName, topicId)
+
+                    // 4. Determine landing message (oldest unread or latest)
                     var targetMessage = repository.getOldestUnreadInTopic(topicId)
                     
                     if (targetMessage == null) {
-                        Log.d("TopicViewModel", "No unread found. Checking firstunread API.")
+                        Log.d("TopicViewModel", "No unread found locally. Checking firstunread API.")
                         val serverFirstUnreadId = repository.getFirstUnreadMessageId(forumName, topicName)
                         if (serverFirstUnreadId > 0) {
-                            // Fetch specific message metadata to get its unread status properly cached
                             repository.fetchMessageAndChildren(forumName, topicName, serverFirstUnreadId, topicId)
                             targetMessage = repository.getMessagesForTopic(topicId).first().find { it.remoteId == serverFirstUnreadId }
                         }
                     }
 
                     if (targetMessage == null) {
-                        Log.d("TopicViewModel", "Still no unread found. Fallback to most recent thread.")
-                        // If we still have no messages (e.g. 30-day fetch returned nothing), get absolute latest
-                        if (repository.getMessageCount(topicId) == 0) {
-                            repository.refreshMessages(forumName, topicName, topicId)
-                        }
-
-                        val allMsgs = repository.getMessagesForTopic(topicId).first()
-                        targetMessage = allMsgs.maxByOrNull { it.date }
+                        targetMessage = repository.getLatestMessageInTopic(topicId)
                     }
 
                     if (targetMessage != null) {
-                        Log.d("TopicViewModel", "Landing on message #${targetMessage.remoteId}. Fetching thread.")
+                        Log.d("TopicViewModel", "Landing on message #${targetMessage.remoteId}. Ensuring thread is loaded.")
                         repository.fetchThreadThenBackfill(forumName, topicName, targetMessage.remoteId, topicId)
                         if (_scrollToMessageId.value == null) {
                             _scrollToMessageId.value = targetMessage.remoteId
                         }
-                    } else {
-                        Log.d("TopicViewModel", "No messages found in topic at all.")
-                    }
-                }
-
-                // Background task: Backfill to message 1
-                viewModelScope.launch {
-                    _isBackfilling.value = true
-                    try {
-                        repository.backfillToMessageOne(forumName, topicName, topicId)
-                    } finally {
-                        _isBackfilling.value = false
                     }
                 }
 
             } catch (e: Exception) {
                 Log.e("TopicViewModel", "Init failed for $forumName/$topicName", e)
                 if (isOfflineError(e) && repository.getMessageCount(topicId) == 0) {
-                    _error.value = "No Messages found in the cache. You are offline, go online for content and drag down to refresh this topic"
+                    _error.value = "No Messages found in the cache. You are offline, go online for content"
                 } else {
                     _error.value = "Failed to load messages: ${e.message}"
                 }

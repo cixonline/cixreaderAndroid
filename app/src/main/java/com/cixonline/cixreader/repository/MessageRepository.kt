@@ -103,7 +103,7 @@ class MessageRepository(
 
             if (resultSet.messages.isNotEmpty()) {
                 Log.d(tag, "Backfill fetched ${resultSet.messages.size} roots for $forum/$topic")
-                saveMessagesToDb(resultSet.messages, forum, topic, topicId, isRootOnly = true)
+                saveMessagesToDb(resultSet.messages, forum, topic, topicId)
             }
             Log.d(tag, "Backfill complete for $forum/$topic")
         } catch (e: Exception) {
@@ -115,8 +115,7 @@ class MessageRepository(
         apiMessages: List<MessageApi>, 
         forum: String, 
         topic: String, 
-        topicId: Int,
-        isRootOnly: Boolean = false
+        topicId: Int
     ) {
         val currentMessages = messageDao.getByTopic(topicId).first()
         val existingMessages = currentMessages.associateBy { it.remoteId }
@@ -145,8 +144,8 @@ class MessageRepository(
                 author = HtmlUtils.decodeHtml(apiMsg.author ?: ""),
                 body = HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(apiMsg.body ?: "")),
                 date = messageDate,
-                commentId = if (isRootOnly) 0 else apiMsg.replyTo,
-                rootId = if (isRootOnly) apiMsg.id else (if (apiMsg.rootId != 0) apiMsg.rootId else (if (apiMsg.replyTo == 0) apiMsg.id else (existing?.rootId ?: 0))),
+                commentId = apiMsg.replyTo,
+                rootId = if (apiMsg.rootId != 0) apiMsg.rootId else (if (apiMsg.replyTo == 0) apiMsg.id else (existing?.rootId ?: 0)),
                 topicId = topicId,
                 forumName = forum,
                 topicName = topic,
