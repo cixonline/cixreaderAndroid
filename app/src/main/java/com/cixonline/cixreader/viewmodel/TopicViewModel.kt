@@ -118,18 +118,6 @@ class TopicViewModel(
                 _isLoading.value = true
                 _error.value = null
                 
-                // Log raw threads.xml for debugging
-                viewModelScope.launch {
-                    try {
-                        val encodedForum = HtmlUtils.cixEncode(forumName)
-                        val encodedTopic = HtmlUtils.cixEncode(topicName)
-                        val response = api.getTopicThreadsRaw(encodedForum, encodedTopic)
-                        Log.d("THREADS_XML", response.string())
-                    } catch (e: Exception) {
-                        Log.e("THREADS_XML", "Failed to get raw threads XML", e)
-                    }
-                }
-
                 // 1. App displays any messages from the message cache (via 'messages' Flow)
                 
                 if (initialRootId != 0 || initialMessageId != 0) {
