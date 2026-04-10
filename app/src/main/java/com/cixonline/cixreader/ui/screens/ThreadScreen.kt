@@ -1016,7 +1016,7 @@ fun CombinedThreadList(
                     result.add(ThreadDisplayItem.Expanded(msg, depth, msg.remoteId == selectedMessageId))
                 }
             } else {
-                result.add(ThreadDisplayItem.Collapsed(root, totalCount, unreadCount, root.remoteId == selectedMessageId))
+                result.add(ThreadDisplayItem.Collapsed(root, totalCount-1, unreadCount, root.remoteId == selectedMessageId))
             }
         }
         result
