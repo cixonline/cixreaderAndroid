@@ -326,6 +326,55 @@ class MessageApi {
     var unread: Boolean = false
 }
 
+@Root(name = "ThreadResultSet", strict = false)
+@Namespace(reference = "http://cixonline.com")
+class ThreadResultSet {
+    @field:Attribute(name = "Count", required = false)
+    var count: String? = null
+
+    @field:Attribute(name = "Start", required = false)
+    var start: String? = null
+
+    @field:ElementList(name = "Threads", entry = "Thread", inline = false, required = false)
+    var threads: List<ThreadApi> = mutableListOf()
+}
+
+@Root(name = "Thread", strict = false)
+class ThreadApi {
+    @field:Element(name = "ID", required = false)
+    var id: Int = 0
+
+    @field:Element(name = "Author", required = false)
+    var author: String? = null
+
+    @field:Element(name = "Body", required = false)
+    var body: String? = null
+
+    @field:Element(name = "Date", required = false)
+    var date: String? = null
+
+    @field:Element(name = "Forum", required = false)
+    var forum: String? = null
+
+    @field:Element(name = "Topic", required = false)
+    var topic: String? = null
+
+    @field:Element(name = "RootID", required = false)
+    var rootId: Int = 0
+
+    @field:Element(name = "Replies", required = false)
+    var replies: Int = 0
+
+    @field:Element(name = "Unread", required = false)
+    var unread: Int = 0
+
+    @field:Element(name = "Priority", required = false)
+    var priority: Boolean = false
+
+    @field:Element(name = "Starred", required = false)
+    var starred: Boolean = false
+}
+
 data class PostAttachment(
     @SerializedName("Filename")
     var filename: String = "",

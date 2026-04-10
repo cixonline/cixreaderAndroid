@@ -60,54 +60,69 @@ class MessageRepository(
         folderDao.recalculateForumUnreadCounts()
     }
 
-    suspend fun refreshMessages(forum: String, topic: String, topicId: Int, force: Boolean = false, sinceOverride: String? = null) = withContext(Dispatchers.IO) {
+    suspend fun refreshMessages(forumName: String, topicName: String, topicId: Int, force: Boolean = false, sinceOverride: String? = null) = withContext(Dispatchers.IO) {
         try {
-            val encodedForum = HtmlUtils.cixEncode(forum)
-            val encodedTopic = HtmlUtils.cixEncode(topic)
+            val encodedForum = HtmlUtils.cixEncode(forumName)
+            val encodedTopic = HtmlUtils.cixEncode(topicName)
             
             val latestMessage = messageDao.getLatestMessage(topicId)
             val since = sinceOverride ?: if (force || latestMessage == null) null else DateUtils.formatApiDate(latestMessage.date)
 
-            Log.d(tag, "Refreshing messages for $forum/$topic. Since: $since")
+            Log.d(tag, "Refreshing messages for $forumName/$topicName. Since: $since")
             val resultSet = api.getMessages(encodedForum, encodedTopic, since = since)
             val apiMessages = resultSet.messages
             
             if (apiMessages.isNotEmpty()) {
-                Log.d(tag, "Fetched ${apiMessages.size} messages for $forum/$topic")
-                saveMessagesToDb(apiMessages, forum, topic, topicId)
+                Log.d(tag, "Fetched ${apiMessages.size} messages for $forumName/$topicName")
+                saveMessagesToDb(apiMessages, forumName, topicName, topicId)
             } else {
-                Log.d(tag, "No new messages for $forum/$topic")
+                Log.d(tag, "No new messages for $forumName/$topicName")
             }
         } catch (e: Exception) {
             if (e.message?.contains("not a member", ignoreCase = true) == true) {
-                throw NotAMemberException(forum)
+                throw NotAMemberException(forumName)
             }
             Log.e(tag, "Refresh messages failed", e)
             throw e
         }
     }
 
-    suspend fun backfillToMessageOne(forum: String, topic: String, topicId: Int) = withContext(Dispatchers.IO) {
+    suspend fun backfillToMessageOne(forumName: String, topicName: String, topicId: Int) = withContext(Dispatchers.IO) {
         try {
             val oldestLocal = messageDao.getOldestMessage(topicId)
             if (oldestLocal != null && oldestLocal.remoteId <= 1) {
-                Log.d(tag, "Already have message 1 for $forum/$topic")
+                Log.d(tag, "Already have message 1 for $forumName/$topicName")
                 return@withContext
             }
 
-            val encodedForum = HtmlUtils.cixEncode(forum)
-            val encodedTopic = HtmlUtils.cixEncode(topic)
+            val encodedForum = HtmlUtils.cixEncode(forumName)
+            val encodedTopic = HtmlUtils.cixEncode(topicName)
 
-            Log.d(tag, "Backfilling $forum/$topic using threads.xml")
+            Log.d(tag, "Backfilling $forumName/$topicName using threads.xml")
             val resultSet = api.getTopicThreads(encodedForum, encodedTopic)
 
-            if (resultSet.messages.isNotEmpty()) {
-                Log.d(tag, "Backfill fetched ${resultSet.messages.size} roots for $forum/$topic")
-                saveMessagesToDb(resultSet.messages, forum, topic, topicId)
+            if (resultSet.threads.isNotEmpty()) {
+                Log.d(tag, "Backfill fetched ${resultSet.threads.size} roots for $forumName/$topicName")
+                
+                // Convert ThreadApi to MessageApi to reuse saveMessagesToDb
+                val mappedMessages = resultSet.threads.map { thread ->
+                    MessageApi().apply {
+                        id = thread.id
+                        author = thread.author
+                        body = thread.body
+                        dateTime = thread.date
+                        forum = thread.forum
+                        topic = thread.topic
+                        rootId = thread.rootId
+                        replyTo = 0 // threads.xml returns roots
+                        unread = thread.unread > 0
+                    }
+                }
+                saveMessagesToDb(mappedMessages, forumName, topicName, topicId)
             }
-            Log.d(tag, "Backfill complete for $forum/$topic")
+            Log.d(tag, "Backfill complete for $forumName/$topicName")
         } catch (e: Exception) {
-            Log.e(tag, "Backfill failed for $forum/$topic", e)
+            Log.e(tag, "Backfill failed for $forumName/$topicName", e)
         }
     }
 

@@ -174,17 +174,31 @@ class SyncRepository(
         }
     }
 
-    private suspend fun backfillTopic(forumName: String, topicName: String, topicId: Int) {
+    private suspend fun backfillTopic(forumName: String, topicName: String, topicId: Int) = withContext(Dispatchers.IO) {
         try {
             val encodedForum = HtmlUtils.cixEncode(forumName)
             val encodedTopic = HtmlUtils.cixEncode(topicName)
             
             Log.d(tag, "Backfilling $forumName/$topicName using threads.xml")
             val resultSet = api.getTopicThreads(encodedForum, encodedTopic)
-            val rawMessages = resultSet.messages
+            
+            // Map ThreadApi to MessageApi to reuse logic
+            val mappedMessages = resultSet.threads.map { thread ->
+                MessageApi().apply {
+                    this.id = thread.id
+                    this.author = thread.author
+                    this.body = thread.body
+                    this.dateTime = thread.date
+                    this.forum = forumName
+                    this.topic = topicName
+                    this.rootId = thread.rootId
+                    this.replyTo = 0
+                    this.unread = thread.unread > 0
+                }
+            }
 
             // Group by message ID to handle duplicates in the same response
-            val groupedMessages = rawMessages.groupBy { it.id }
+            val groupedMessages = mappedMessages.groupBy { it.id }
 
             val messages = groupedMessages.map { (remoteId, apiMsgs) ->
                 // Use the last message in the group for other fields
