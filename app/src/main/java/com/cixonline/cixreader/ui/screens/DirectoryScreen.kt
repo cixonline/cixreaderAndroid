@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
@@ -50,7 +51,9 @@ fun DirectoryScreen(
     val joinedForumNames by viewModel.joinedForumNames.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
-    
+    val categories by viewModel.categories.collectAsState()
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
+
     var isSearching by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showVersionDialog by remember { mutableStateOf(false) }
@@ -58,17 +61,8 @@ fun DirectoryScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    val filteredForums = remember(forums, searchQuery) {
-        val sorted = forums.sortedBy { it.forum?.lowercase() ?: "" }
-        if (searchQuery.isBlank()) {
-            sorted
-        } else {
-            sorted.filter { 
-                it.forum?.contains(searchQuery, ignoreCase = true) == true || 
-                it.title?.contains(searchQuery, ignoreCase = true) == true 
-            }
-        }
-    }
+    // Forums are already sorted and filtered by ViewModel
+    val filteredForums = forums
 
     val alphabet = remember(filteredForums) {
         filteredForums.mapNotNull { 
@@ -203,69 +197,115 @@ fun DirectoryScreen(
             )
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isLoading && forums.isEmpty()) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            } else {
-                Row(modifier = Modifier.fillMaxSize()) {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        items(filteredForums) { forum ->
-                            val isJoined = joinedForumNames.contains(forum.forum)
-                            ForumDirectoryItem(
-                                forum = forum,
-                                isJoined = isJoined,
-                                onJoinClick = {
-                                    viewModel.joinForum(forum.forum ?: "") { success ->
-                                        if (success) {
-                                            onForumJoined(forum.forum ?: "")
-                                        }
-                                    }
-                                },
-                                onViewClick = {
-                                    onForumJoined(forum.forum ?: "")
-                                }
-                            )
-                            HorizontalDivider()
-                        }
-                    }
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // Horizontal Category List with Fixed "All" category
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Fixed "All" category
+                FilterChip(
+                    selected = selectedCategory == "All",
+                    onClick = { viewModel.selectCategory("All") },
+                    label = { Text("All") },
+                    modifier = Modifier.padding(start = 16.dp, end = 8.dp)
+                )
+                
+                // Vertical divider
+                Box(modifier = Modifier.width(1.dp).height(32.dp).background(MaterialTheme.colorScheme.outlineVariant))
 
-                    // Alphabet Index
-                    if (alphabet.isNotEmpty()) {
-                        Column(
-                            modifier = Modifier
-                                .width(24.dp)
-                                .fillMaxHeight()
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                                .padding(vertical = 4.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.SpaceEvenly
+                // Scrollable other categories
+                val otherCategories = remember(categories) { categories.filter { it != "All" } }
+                LazyRow(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(otherCategories) { category ->
+                        FilterChip(
+                            selected = selectedCategory == category,
+                            onClick = { viewModel.selectCategory(category) },
+                            label = { Text(category) }
+                        )
+                    }
+                }
+            }
+
+            Box(modifier = Modifier.weight(1f)) {
+                if (isLoading && forums.isEmpty()) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                } else {
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.weight(1f)
                         ) {
-                            alphabet.forEach { char ->
-                                Text(
-                                    text = char.toString(),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            val index = filteredForums.indexOfFirst { 
-                                                it.forum?.startsWith(char, ignoreCase = true) == true
+                            items(filteredForums) { forum ->
+                                val isJoined = joinedForumNames.contains(forum.forum)
+                                ForumDirectoryItem(
+                                    forum = forum,
+                                    isJoined = isJoined,
+                                    onJoinClick = {
+                                        viewModel.joinForum(forum.forum ?: "") { success ->
+                                            if (success) {
+                                                onForumJoined(forum.forum ?: "")
                                             }
-                                            if (index != -1) {
-                                                scope.launch {
-                                                    listState.scrollToItem(index)
-                                                }
-                                            }
-                                        },
-                                    textAlign = TextAlign.Center
+                                        }
+                                    },
+                                    onViewClick = {
+                                        onForumJoined(forum.forum ?: "")
+                                    }
                                 )
+                                HorizontalDivider()
+                            }
+                        }
+
+                        // Alphabet Index
+                        if (alphabet.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier
+                                    .width(24.dp)
+                                    .fillMaxHeight()
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                                    .padding(vertical = 4.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                alphabet.forEach { char ->
+                                    Text(
+                                        text = char.toString(),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                val index = filteredForums.indexOfFirst {
+                                                    it.forum?.startsWith(char, ignoreCase = true) == true
+                                                }
+                                                if (index != -1) {
+                                                    scope.launch {
+                                                        listState.scrollToItem(index)
+                                                    }
+                                                }
+                                            },
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
                             }
                         }
                     }
+                }
+
+                if (isLoading && forums.isNotEmpty()) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.TopCenter)
+                    )
                 }
             }
         }

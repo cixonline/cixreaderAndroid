@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.cixonline.cixreader.models.*
 
-@Database(entities = [Folder::class, CIXMessage::class, DirForum::class, CachedProfile::class, Draft::class, LogEntry::class], version = 12, exportSchema = false)
+@Database(entities = [Folder::class, CIXMessage::class, DirForum::class, CachedProfile::class, Draft::class, LogEntry::class], version = 13, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun folderDao(): FolderDao

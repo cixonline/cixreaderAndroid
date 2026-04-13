@@ -5,8 +5,7 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "dir_forums")
 data class DirForum(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val name: String,
+    @PrimaryKey val name: String,
     val title: String,
     val description: String? = null,
     val type: String? = null,

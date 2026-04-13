@@ -22,9 +22,6 @@ class DirectoryViewModel(
     private val folderDao: FolderDao
 ) : ViewModel() {
 
-    private val _forums = MutableStateFlow<List<DirListing>>(emptyList())
-    val forums: StateFlow<List<DirListing>> = _forums
-
     private val _joinedForumNames = MutableStateFlow<Set<String>>(emptySet())
     val joinedForumNames: StateFlow<Set<String>> = _joinedForumNames
 
@@ -34,11 +31,38 @@ class DirectoryViewModel(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
 
+    private val _categories = MutableStateFlow<List<String>>(listOf("All"))
+    val categories: StateFlow<List<String>> = _categories
+
+    private val _selectedCategory = MutableStateFlow("All")
+    val selectedCategory: StateFlow<String> = _selectedCategory
+
+    val forums: StateFlow<List<DirListing>> = combine(
+        dirForumDao.getAll(),
+        _selectedCategory,
+        _searchQuery
+    ) { dbForums, category, query ->
+        val listings = dbForums.map { it.toDirListing() }
+        val filteredByCategory = if (category == "All") {
+            listings
+        } else {
+            listings.filter { it.cat?.trim()?.equals(category, ignoreCase = true) == true }
+        }
+
+        if (query.isBlank()) {
+            filteredByCategory
+        } else {
+            filteredByCategory.filter {
+                it.forum?.contains(query, ignoreCase = true) == true ||
+                it.title?.contains(query, ignoreCase = true) == true
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     init {
         // Observe joined forums
         viewModelScope.launch {
             folderDao.getAll().collectLatest { folders ->
-                // Filter only root folders (forums) and get their names
                 _joinedForumNames.value = folders
                     .filter { it.parentId == -1 }
                     .map { it.name }
@@ -46,12 +70,11 @@ class DirectoryViewModel(
             }
         }
 
-        // Observe database and load from it first
+        // Load categories from existing data in DB
         viewModelScope.launch {
-            dirForumDao.getAll().collectLatest { dbForums ->
-                if (dbForums.isNotEmpty()) {
-                    _forums.value = dbForums.map { it.toDirListing() }
-                }
+            dirForumDao.getAll().take(1).collect { dbForums ->
+                val cats = dbForums.mapNotNull { it.category?.trim() }.filter { it.isNotEmpty() }.distinct().sorted()
+                _categories.value = listOf("All") + cats
             }
         }
         
@@ -80,34 +103,40 @@ class DirectoryViewModel(
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val categories = api.getCategories().categories
-                val allForums = mutableListOf<DirListing>()
-                for (category in categories) {
-                    val catName = category.name ?: continue
-                    if (catName.contains("Un-Categorised", ignoreCase = true)) continue
+                val categoriesResult = api.getCategories().categories
+                val catNames = categoriesResult.mapNotNull { it.name?.trim() }
+                    .filter { it.isNotEmpty() && !it.contains("Un-Categorised", ignoreCase = true) }
+                    .distinct()
+                    .sorted()
+                
+                _categories.value = listOf("All") + catNames
 
+                var firstCategory = true
+
+                for (catName in catNames) {
                     val encodedCatName = HtmlUtils.cixCategoryEncode(catName)
                     
                     try {
                         val listings = api.getForumsInCategory(encodedCatName).forums
                         val decodedListings = listings.map { listing ->
                             listing.copy(
-                                forum = HtmlUtils.decodeHtml(listing.forum),
-                                title = HtmlUtils.decodeHtml(listing.title),
-                                cat = HtmlUtils.decodeHtml(listing.cat),
-                                sub = HtmlUtils.decodeHtml(listing.sub)
+                                forum = HtmlUtils.decodeHtml(listing.forum).trim(),
+                                title = HtmlUtils.decodeHtml(listing.title).trim(),
+                                cat = HtmlUtils.decodeHtml(listing.cat).trim(),
+                                sub = HtmlUtils.decodeHtml(listing.sub).trim()
                             )
+                        }.filter { !it.forum.isNullOrEmpty() }
+                        
+                        if (firstCategory) {
+                            dirForumDao.deleteAll()
+                            firstCategory = false
                         }
-                        allForums.addAll(decodedListings)
+
+                        // Room REPLACE strategy handles duplicates if multiple categories contain the same forum
+                        dirForumDao.insertAll(decodedListings.map { it.toDirForum() })
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
-                }
-                
-                val distinctForums = allForums.distinctBy { it.forum }
-                if (distinctForums.isNotEmpty()) {
-                    dirForumDao.deleteAll()
-                    dirForumDao.insertAll(distinctForums.map { it.toDirForum() })
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -119,12 +148,12 @@ class DirectoryViewModel(
 
     private fun DirListing.toDirForum(): DirForum {
         return DirForum(
-            name = this.forum ?: "",
-            title = this.title ?: "",
-            description = this.title ?: "", // Use title as description if description is null
+            name = (this.forum ?: "").trim(),
+            title = (this.title ?: "").trim(),
+            description = (this.title ?: "").trim(),
             type = this.type,
-            category = this.cat,
-            subCategory = this.sub,
+            category = this.cat?.trim(),
+            subCategory = this.sub?.trim(),
             recent = this.recent
         )
     }
@@ -142,6 +171,10 @@ class DirectoryViewModel(
 
     fun onSearchQueryChange(query: String) {
         _searchQuery.value = query
+    }
+
+    fun selectCategory(category: String) {
+        _selectedCategory.value = category
     }
 
     fun joinForum(forumName: String, onResult: (Boolean) -> Unit) {
