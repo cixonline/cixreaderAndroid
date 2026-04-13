@@ -220,7 +220,7 @@ fun WelcomeScreen(
                                                     thread.topic,
                                                     HtmlUtils.calculateTopicId(thread.forum, thread.topic),
                                                     thread.rootId,
-                                                    thread.rootId
+                                                    thread.msgId
                                                 )
                                             }
                                             is JoinResult.LimitReached -> {
@@ -268,6 +268,7 @@ fun WelcomeScreen(
                                             forum = firstUnread.forumName,
                                             topic = firstUnread.topicName,
                                             rootId = firstUnread.rootId,
+                                            msgId = firstUnread.remoteId,
                                             author = firstUnread.author,
                                             dateTime = DateUtils.formatDateTime(firstUnread.date),
                                             body = firstUnread.body,
@@ -288,7 +289,7 @@ fun WelcomeScreen(
                                             firstThread.topic,
                                             HtmlUtils.calculateTopicId(firstThread.forum, firstThread.topic),
                                             firstThread.rootId,
-                                            firstThread.rootId
+                                            firstThread.msgId
                                         )
                                     }
                                     is JoinResult.LimitReached -> {
@@ -433,7 +434,7 @@ fun WelcomeScreen(
                                                             targetThread.topic,
                                                             HtmlUtils.calculateTopicId(targetThread.forum, targetThread.topic),
                                                             targetThread.rootId,
-                                                            targetThread.rootId
+                                                            targetThread.msgId
                                                         )
                                                     }
                                                     else -> snackbarHostState.showSnackbar("Failed to join ${targetThread.forum} after resigning")

@@ -69,6 +69,9 @@ class MessageRepository(
             val since = sinceOverride ?: if (force || latestMessage == null) null else DateUtils.formatApiDate(latestMessage.date)
 
             Log.d(tag, "Refreshing messages for $forumName/$topicName. Since: $since")
+            
+            // The app shouldn't need to call the allmessages.xml API call anymore.
+            /*
             val resultSet = api.getMessages(encodedForum, encodedTopic, since = since)
             val apiMessages = resultSet.messages
             
@@ -78,6 +81,7 @@ class MessageRepository(
             } else {
                 Log.d(tag, "No new messages for $forumName/$topicName")
             }
+            */
         } catch (e: Exception) {
             if (e.message?.contains("not a member", ignoreCase = true) == true) {
                 throw NotAMemberException(forumName)
@@ -195,9 +199,6 @@ class MessageRepository(
             if (threadSet.messages.isNotEmpty()) {
                 saveMessagesToDb(threadSet.messages, forum, topic, topicId)
             }
-
-            refreshMessages(forum, topic, topicId)
-            
         } catch (e: Exception) {
             Log.e(tag, "fetchThreadThenBackfill failed for $msgId", e)
         }
@@ -299,9 +300,6 @@ class MessageRepository(
                 threadUnread = existing?.threadUnread ?: -1
             )
             messageDao.insert(message)
-
-            refreshMessages(forum, topic, topicId)
-            
         } catch (e: Exception) {
             Log.e(tag, "fetchMessageAndChildren failed for $msgId", e)
         }

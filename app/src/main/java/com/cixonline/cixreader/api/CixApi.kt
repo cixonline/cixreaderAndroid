@@ -72,13 +72,6 @@ interface CixApi {
         @Path("msgid") msgId: Int
     ): MessageResultSet
 
-    @GET("forums/{forum}/{topic}/allmessages.xml")
-    suspend fun getMessages(
-        @Path("forum", encoded = true) forum: String,
-        @Path("topic", encoded = true) topic: String,
-        @Query("since") since: String? = null
-    ): MessageResultSet
-
     @GET("forums/{forum}/{topic}/threads.xml")
     suspend fun getTopicThreads(
         @Path("forum", encoded = true) forum: String,
@@ -89,13 +82,6 @@ interface CixApi {
     suspend fun getTopicThreadsRaw(
         @Path("forum", encoded = true) forum: String,
         @Path("topic", encoded = true) topic: String
-    ): ResponseBody
-
-    @GET("forums/{forum}/{topic}/allmessages.xml")
-    suspend fun getMessagesRaw(
-        @Path("forum", encoded = true) forum: String,
-        @Path("topic", encoded = true) topic: String,
-        @Query("since") since: String? = null
     ): ResponseBody
 
     @GET("forums/{forum}/{topic}/firstunread.xml")

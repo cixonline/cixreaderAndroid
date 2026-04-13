@@ -118,24 +118,42 @@ class TopicViewModel(
                 _isLoading.value = true
                 _error.value = null
                 
-                // 1. App displays any messages from the message cache (via 'messages' Flow)
-                
-                if (initialRootId != 0 || initialMessageId != 0) {
-                    repository.fetchMessageAndChildren(
-                        forumName,
-                        topicName,
-                        if (initialRootId != 0) initialRootId else initialMessageId,
-                        topicId
-                    )
-                } else {
-                    // 2. Backfill root messages using the threads.xml command
-                    repository.backfillToMessageOne(forumName, topicName, topicId)
+                var targetMessage: CIXMessage? = null
 
-                    // 3. Refresh for latest messages
-                    repository.refreshMessages(forumName, topicName, topicId)
+                if (initialMessageId != 0 || initialRootId != 0) {
+                    val msgToFetch = if (initialMessageId != 0) initialMessageId else initialRootId
+                    
+                    targetMessage = repository.getMessagesForTopic(topicId).first().find { it.remoteId == msgToFetch }
+                    if (targetMessage == null) {
+                        repository.fetchMessageAndChildren(forumName, topicName, msgToFetch, topicId)
+                        targetMessage = repository.getMessagesForTopic(topicId).first().find { it.remoteId == msgToFetch }
+                    }
 
-                    // 4. Determine landing message (oldest unread or latest)
-                    var targetMessage = repository.getOldestUnreadInTopic(topicId)
+                    if (targetMessage != null) {
+                        val rootId = if (targetMessage.rootId != 0) targetMessage.rootId else targetMessage.remoteId
+                        val rootMsg = repository.getMessagesForTopic(topicId).first().find { it.remoteId == rootId }
+                        
+                        val currentCount = countThreadMessages(repository.getMessagesForTopic(topicId).first(), rootId)
+                        val expectedCount = if (rootMsg != null && rootMsg.threadReplies != -1) rootMsg.threadReplies + 1 else Int.MAX_VALUE
+
+                        if (currentCount < expectedCount) {
+                            Log.d("TopicViewModel", "Landing on message #${targetMessage.remoteId}. Fetching thread.xml")
+                            repository.fetchThreadThenBackfill(forumName, topicName, rootId, topicId)
+                        }
+                        if (_scrollToMessageId.value == null) {
+                            _scrollToMessageId.value = targetMessage.remoteId
+                        }
+                    }
+                }
+
+                // After handling initial direct linking (if any), populate the rest of the topic
+                _isBackfilling.value = true
+                repository.backfillToMessageOne(forumName, topicName, topicId)
+                repository.refreshMessages(forumName, topicName, topicId)
+                _isBackfilling.value = false
+
+                if (initialMessageId == 0 && initialRootId == 0) {
+                    targetMessage = repository.getOldestUnreadInTopic(topicId)
                     
                     if (targetMessage == null) {
                         Log.d("TopicViewModel", "No unread found locally. Checking firstunread API.")
@@ -152,7 +170,15 @@ class TopicViewModel(
 
                     if (targetMessage != null) {
                         Log.d("TopicViewModel", "Landing on message #${targetMessage.remoteId}. Ensuring thread is loaded.")
-                        repository.fetchThreadThenBackfill(forumName, topicName, targetMessage.remoteId, topicId)
+                        val rootId = if (targetMessage.rootId != 0) targetMessage.rootId else targetMessage.remoteId
+                        val rootMsg = repository.getMessagesForTopic(topicId).first().find { it.remoteId == rootId }
+                        
+                        val currentCount = countThreadMessages(repository.getMessagesForTopic(topicId).first(), rootId)
+                        val expectedCount = if (rootMsg != null && rootMsg.threadReplies != -1) rootMsg.threadReplies + 1 else Int.MAX_VALUE
+
+                        if (currentCount < expectedCount) {
+                            repository.fetchThreadThenBackfill(forumName, topicName, rootId, topicId)
+                        }
                         if (_scrollToMessageId.value == null) {
                             _scrollToMessageId.value = targetMessage.remoteId
                         }
@@ -168,6 +194,7 @@ class TopicViewModel(
                 }
             } finally {
                 _isLoading.value = false
+                _isBackfilling.value = false
             }
         }
     }
@@ -210,12 +237,25 @@ class TopicViewModel(
         }
     }
 
+    private fun countThreadMessages(allMessages: List<CIXMessage>, startId: Int): Int {
+        val children = allMessages.groupBy { it.commentId }
+        var count = 0
+        fun walk(mId: Int) {
+            count++
+            children[mId]?.forEach { walk(it.remoteId) }
+        }
+        if (allMessages.any { it.remoteId == startId }) {
+            walk(startId)
+        }
+        return count
+    }
+
     fun onThreadExpand(rootMsg: CIXMessage) {
-        val currentThreadMessages = messages.value.filter { it.rootId == rootMsg.remoteId }
+        val currentCount = countThreadMessages(messages.value, rootMsg.remoteId)
         val expectedCount = rootMsg.threadReplies + 1
         
-        if (rootMsg.threadReplies != -1 && currentThreadMessages.size < expectedCount) {
-            Log.d("TopicViewModel", "Expanding thread #${rootMsg.remoteId}. Cache has ${currentThreadMessages.size}, server says $expectedCount. Fetching thread.xml")
+        if (rootMsg.threadReplies != -1 && currentCount < expectedCount) {
+            Log.d("TopicViewModel", "Expanding thread #${rootMsg.remoteId}. Cache has $currentCount, server says $expectedCount. Fetching thread.xml")
             viewModelScope.launch {
                 _isLoading.value = true
                 try {
@@ -518,7 +558,7 @@ class TopicViewModel(
         try {
             val encodedForum = HtmlUtils.cixEncode(forumName)
             val encodedTopic = HtmlUtils.cixEncode(topicName)
-            val response = api.getMessagesRaw(encodedForum, encodedTopic)
+            val response = api.getTopicThreadsRaw(encodedForum, encodedTopic)
             Log.d("RAW_XML", response.string())
         } catch (e: Exception) {
             Log.e("RAW_XML", "Failed to get raw XML", e)

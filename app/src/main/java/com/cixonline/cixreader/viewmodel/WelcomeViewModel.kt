@@ -35,6 +35,7 @@ data class InterestingThreadUI(
     val forum: String,
     val topic: String,
     val rootId: Int,
+    val msgId: Int,
     val author: String,
     val dateTime: String,
     val body: String?,
@@ -108,6 +109,7 @@ class WelcomeViewModel(
                             forum = msg.forumName,
                             topic = msg.topicName,
                             rootId = msg.remoteId,
+                            msgId = msg.remoteId,
                             author = msg.author,
                             dateTime = DateUtils.formatDateTime(msg.date),
                             body = msg.body,
@@ -365,7 +367,7 @@ class WelcomeViewModel(
 
                         if (rootId == 0) {
                             return@async InterestingThreadUI(
-                                forum, topic, 0, 
+                                forum, topic, 0, thread.id,
                                 HtmlUtils.decodeHtml(thread.author ?: ""), 
                                 DateUtils.formatCixDate(thread.dateTime), 
                                 HtmlUtils.decodeHtml(thread.body ?: ""), 
@@ -406,7 +408,7 @@ class WelcomeViewModel(
                         
                         if (cachedRoot != null) {
                             InterestingThreadUI(
-                                forum, topic, rootId, 
+                                forum, topic, rootId, thread.id,
                                 cachedRoot.author, 
                                 DateUtils.formatDateTime(cachedRoot.date), 
                                 cachedRoot.body, 
@@ -415,7 +417,7 @@ class WelcomeViewModel(
                             )
                         } else {
                             InterestingThreadUI(
-                                forum, topic, rootId, 
+                                forum, topic, rootId, thread.id,
                                 HtmlUtils.decodeHtml(thread.author ?: ""), 
                                 DateUtils.formatCixDate(thread.dateTime), 
                                 HtmlUtils.decodeHtml(thread.body ?: ""), 
