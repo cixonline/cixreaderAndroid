@@ -9,11 +9,14 @@ interface LogDao {
     @Insert
     suspend fun insert(entry: LogEntry)
 
-    @Query("SELECT * FROM activity_log ORDER BY timestamp DESC LIMIT 500")
+    @Query("SELECT * FROM activity_log ORDER BY timestamp DESC LIMIT 1000")
     fun getAll(): Flow<List<LogEntry>>
 
     @Query("DELETE FROM activity_log")
     suspend fun clear()
+
+    @Query("DELETE FROM activity_log WHERE id NOT IN (SELECT id FROM activity_log ORDER BY timestamp DESC LIMIT 1000)")
+    suspend fun pruneOldLogs()
 
     @Query("DELETE FROM activity_log WHERE timestamp < :threshold")
     suspend fun deleteOlderThan(threshold: Long)

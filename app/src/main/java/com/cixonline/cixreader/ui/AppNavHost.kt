@@ -15,6 +15,7 @@ import androidx.navigation.navArgument
 import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.db.AppDatabase
 import com.cixonline.cixreader.repository.ForumRepository
+import com.cixonline.cixreader.repository.HistoryRepository
 import com.cixonline.cixreader.repository.LogRepository
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.ui.screens.*
@@ -32,7 +33,8 @@ fun AppNavHost(
     forumRepository: ForumRepository,
     messageRepository: MessageRepository,
     currentUsername: String?,
-    logRepository: LogRepository
+    logRepository: LogRepository,
+    historyRepository: HistoryRepository
 ) {
     val actions = remember(navController, settingsManager) { 
         NavigationActions(navController, settingsManager) 
@@ -65,7 +67,8 @@ fun AppNavHost(
                     cachedProfileDao = database.cachedProfileDao(),
                     draftDao = database.draftDao(),
                     syncManager = syncManager,
-                    logRepository = logRepository
+                    logRepository = logRepository,
+                    historyRepository = historyRepository
                 )
             )
             WelcomeScreen(
@@ -96,15 +99,16 @@ fun AppNavHost(
                 factory = ForumViewModelFactory(
                     api = NetworkClient.api,
                     repository = forumRepository,
-                    cachedProfileDao = database.cachedProfileDao()
+                    cachedProfileDao = database.cachedProfileDao(),
+                    historyRepository = historyRepository
                 )
             )
             ForumListScreen(
                 viewModel = forumViewModel,
                 currentUsername = currentUsername,
                 onBackClick = actions.onBackClick,
-                onTopicClick = { forumName, topicName, topicId ->
-                    actions.navigateToThread(forumName, topicName, topicId, 0, 0)
+                onTopicClick = { forumName, topicName, topicId, msgId ->
+                    actions.navigateToThread(forumName, topicName, topicId, 0, msgId)
                 },
                 onLogout = actions.onLogout,
                 onSettingsClick = actions.onSettingsClick,
@@ -233,7 +237,8 @@ fun AppNavHost(
                     topicName = topicNameArg,
                     topicId = topicIdArg,
                     initialMessageId = msgIdArg,
-                    initialRootId = rootIdArg
+                    initialRootId = rootIdArg,
+                    historyRepository = historyRepository
                 )
             )
             ThreadScreen(

@@ -17,6 +17,7 @@ import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.DirForum
 import com.cixonline.cixreader.models.Draft
 import com.cixonline.cixreader.models.Folder
+import com.cixonline.cixreader.repository.HistoryRepository
 import com.cixonline.cixreader.repository.LogRepository
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.utils.DateUtils
@@ -56,7 +57,8 @@ class WelcomeViewModel(
     private val folderDao: FolderDao,
     private val dirForumDao: DirForumDao,
     private val draftDao: DraftDao,
-    private val syncManager: SyncManager? = null
+    private val syncManager: SyncManager? = null,
+    private val historyRepository: HistoryRepository
 ) : ViewModel() {
 
     private val _interestingThreads = MutableStateFlow<List<InterestingThreadUI>>(emptyList())
@@ -67,6 +69,12 @@ class WelcomeViewModel(
 
     private val _joinResult = MutableSharedFlow<JoinResult>()
     val joinResult: SharedFlow<JoinResult> = _joinResult.asSharedFlow()
+
+    private val _navigateToMessage = MutableSharedFlow<Triple<String, String, Int>>()
+    val navigateToMessage: SharedFlow<Triple<String, String, Int>> = _navigateToMessage
+
+    private val _historyEvent = MutableSharedFlow<String>()
+    val historyEvent: SharedFlow<String> = _historyEvent
 
     val allForums: Flow<List<Folder>> = folderDao.getAll().map { folders ->
         folders.filter { it.isRootFolder }
@@ -472,6 +480,28 @@ class WelcomeViewModel(
         }
     }
 
+    fun navigateHistoryBack() {
+        viewModelScope.launch {
+            val prev = historyRepository.getPrevious()
+            if (prev != null) {
+                _navigateToMessage.emit(Triple(prev.forumName, prev.topicName, prev.messageId))
+            } else {
+                _historyEvent.emit("Start of history reached")
+            }
+        }
+    }
+
+    fun navigateHistoryForward() {
+        viewModelScope.launch {
+            val next = historyRepository.getNext()
+            if (next != null) {
+                _navigateToMessage.emit(Triple(next.forumName, next.topicName, next.messageId))
+            } else {
+                _historyEvent.emit("End of history reached")
+            }
+        }
+    }
+
     private suspend fun refreshFolders() {
         try {
             val resultSet = api.getForums()
@@ -541,12 +571,13 @@ class WelcomeViewModelFactory(
     private val cachedProfileDao: CachedProfileDao,
     private val draftDao: DraftDao,
     private val syncManager: SyncManager?,
-    private val logRepository: LogRepository) : ViewModelProvider.Factory {
+    private val logRepository: LogRepository,
+    private val historyRepository: HistoryRepository) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WelcomeViewModel::class.java)) {
             val messageRepository = MessageRepository(api, messageDao, folderDao, logRepository)
             @Suppress("UNCHECKED_CAST")
-            return WelcomeViewModel(api, messageDao, messageRepository, folderDao, dirForumDao, draftDao, syncManager) as T
+            return WelcomeViewModel(api, messageDao, messageRepository, folderDao, dirForumDao, draftDao, syncManager, historyRepository) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

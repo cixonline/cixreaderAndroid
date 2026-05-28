@@ -4,6 +4,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.cixonline.cixreader.BuildConfig
 import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.Folder
+import com.cixonline.cixreader.utils.HtmlUtils
 import com.cixonline.cixreader.viewmodel.ForumViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -45,7 +47,7 @@ fun ForumListScreen(
     viewModel: ForumViewModel,
     currentUsername: String?,
     onBackClick: () -> Unit,
-    onTopicClick: (forumName: String, topicName: String, topicId: Int) -> Unit,
+    onTopicClick: (forumName: String, topicName: String, topicId: Int, msgId: Int) -> Unit,
     onLogout: () -> Unit,
     onSettingsClick: () -> Unit,
     onProfileClick: (String) -> Unit,
@@ -63,6 +65,7 @@ fun ForumListScreen(
     var showVersionDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     
     // Track which forum is currently swiped to reveal the Resign button
     var swipedForumId by remember { mutableStateOf<Int?>(null) }
@@ -72,7 +75,20 @@ fun ForumListScreen(
         viewModel.refresh()
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.navigateToMessage.collect { (forum, topic, msgId) ->
+            onTopicClick(forum, topic, HtmlUtils.calculateTopicId(forum, topic), msgId)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.historyEvent.collect { event ->
+            snackbarHostState.showSnackbar(event, duration = SnackbarDuration.Short)
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         modifier = Modifier.pointerInput(Unit) {
             // Detect taps outside of items to close any swiped Resign button
             detectTapGestures {
@@ -214,6 +230,22 @@ fun ForumListScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .pointerInput(Unit) {
+                    var totalDrag = 0f
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (totalDrag > 150f) {
+                                viewModel.navigateHistoryForward()
+                            } else if (totalDrag < -150f) {
+                                viewModel.navigateHistoryBack()
+                            }
+                            totalDrag = 0f
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            totalDrag += dragAmount
+                        }
+                    )
+                }
         ) {
             Box(
                 modifier = Modifier.fillMaxSize()
@@ -368,7 +400,7 @@ fun ForumListScreen(
                                             isLoading = viewModel.isLoading,
                                             onClick = { 
                                                 if (forum != null) {
-                                                    onTopicClick(forum.name, item.name, item.id)
+                                                    onTopicClick(forum.name, item.name, item.id, 0)
                                                 }
                                             }
                                         )

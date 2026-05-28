@@ -17,12 +17,13 @@ import com.cixonline.cixreader.db.FolderDao
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.Draft
 import com.cixonline.cixreader.models.Folder
+import com.cixonline.cixreader.repository.HistoryRepository
 import com.cixonline.cixreader.repository.LogRepository
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.repository.NotAMemberException
-import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
 import com.cixonline.cixreader.utils.SyncManager
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.net.UnknownHostException
@@ -34,19 +35,21 @@ sealed class NextUnreadItem {
     object NoMoreUnread : NextUnreadItem()
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class TopicViewModel(
     private val api: CixApi,
     private val repository: MessageRepository,
-    private val cachedProfileDao: CachedProfileDao,
+    cachedProfileDao: CachedProfileDao,
     private val draftDao: DraftDao,
     private val folderDao: FolderDao,
     private val logRepository: LogRepository,
     private val syncManager: SyncManager?,
-    val rawForumName: String,
-    val rawTopicName: String,
-    val providedTopicId: Int,
+    rawForumName: String,
+    rawTopicName: String,
+    providedTopicId: Int,
     val initialMessageId: Int = 0,
-    val initialRootId: Int = 0
+    private val initialRootId: Int = 0,
+    private val historyRepository: HistoryRepository
 ) : ViewModel(), ProfileHost {
 
     val forumName = HtmlUtils.normalizeName(rawForumName)
@@ -75,8 +78,14 @@ class TopicViewModel(
     private val _showJoinDialog = MutableStateFlow<String?>(null)
     val showJoinDialog: StateFlow<String?> = _showJoinDialog
 
-    private val _scrollToMessageId = MutableStateFlow<Int?>(if (initialMessageId != 0) initialMessageId else null)
+    private val _scrollToMessageId = MutableStateFlow(if (initialMessageId != 0) initialMessageId else null)
     val scrollToMessageId: StateFlow<Int?> = _scrollToMessageId
+
+    private val _navigateToMessage = MutableSharedFlow<Triple<String, String, Int>>() // forum, topic, msgId
+    val navigateToMessage: SharedFlow<Triple<String, String, Int>> = _navigateToMessage
+
+    private val _historyEvent = MutableSharedFlow<String>()
+    val historyEvent: SharedFlow<String> = _historyEvent
 
     override val selectedProfile: StateFlow<UserProfile?> = profileDelegate.selectedProfile
     override val selectedResume: StateFlow<String?> = profileDelegate.selectedResume
@@ -203,6 +212,34 @@ class TopicViewModel(
         return e is UnknownHostException || e.cause is UnknownHostException
     }
 
+    fun addToHistory(msgId: Int) {
+        viewModelScope.launch {
+            historyRepository.addToHistory(forumName, topicName, topicId, msgId)
+        }
+    }
+
+    fun navigateHistoryBack() {
+        viewModelScope.launch {
+            val prev = historyRepository.getPrevious()
+            if (prev != null) {
+                _navigateToMessage.emit(Triple(prev.forumName, prev.topicName, prev.messageId))
+            } else {
+                _historyEvent.emit("Start of history reached")
+            }
+        }
+    }
+
+    fun navigateHistoryForward() {
+        viewModelScope.launch {
+            val next = historyRepository.getNext()
+            if (next != null) {
+                _navigateToMessage.emit(Triple(next.forumName, next.topicName, next.messageId))
+            } else {
+                _historyEvent.emit("End of history reached")
+            }
+        }
+    }
+
     fun refresh() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -240,13 +277,11 @@ class TopicViewModel(
     private fun countThreadMessages(allMessages: List<CIXMessage>, startId: Int): Int {
         val children = allMessages.groupBy { it.commentId }
         var count = 0
-        fun walk(mId: Int) {
+        fun walk(m: CIXMessage) {
             count++
-            children[mId]?.forEach { walk(it.remoteId) }
+            children[m.remoteId]?.forEach { walk(it) }
         }
-        if (allMessages.any { it.remoteId == startId }) {
-            walk(startId)
-        }
+        allMessages.find { it.remoteId == startId }?.let { walk(it) }
         return count
     }
 
@@ -554,17 +589,6 @@ class TopicViewModel(
         _isLoading.value = false
     }
 
-    fun logRawXml() = viewModelScope.launch {
-        try {
-            val encodedForum = HtmlUtils.cixEncode(forumName)
-            val encodedTopic = HtmlUtils.cixEncode(topicName)
-            val response = api.getTopicThreadsRaw(encodedForum, encodedTopic)
-            Log.d("RAW_XML", response.string())
-        } catch (e: Exception) {
-            Log.e("RAW_XML", "Failed to get raw XML", e)
-        }
-    }
-
     override fun showProfile(user: String) = profileDelegate.showProfile(viewModelScope, user)
     override fun dismissProfile() = profileDelegate.dismissProfile()
     fun onScrollToMessageComplete() = run { _scrollToMessageId.value = null }
@@ -582,12 +606,13 @@ class TopicViewModelFactory(
     private val topicName: String,
     private val topicId: Int,
     private val initialMessageId: Int = 0,
-    private val initialRootId: Int = 0
+    private val initialRootId: Int = 0,
+    private val historyRepository: HistoryRepository
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(TopicViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return TopicViewModel(api, repository, cachedProfileDao, draftDao, folderDao, logRepository, syncManager, forumName, topicName, topicId, initialMessageId, initialRootId) as T
+            return TopicViewModel(api, repository, cachedProfileDao, draftDao, folderDao, logRepository, syncManager, forumName, topicName, topicId, initialMessageId, initialRootId, historyRepository) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

@@ -11,6 +11,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,6 +25,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -81,6 +83,18 @@ fun WelcomeScreen(
                 // This could happen if a background join fails (e.g. posting a message)
                 // For now we don't have a specific UI action here besides logging or showing a simple message
             }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.navigateToMessage.collect { (forum, topic, msgId) ->
+            onThreadClick(forum, topic, HtmlUtils.calculateTopicId(forum, topic), 0, msgId)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.historyEvent.collect { event ->
+            snackbarHostState.showSnackbar(event, duration = SnackbarDuration.Short)
         }
     }
 
@@ -184,6 +198,22 @@ fun WelcomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .pointerInput(Unit) {
+                    var totalDrag = 0f
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (totalDrag > 150f) {
+                                viewModel.navigateHistoryForward()
+                            } else if (totalDrag < -150f) {
+                                viewModel.navigateHistoryBack()
+                            }
+                            totalDrag = 0f
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            totalDrag += dragAmount
+                        }
+                    )
+                }
         ) {
             Text(
                 text = "Recent Threads",

@@ -16,6 +16,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -39,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -70,6 +72,7 @@ import com.cixonline.cixreader.viewmodel.NextUnreadItem
 import com.cixonline.cixreader.viewmodel.TopicViewModel
 import com.cixonline.cixreader.utils.SettingsManager
 import com.cixonline.cixreader.ui.theme.LocalIsDarkTheme
+import com.cixonline.cixreader.utils.HtmlUtils
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
@@ -174,6 +177,33 @@ fun ThreadScreen(
                 expandedRootIds = expandedRootIds + rootId
                 viewModel.onScrollToMessageComplete()
             }
+        }
+    }
+
+    // History Tracking
+    LaunchedEffect(selectedMessage) {
+        selectedMessage?.let {
+            viewModel.addToHistory(it.remoteId)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.navigateToMessage.collect { (forum, topic, msgId) ->
+            if (forum.equals(viewModel.forumName, ignoreCase = true) && topic.equals(viewModel.topicName, ignoreCase = true)) {
+                messages.find { it.remoteId == msgId }?.let { targetMsg ->
+                    selectedMessage = targetMsg
+                    val rootId = findRootForMessage(targetMsg, messages)
+                    expandedRootIds = expandedRootIds + rootId
+                }
+            } else {
+                onNavigateToThread(forum, topic, HtmlUtils.calculateTopicId(forum, topic), 0, msgId)
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.historyEvent.collect { event ->
+            snackbarHostState.showSnackbar(event, duration = SnackbarDuration.Short)
         }
     }
 
@@ -464,7 +494,25 @@ fun ThreadScreen(
                 }
 
                 // Message viewer part with single message refresh
-                Box(modifier = Modifier.weight(if (showReplyPane) 0.45f else 1f)) {
+                Box(modifier = Modifier
+                    .weight(if (showReplyPane) 0.45f else 1f)
+                    .pointerInput(Unit) {
+                        var totalDrag = 0f
+                        detectHorizontalDragGestures(
+                            onDragEnd = {
+                                if (totalDrag > 150f) {
+                                    viewModel.navigateHistoryForward()
+                                } else if (totalDrag < -150f) {
+                                    viewModel.navigateHistoryBack()
+                                }
+                                totalDrag = 0f
+                            },
+                            onHorizontalDrag = { _, dragAmount ->
+                                totalDrag += dragAmount
+                            }
+                        )
+                    }
+                ) {
                     PullToRefreshBox(
                         isRefreshing = isLoading,
                         onRefresh = { selectedMessage?.let { viewModel.refreshMessage(it) } },
@@ -1211,6 +1259,7 @@ fun ThreadRow(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessageActionBar(
     message: CIXMessage,
@@ -1280,39 +1329,63 @@ fun MessageActionBar(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (currentUsername != null && message.author.equals(currentUsername, ignoreCase = true) && !message.isWithdrawn()) {
-                    IconButton(onClick = { showWithdrawConfirm = true }) {
+                    TooltipBox(
+                        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                        tooltip = { PlainTooltip { Text("Withdraw Message") } },
+                        state = rememberTooltipState()
+                    ) {
+                        IconButton(onClick = { showWithdrawConfirm = true }) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "Withdraw",
+                                tint = Color.White
+                            )
+                        }
+                    }
+                }
+                TooltipBox(
+                    positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                    tooltip = { PlainTooltip { Text("Post New Message") } },
+                    state = rememberTooltipState()
+                ) {
+                    IconButton(onClick = onPostClick) {
                         Icon(
-                            Icons.Default.Delete,
-                            contentDescription = "Withdraw",
+                            Icons.Default.Edit,
+                            contentDescription = "Post New Message",
                             tint = Color.White
                         )
                     }
                 }
-                IconButton(onClick = onPostClick) {
-                    Icon(
-                        Icons.Default.Edit,
-                        contentDescription = "Post New Message",
-                        tint = Color.White
-                    )
-                }
-                IconButton(onClick = onReplyClick) {
-                    Icon(
-                        if (replyActive) Icons.Default.Close else Icons.AutoMirrored.Filled.Reply,
-                        contentDescription = "Reply",
-                        tint = if (replyActive) MaterialTheme.colorScheme.error else Color.White
-                    )
+                TooltipBox(
+                    positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                    tooltip = { PlainTooltip { Text(if (replyActive) "Close Reply" else "Reply") } },
+                    state = rememberTooltipState()
+                ) {
+                    IconButton(onClick = onReplyClick) {
+                        Icon(
+                            if (replyActive) Icons.Default.Close else Icons.AutoMirrored.Filled.Reply,
+                            contentDescription = "Reply",
+                            tint = if (replyActive) MaterialTheme.colorScheme.error else Color.White
+                        )
+                    }
                 }
                 if (!replyActive) {
-                    IconButton(
-                        onClick = onNextUnreadClick,
-                        modifier = Modifier.size(54.dp)
+                    TooltipBox(
+                        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                        tooltip = { PlainTooltip { Text("Next Unread") } },
+                        state = rememberTooltipState()
                     ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.NavigateNext,
-                            contentDescription = "Next Unread",
-                            tint = Color.White,
+                        IconButton(
+                            onClick = onNextUnreadClick,
                             modifier = Modifier.size(54.dp)
-                        )
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.NavigateNext,
+                                contentDescription = "Next Unread",
+                                tint = Color.White,
+                                modifier = Modifier.size(54.dp)
+                            )
+                        }
                     }
                 }
             }

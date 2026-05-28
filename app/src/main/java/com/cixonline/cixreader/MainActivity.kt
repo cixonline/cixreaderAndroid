@@ -15,6 +15,7 @@ import androidx.navigation.compose.rememberNavController
 import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.db.AppDatabase
 import com.cixonline.cixreader.repository.ForumRepository
+import com.cixonline.cixreader.repository.HistoryRepository
 import com.cixonline.cixreader.repository.LogRepository
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.ui.AppNavHost
@@ -37,6 +38,7 @@ class MainActivity : ComponentActivity() {
         val logRepository = LogRepository(database.logDao(), settingsManager)
         val forumRepository = ForumRepository(NetworkClient.api, database.folderDao())
         val messageRepository = MessageRepository(NetworkClient.api, database.messageDao(), database.folderDao(), logRepository)
+        val historyRepository = HistoryRepository(database.historyDao())
         syncManager = SyncManager(this, settingsManager)
 
         lifecycleScope.launch {
@@ -69,7 +71,8 @@ class MainActivity : ComponentActivity() {
                 forumRepository = forumRepository,
                 messageRepository = messageRepository,
                 syncManager = syncManager,
-                logRepository = logRepository
+                logRepository = logRepository,
+                historyRepository = historyRepository
             )
         }
     }
@@ -82,7 +85,8 @@ fun MainContent(
     forumRepository: ForumRepository,
     messageRepository: MessageRepository,
     syncManager: SyncManager,
-    logRepository: LogRepository
+    logRepository: LogRepository,
+    historyRepository: HistoryRepository
 ) {
     val fontSizeMultiplier by settingsManager.fontSizeFlow.collectAsState(initial = settingsManager.getFontSize())
     val themeMode by settingsManager.themeFlow.collectAsState(initial = settingsManager.getThemeMode())
@@ -120,7 +124,8 @@ fun MainContent(
             forumRepository = forumRepository,
             messageRepository = messageRepository,
             currentUsername = currentUsername,
-            logRepository = logRepository
+            logRepository = logRepository,
+            historyRepository = historyRepository
         )
     }
 }

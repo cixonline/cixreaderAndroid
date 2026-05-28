@@ -14,6 +14,7 @@ class LogRepository(
     suspend fun log(message: String, type: String = "INFO") {
         if (settingsManager.isDebugModeEnabled()) {
             logDao.insert(LogEntry(message = message, type = type))
+            logDao.pruneOldLogs()
         }
     }
 
