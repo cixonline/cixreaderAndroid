@@ -318,8 +318,10 @@ class MessageRepository(
             val forumParam = HtmlUtils.normalizeName(forum)
             val topicParam = HtmlUtils.normalizeName(topic)
 
-            val processedAttachments = attachments?.map {
-                it.copy(filename = HtmlUtils.encodeFilename(it.filename))
+            val processedAttachments: List<PostAttachment>? = if (attachments != null) {
+                attachments.map { it.copy(filename = HtmlUtils.encodeFilename(it.filename)) }
+            } else {
+                null
             }
 
             var bodyForRequest = body
@@ -340,12 +342,11 @@ class MessageRepository(
 
             val response = JsonNetworkClient.api.postMessageJson(request)
 
-            var rootId = 0
-            if (replyTo != 0) {
+            val rootId = if (replyTo != 0) {
                 val parentMessage = messageDao.getByRemoteId(replyTo, topicId)
-                rootId = parentMessage?.rootId ?: 0
+                parentMessage?.rootId ?: 0
             } else {
-                rootId = response.id
+                response.id
             }
             
             val message = CIXMessage(

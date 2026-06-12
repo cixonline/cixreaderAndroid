@@ -250,12 +250,12 @@ class TopicViewModel(
     }
 
     fun onThreadExpand(rootMsg: CIXMessage) {
-        val currentCount = countThreadMessages(repository.getMessagesForTopic(topicId).first(), rootMsg.remoteId)
-        val expectedCount = rootMsg.threadReplies + 1
-        
-        if (rootMsg.threadReplies != -1 && currentCount < expectedCount) {
-            Log.d("TopicViewModel", "Expanding thread #${rootMsg.remoteId}. Cache has $currentCount, server says $expectedCount. Fetching thread.xml")
-            viewModelScope.launch {
+        viewModelScope.launch {
+            val currentCount = countThreadMessages(repository.getMessagesForTopic(topicId).first(), rootMsg.remoteId)
+            val expectedCount = rootMsg.threadReplies + 1
+            
+            if (rootMsg.threadReplies != -1 && currentCount < expectedCount) {
+                Log.d("TopicViewModel", "Expanding thread #${rootMsg.remoteId}. Cache has $currentCount, server says $expectedCount. Fetching thread.xml")
                 _isLoading.value = true
                 try {
                     repository.fetchThreadThenBackfill(forumName, topicName, rootMsg.remoteId, topicId)
