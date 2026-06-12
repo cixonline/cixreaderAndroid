@@ -43,7 +43,6 @@ interface FolderDao {
             FROM messages 
             WHERE topicId = folders.id 
               AND unread = 1 
-              AND date > :cutoffDate
               AND body NOT LIKE '%<<withdrawn by author>>%'
               AND body NOT LIKE '%<<withdrawn by moderator>>%'
               AND body NOT LIKE '%<<withdrawn by system administrator>>%'
@@ -51,7 +50,7 @@ interface FolderDao {
         WHERE parentId != -1 
           AND id IN (SELECT DISTINCT topicId FROM messages)
     """)
-    suspend fun recalculateTopicUnreadCounts(cutoffDate: Long)
+    suspend fun recalculateTopicUnreadCounts()
 
     @Query("""
         UPDATE folders 

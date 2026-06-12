@@ -21,9 +21,9 @@ import com.cixonline.cixreader.repository.HistoryRepository
 import com.cixonline.cixreader.repository.LogRepository
 import com.cixonline.cixreader.repository.MessageRepository
 import com.cixonline.cixreader.repository.NotAMemberException
+import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
 import com.cixonline.cixreader.utils.SyncManager
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.net.UnknownHostException
@@ -35,31 +35,21 @@ sealed class NextUnreadItem {
     object NoMoreUnread : NextUnreadItem()
 }
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class TopicViewModel(
     private val api: CixApi,
     private val repository: MessageRepository,
-    cachedProfileDao: CachedProfileDao,
+    private val cachedProfileDao: CachedProfileDao,
     private val draftDao: DraftDao,
     private val folderDao: FolderDao,
     private val logRepository: LogRepository,
     private val syncManager: SyncManager?,
-    rawForumName: String,
-    rawTopicName: String,
-    providedTopicId: Int,
+    val forumName: String,
+    val topicName: String,
+    val topicId: Int,
     val initialMessageId: Int = 0,
-    private val initialRootId: Int = 0,
+    val initialRootId: Int = 0,
     private val historyRepository: HistoryRepository
 ) : ViewModel(), ProfileHost {
-
-    val forumName = HtmlUtils.normalizeName(rawForumName)
-    val topicName = HtmlUtils.normalizeName(rawTopicName)
-
-    val topicId: Int = if (providedTopicId != 0) {
-        providedTopicId
-    } else {
-        HtmlUtils.calculateTopicId(forumName, topicName)
-    }
 
     private val profileDelegate = ProfileDelegate(api, cachedProfileDao)
 
@@ -78,19 +68,19 @@ class TopicViewModel(
     private val _showJoinDialog = MutableStateFlow<String?>(null)
     val showJoinDialog: StateFlow<String?> = _showJoinDialog
 
-    private val _scrollToMessageId = MutableStateFlow(if (initialMessageId != 0) initialMessageId else null)
+    private val _scrollToMessageId = MutableStateFlow<Int?>(if (initialMessageId != 0) initialMessageId else null)
     val scrollToMessageId: StateFlow<Int?> = _scrollToMessageId
-
-    private val _navigateToMessage = MutableSharedFlow<Triple<String, String, Int>>() // forum, topic, msgId
-    val navigateToMessage: SharedFlow<Triple<String, String, Int>> = _navigateToMessage
-
-    private val _historyEvent = MutableSharedFlow<String>()
-    val historyEvent: SharedFlow<String> = _historyEvent
 
     override val selectedProfile: StateFlow<UserProfile?> = profileDelegate.selectedProfile
     override val selectedResume: StateFlow<String?> = profileDelegate.selectedResume
     override val selectedMugshotUrl: StateFlow<String?> = profileDelegate.selectedMugshotUrl
     override val isProfileLoading: StateFlow<Boolean> = profileDelegate.isLoading
+
+    private val _historyEvent = MutableSharedFlow<String>(replay = 0)
+    val historyEvent: SharedFlow<String> = _historyEvent
+
+    private val _navigateToMessage = MutableSharedFlow<Triple<String, String, Int>>(replay = 0)
+    val navigateToMessage: SharedFlow<Triple<String, String, Int>> = _navigateToMessage
 
     val messages: StateFlow<List<CIXMessage>> = repository.getMessagesForTopic(topicId)
         .combine(_searchQuery) { allMessages, query ->
@@ -212,34 +202,6 @@ class TopicViewModel(
         return e is UnknownHostException || e.cause is UnknownHostException
     }
 
-    fun addToHistory(msgId: Int) {
-        viewModelScope.launch {
-            historyRepository.addToHistory(forumName, topicName, topicId, msgId)
-        }
-    }
-
-    fun navigateHistoryBack() {
-        viewModelScope.launch {
-            val prev = historyRepository.getPrevious()
-            if (prev != null) {
-                _navigateToMessage.emit(Triple(prev.forumName, prev.topicName, prev.messageId))
-            } else {
-                _historyEvent.emit("Start of history reached")
-            }
-        }
-    }
-
-    fun navigateHistoryForward() {
-        viewModelScope.launch {
-            val next = historyRepository.getNext()
-            if (next != null) {
-                _navigateToMessage.emit(Triple(next.forumName, next.topicName, next.messageId))
-            } else {
-                _historyEvent.emit("End of history reached")
-            }
-        }
-    }
-
     fun refresh() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -277,16 +239,18 @@ class TopicViewModel(
     private fun countThreadMessages(allMessages: List<CIXMessage>, startId: Int): Int {
         val children = allMessages.groupBy { it.commentId }
         var count = 0
-        fun walk(m: CIXMessage) {
+        fun walk(mId: Int) {
             count++
-            children[m.remoteId]?.forEach { walk(it) }
+            children[mId]?.forEach { walk(it.remoteId) }
         }
-        allMessages.find { it.remoteId == startId }?.let { walk(it) }
+        if (allMessages.any { it.remoteId == startId }) {
+            walk(startId)
+        }
         return count
     }
 
     fun onThreadExpand(rootMsg: CIXMessage) {
-        val currentCount = countThreadMessages(messages.value, rootMsg.remoteId)
+        val currentCount = countThreadMessages(repository.getMessagesForTopic(topicId).first(), rootMsg.remoteId)
         val expectedCount = rootMsg.threadReplies + 1
         
         if (rootMsg.threadReplies != -1 && currentCount < expectedCount) {
@@ -305,60 +269,99 @@ class TopicViewModel(
     }
 
     suspend fun findNextUnreadItem(currentMessageId: Int?): NextUnreadItem {
-        val allMessages = messages.value
-        if (allMessages.isEmpty()) return NextUnreadItem.NoMoreUnread
-
-        // Use a consistent tree/sequence construction
-        val tree = allMessages.groupBy { it.commentId }
-        val ids = allMessages.map { it.remoteId }.toSet()
-        val currentRoots = allMessages.filter { it.commentId == 0 || !ids.contains(it.commentId) }
-            .sortedByDescending { it.date }
-
-        val visualSequence = mutableListOf<CIXMessage>()
-        fun walk(m: CIXMessage) {
-            visualSequence.add(m)
-            tree[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it) }
+        // 1. Try to find an unread candidate locally within the current topic (unfiltered by search)
+        val allMessages = repository.getMessagesForTopic(topicId).first()
+        
+        fun isCandidate(m: CIXMessage): Boolean {
+            if (m.isActuallyUnread) return true
+            if (m.commentId == 0 && m.threadUnread > 0) return true
+            return false
         }
-        currentRoots.forEach { walk(it) }
 
-        val nextItem: NextUnreadItem
-        if (currentMessageId == null) {
-            // Finding initial unread: return first unread in visual sequence
-            val msg = visualSequence.find { it.isActuallyUnread }
-            nextItem = if (msg != null) NextUnreadItem.Message(msg) else findNextUnreadOutsideTopic()
-        } else {
-            // Navigating from a specific message
-            val currentIndex = visualSequence.indexOfFirst { it.remoteId == currentMessageId }
-            if (currentIndex != -1) {
-                // Check messages FOLLOWING the current one in the thread view
-                var found: CIXMessage? = null
-                for (i in (currentIndex + 1) until visualSequence.size) {
-                    if (visualSequence[i].isActuallyUnread) {
-                        found = visualSequence[i]
-                        break
-                    }
-                }
-                nextItem = if (found != null) NextUnreadItem.Message(found) else {
-                    // Check messages BEFORE the current one (wrap around within topic)
-                    val before = visualSequence.take(currentIndex).find { it.isActuallyUnread }
-                    if (before != null) NextUnreadItem.Message(before) else findNextUnreadOutsideTopic()
-                }
+        var found: CIXMessage? = null
+        if (allMessages.isNotEmpty()) {
+            val tree = allMessages.groupBy { it.commentId }
+            val ids = allMessages.map { it.remoteId }.toSet()
+            val currentRoots = allMessages.filter { it.commentId == 0 || !ids.contains(it.commentId) }
+                .sortedByDescending { it.date }
+
+            val visualSequence = mutableListOf<CIXMessage>()
+            fun walk(m: CIXMessage) {
+                visualSequence.add(m)
+                tree[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it) }
+            }
+            currentRoots.forEach { walk(it) }
+
+            if (currentMessageId == null) {
+                found = visualSequence.find { isCandidate(it) }
             } else {
-                // If current message isn't in sequence for some reason, find first unread
-                val first = visualSequence.find { it.isActuallyUnread }
-                nextItem = if (first != null) NextUnreadItem.Message(first) else findNextUnreadOutsideTopic()
+                val currentIndex = visualSequence.indexOfFirst { it.remoteId == currentMessageId }
+                if (currentIndex != -1) {
+                    for (i in (currentIndex + 1) until visualSequence.size) {
+                        if (isCandidate(visualSequence[i])) {
+                            found = visualSequence[i]
+                            break
+                        }
+                    }
+                    if (found == null) {
+                        found = visualSequence.take(currentIndex).find { isCandidate(it) }
+                    }
+                } else {
+                    found = visualSequence.find { isCandidate(it) }
+                }
             }
         }
 
-        val logMessage = when (nextItem) {
-            is NextUnreadItem.Message -> "Next Unread tapped (Current #$currentMessageId). Found message #${nextItem.message.remoteId} in current topic."
-            is NextUnreadItem.Topic -> "Next Unread tapped (Current #$currentMessageId). Moving to topic ${nextItem.forum}/${nextItem.topic}."
-            is NextUnreadItem.NoMoreUnread -> "Next Unread tapped (Current #$currentMessageId). No more unreads found."
-            else -> "Next Unread tapped (Current #$currentMessageId). Navigation result: $nextItem"
+        if (found != null) {
+            if (!found.isActuallyUnread && found.commentId == 0 && found.threadUnread > 0) {
+                Log.d("TopicViewModel", "Found root #${found.remoteId} with unread children. Fetching thread.")
+                repository.fetchThreadThenBackfill(forumName, topicName, found.remoteId, topicId)
+                val refreshed = repository.getMessagesForTopic(topicId).first()
+                val threadMsgs = mutableListOf<CIXMessage>()
+                val refreshedTree = refreshed.groupBy { it.commentId }
+                fun walk(m: CIXMessage) {
+                    threadMsgs.add(m)
+                    refreshedTree[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it) }
+                }
+                refreshed.find { it.remoteId == found!!.remoteId }?.let { walk(it) }
+                
+                val firstUnreadChild = threadMsgs.find { it.isActuallyUnread }
+                if (firstUnreadChild != null) {
+                    logRepository.log("Next Unread (Current #$currentMessageId): Found child #${firstUnreadChild.remoteId} after fetching thread.", "NAVIGATION")
+                    return NextUnreadItem.Message(firstUnreadChild)
+                }
+            } else {
+                logRepository.log("Next Unread (Current #$currentMessageId): Found #${found.remoteId} locally.", "NAVIGATION")
+                return NextUnreadItem.Message(found)
+            }
         }
-        logRepository.log(logMessage, "NAVIGATION")
 
-        return nextItem
+        // 2. Not found locally. Check the server for any unread in the current topic.
+        try {
+            val serverFirstUnreadId = repository.getFirstUnreadMessageId(forumName, topicName)
+            if (serverFirstUnreadId > 0) {
+                Log.d("TopicViewModel", "Server says first unread is #$serverFirstUnreadId. Fetching.")
+                repository.fetchMessageAndChildren(forumName, topicName, serverFirstUnreadId, topicId)
+                val refreshed = repository.getMessagesForTopic(topicId).first()
+                val serverFound = refreshed.find { it.remoteId == serverFirstUnreadId }
+                if (serverFound != null && serverFound.isActuallyUnread) {
+                    logRepository.log("Next Unread (Current #$currentMessageId): Found #${serverFound.remoteId} via server API.", "NAVIGATION")
+                    return NextUnreadItem.Message(serverFound)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("TopicViewModel", "Failed to check server for unreads", e)
+        }
+
+        // 3. Still nothing in the current topic. Search other topics/forums.
+        val nextOutside = findNextUnreadOutsideTopic()
+        val logMsg = when (nextOutside) {
+            is NextUnreadItem.Topic -> "Next Unread (Current #$currentMessageId): Moving to topic ${nextOutside.forum}/${nextOutside.topic}."
+            is NextUnreadItem.NoMoreUnread -> "Next Unread (Current #$currentMessageId): No more unreads found anywhere."
+            else -> "Next Unread (Current #$currentMessageId): Navigation result: $nextOutside"
+        }
+        logRepository.log(logMsg, "NAVIGATION")
+        return nextOutside
     }
 
     private suspend fun findNextUnreadOutsideTopic(): NextUnreadItem {
@@ -587,6 +590,41 @@ class TopicViewModel(
         _isLoading.value = true
         if (repository.withdrawMessage(message)) refresh()
         _isLoading.value = false
+    }
+
+    fun logRawXml() = viewModelScope.launch {
+        try {
+            val encodedForum = HtmlUtils.cixEncode(forumName)
+            val encodedTopic = HtmlUtils.cixEncode(topicName)
+            val response = api.getTopicThreadsRaw(encodedForum, encodedTopic)
+            Log.d("RAW_XML", response.string())
+        } catch (e: Exception) {
+            Log.e("RAW_XML", "Failed to get raw XML", e)
+        }
+    }
+
+    fun addToHistory(messageId: Int) {
+        viewModelScope.launch {
+            historyRepository.addToHistory(forumName, topicName, topicId, messageId)
+        }
+    }
+
+    fun navigateHistoryBack() {
+        viewModelScope.launch {
+            historyRepository.getPrevious()?.let { entry ->
+                _navigateToMessage.emit(Triple(entry.forumName, entry.topicName, entry.messageId))
+                _historyEvent.emit("Back in history")
+            }
+        }
+    }
+
+    fun navigateHistoryForward() {
+        viewModelScope.launch {
+            historyRepository.getNext()?.let { entry ->
+                _navigateToMessage.emit(Triple(entry.forumName, entry.topicName, entry.messageId))
+                _historyEvent.emit("Forward in history")
+            }
+        }
     }
 
     override fun showProfile(user: String) = profileDelegate.showProfile(viewModelScope, user)

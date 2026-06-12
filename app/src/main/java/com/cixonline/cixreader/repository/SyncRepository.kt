@@ -26,8 +26,8 @@ class SyncRepository(
     private val tag = "SyncRepository"
 
     private suspend fun recalculateCounts() {
-        val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
-        folderDao.recalculateTopicUnreadCounts(thirtyDaysAgo)
+        // Removed the 30-day cutoff to ensure all unread messages are counted correctly.
+        folderDao.recalculateTopicUnreadCounts()
         folderDao.recalculateForumUnreadCounts()
     }
 
@@ -77,7 +77,6 @@ class SyncRepository(
                     val isReadFromServer = apiMsgs.any { it.status?.contains("R", ignoreCase = true) == true || it.unread == false }
                     
                     // Follow server status.
-                    // The 30-day rule is handled in the UI via CIXMessage.isActuallyUnread.
                     val isUnread = if (isReadFromServer) {
                         false
                     } else {
@@ -135,7 +134,7 @@ class SyncRepository(
                 settingsManager.saveLastSyncDate(DateUtils.formatApiDate(newestMessageDate))
             }
 
-            // Recalculate folder unread counts after sync to ensure consistency with our 30-day rule
+            // Recalculate folder unread counts after sync
             recalculateCounts()
 
         } catch (e: CancellationException) {
@@ -156,12 +155,12 @@ class SyncRepository(
                     val encodedForum = HtmlUtils.cixEncode(msg.forumName)
                     val encodedTopic = HtmlUtils.cixEncode(msg.topicName)
 
-                    // Use forum.markreadmessage.get (markread.xml) as markreadrange is deprecated
+                    // Use forum.markreadmessage.get (markread.xml)
                     api.markRead(encodedForum, encodedTopic, msg.remoteId)
 
                     // Clear pending flag on success
                     messageDao.updateUnreadAndPending(msg.id, unread = false, readPending = false)
-                    logRepository.log("Synced read status for #$msg.remoteId to server", "SYNC")
+                    logRepository.log("Synced read status for #${msg.remoteId} to server", "SYNC")
 
                 } catch (e: CancellationException) {
                     throw e
@@ -215,7 +214,6 @@ class SyncRepository(
                 val isReadFromServer = apiMsgs.any { it.status?.contains("R", ignoreCase = true) == true || it.unread == false }
                 
                 // Follow server status.
-                // The 30-day rule is handled in the UI via CIXMessage.isActuallyUnread.
                 val isUnread = if (isReadFromServer) {
                     false
                 } else {
@@ -305,7 +303,7 @@ class SyncRepository(
                 }
             }
             
-            // 4. Recalculate counts based on 30-day rule
+            // 4. Recalculate counts
             recalculateCounts()
 
             // Update last sync date on successful full sync

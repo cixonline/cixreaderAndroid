@@ -55,8 +55,8 @@ class MessageRepository(
     }
 
     private suspend fun recalculateCounts() {
-        val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
-        folderDao.recalculateTopicUnreadCounts(thirtyDaysAgo)
+        // Ensure all unread messages are counted correctly without the 30-day cutoff.
+        folderDao.recalculateTopicUnreadCounts()
         folderDao.recalculateForumUnreadCounts()
     }
 
@@ -318,7 +318,7 @@ class MessageRepository(
             val forumParam = HtmlUtils.normalizeName(forum)
             val topicParam = HtmlUtils.normalizeName(topic)
 
-            val processedAttachments = attachments?.map { 
+            val processedAttachments = attachments?.map {
                 it.copy(filename = HtmlUtils.encodeFilename(it.filename))
             }
 
@@ -413,8 +413,6 @@ class MessageRepository(
             recalculateCounts()
 
             logRepository.log("Marked #${message.remoteId} as read (locally pending) in ${message.forumName}/${message.topicName}", "READ_STATUS")
-            // Immediate server sync removed to improve UI responsiveness.
-            // Read status will be synced to server by SyncWorker in the background.
         }
     }
 
