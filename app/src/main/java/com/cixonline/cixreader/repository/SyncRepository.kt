@@ -26,8 +26,7 @@ class SyncRepository(
     private val tag = "SyncRepository"
 
     private suspend fun recalculateCounts() {
-        // Removed the 30-day cutoff to ensure all unread messages are counted correctly.
-        folderDao.recalculateTopicUnreadCounts()
+        // Trust the folder unread counts and only update forum-level totals
         folderDao.recalculateForumUnreadCounts()
     }
 
@@ -134,8 +133,8 @@ class SyncRepository(
                 settingsManager.saveLastSyncDate(DateUtils.formatApiDate(newestMessageDate))
             }
 
-            // Recalculate folder unread counts after sync
-            recalculateCounts()
+            // Trust server-provided unread counts globally after sync
+            refreshAllTopicUnreads()
 
         } catch (e: CancellationException) {
             throw e
@@ -172,6 +171,45 @@ class SyncRepository(
             throw e
         } catch (e: Exception) {
             Log.e(tag, "Error during read status sync", e)
+        }
+    }
+
+    suspend fun refreshAllTopicUnreads() = withContext(Dispatchers.IO) {
+        try {
+            Log.d(tag, "Refreshing all topic unread counts from server using User.AllTopics")
+            val resultSet = api.getAllTopics()
+
+            // Success! Only now we zero out existing unreads for topics to refresh them correctly
+            folderDao.zeroAllTopicUnreads()
+
+            resultSet.userTopics.forEach { result ->
+                val forumName = result.forum ?: return@forEach
+                val topicName = result.topic ?: return@forEach
+                val topicId = HtmlUtils.calculateTopicId(forumName, topicName)
+                val unreadCount = result.effectiveUnread?.toIntOrNull() ?: 0
+
+                if (unreadCount <= 0) return@forEach
+
+                // Ensure topic and forum exist in DB
+                var topic = folderDao.getById(topicId)
+                if (topic == null) {
+                    val forumId = HtmlUtils.calculateForumId(forumName)
+                    var forum = folderDao.getById(forumId)
+                    if (forum == null) {
+                        forum = Folder(id = forumId, name = forumName, parentId = -1)
+                        folderDao.insert(forum)
+                        logRepository.log("Inserted new forum $forumName during unread sync", "INSERT")
+                    }
+                    topic = Folder(id = topicId, name = topicName, parentId = forumId, unread = unreadCount)
+                    folderDao.insert(topic)
+                    logRepository.log("Inserted new topic $forumName/$topicName during unread sync with $unreadCount unreads", "INSERT")
+                } else {
+                    folderDao.setUnread(topicId, unreadCount)
+                }
+            }
+            folderDao.recalculateForumUnreadCounts()
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to refresh all topic unreads", e)
         }
     }
 
@@ -303,12 +341,12 @@ class SyncRepository(
                 }
             }
             
-            // 4. Recalculate counts
-            recalculateCounts()
-
-            // Update last sync date on successful full sync
+            // 4. Update last sync date on successful full sync
             settingsManager.saveLastSyncDate(DateUtils.formatApiDate(System.currentTimeMillis()))
-            
+
+            // 5. Final accurate unread refresh
+            refreshAllTopicUnreads()
+
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

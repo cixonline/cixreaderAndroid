@@ -9,6 +9,9 @@ interface FolderDao {
     @Query("SELECT * FROM folders ORDER BY folder_index ASC")
     fun getAll(): Flow<List<Folder>>
 
+    @Query("SELECT * FROM folders ORDER BY folder_index ASC")
+    suspend fun getAllSync(): List<Folder>
+
     @Query("SELECT * FROM folders WHERE id = :id")
     suspend fun getById(id: Int): Folder?
 
@@ -36,6 +39,24 @@ interface FolderDao {
     @Query("UPDATE folders SET unread = 0 WHERE parentId = :parentId")
     suspend fun zeroUnreadForTopics(parentId: Int)
 
+    @Query("UPDATE folders SET unread = 0 WHERE parentId != -1")
+    suspend fun zeroAllTopicUnreads()
+
+    @Query("""
+        UPDATE folders 
+        SET unread = (
+            SELECT COUNT(*) 
+            FROM messages 
+            WHERE topicId = folders.id 
+              AND unread = 1 
+              AND body NOT LIKE '%<<withdrawn by author>>%'
+              AND body NOT LIKE '%<<withdrawn by moderator>>%'
+              AND body NOT LIKE '%<<withdrawn by system administrator>>%'
+        ) 
+        WHERE id = :topicId
+    """)
+    suspend fun recalculateTopicUnreadCount(topicId: Int)
+
     @Query("""
         UPDATE folders 
         SET unread = (
@@ -54,13 +75,28 @@ interface FolderDao {
 
     @Query("""
         UPDATE folders 
+        SET unread = MAX(unread, (
+            SELECT COUNT(*) 
+            FROM messages 
+            WHERE topicId = folders.id 
+              AND unread = 1 
+              AND body NOT LIKE '%<<withdrawn by author>>%'
+              AND body NOT LIKE '%<<withdrawn by moderator>>%'
+              AND body NOT LIKE '%<<withdrawn by system administrator>>%'
+        )) 
+        WHERE parentId != -1 
+          AND id IN (SELECT DISTINCT topicId FROM messages)
+    """)
+    suspend fun mergeTopicUnreadCounts()
+
+    @Query("""
+        UPDATE folders 
         SET unread = (
             SELECT COALESCE(SUM(unread), 0) 
             FROM folders f2 
             WHERE f2.parentId = folders.id
         ) 
         WHERE parentId = -1
-          AND id IN (SELECT DISTINCT parentId FROM folders WHERE parentId != -1)
     """)
     suspend fun recalculateForumUnreadCounts()
 

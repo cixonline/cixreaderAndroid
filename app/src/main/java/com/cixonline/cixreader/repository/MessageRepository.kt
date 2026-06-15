@@ -11,6 +11,7 @@ import com.cixonline.cixreader.api.PostMessage2Request
 import com.cixonline.cixreader.db.FolderDao
 import com.cixonline.cixreader.db.MessageDao
 import com.cixonline.cixreader.models.CIXMessage
+import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
 import kotlinx.coroutines.Dispatchers
@@ -55,8 +56,7 @@ class MessageRepository(
     }
 
     private suspend fun recalculateCounts() {
-        // Ensure all unread messages are counted correctly without the 30-day cutoff.
-        folderDao.recalculateTopicUnreadCounts()
+        folderDao.mergeTopicUnreadCounts()
         folderDao.recalculateForumUnreadCounts()
     }
 
@@ -69,19 +69,6 @@ class MessageRepository(
             val since = sinceOverride ?: if (force || latestMessage == null) null else DateUtils.formatApiDate(latestMessage.date)
 
             Log.d(tag, "Refreshing messages for $forumName/$topicName. Since: $since")
-            
-            // The app shouldn't need to call the allmessages.xml API call anymore.
-            /*
-            val resultSet = api.getMessages(encodedForum, encodedTopic, since = since)
-            val apiMessages = resultSet.messages
-            
-            if (apiMessages.isNotEmpty()) {
-                Log.d(tag, "Fetched ${apiMessages.size} messages for $forumName/$topicName")
-                saveMessagesToDb(apiMessages, forumName, topicName, topicId)
-            } else {
-                Log.d(tag, "No new messages for $forumName/$topicName")
-            }
-            */
         } catch (e: Exception) {
             if (e.message?.contains("not a member", ignoreCase = true) == true) {
                 throw NotAMemberException(forumName)
@@ -186,7 +173,7 @@ class MessageRepository(
             )
         }
         messageDao.insertAll(messagesToInsert)
-        recalculateCounts()
+        refreshAllTopicUnreads()
     }
 
     suspend fun fetchThreadThenBackfill(forum: String, topic: String, msgId: Int, topicId: Int) = withContext(Dispatchers.IO) {
@@ -410,7 +397,10 @@ class MessageRepository(
             // Optimistically mark as read and pending in local DB
             messageDao.updateUnreadAndPending(message.id, unread = false, readPending = true)
             
-            // Recalculate folder unread counts to ensure consistency
+            // Decrement the folder unread count instead of full recalculation
+            folderDao.decrementUnread(message.topicId)
+            
+            // Recalculate forum level only
             recalculateCounts()
 
             logRepository.log("Marked #${message.remoteId} as read (locally pending) in ${message.forumName}/${message.topicName}", "READ_STATUS")
@@ -422,7 +412,10 @@ class MessageRepository(
             // 1. Update local messages
             messageDao.markTopicAsRead(topicId)
 
-            // 2. Recalculate folder unread counts
+            // 2. Clear topic unread count
+            folderDao.setUnread(topicId, 0)
+
+            // 3. Recalculate forum unread counts
             recalculateCounts()
 
             logRepository.log("Marked topic $forumName/$topicName as read", "READ_STATUS")
@@ -435,13 +428,41 @@ class MessageRepository(
         try {
             Log.d(tag, "Refreshing all topic unread counts from server using User.AllTopics")
             val resultSet = api.getAllTopics()
+            
+            Log.d(tag, "Server returned ${resultSet.userTopics.size} user topics")
+
+            // Success! Only now we zero out existing unreads for topics to refresh them correctly
+            folderDao.zeroAllTopicUnreads()
+
             resultSet.userTopics.forEach { result ->
-                val forumName = result.forum ?: return@forEach
-                val topicName = result.topic ?: return@forEach
+                val rawForum = result.forum ?: return@forEach
+                val rawTopic = result.topic ?: return@forEach
+                val forumName = HtmlUtils.normalizeName(rawForum)
+                val topicName = HtmlUtils.normalizeName(rawTopic)
                 val topicId = HtmlUtils.calculateTopicId(forumName, topicName)
-                val unreadCount = result.effectiveUnread?.toIntOrNull() ?: 0
-                folderDao.setUnread(topicId, unreadCount)
+                val unreadCount = result.effectiveUnread?.trim()?.toIntOrNull() ?: 0
+                
+                if (unreadCount <= 0) return@forEach
+
+                // Ensure topic and forum exist in DB
+                var topic = folderDao.getById(topicId)
+                if (topic == null) {
+                    val forumId = HtmlUtils.calculateForumId(forumName)
+                    var forum = folderDao.getById(forumId)
+                    if (forum == null) {
+                        forum = Folder(id = forumId, name = forumName, parentId = -1)
+                        folderDao.insert(forum)
+                        logRepository.log("Inserted new forum $forumName during unread sync", "INSERT")
+                    }
+                    topic = Folder(id = topicId, name = topicName, parentId = forumId, unread = unreadCount)
+                    folderDao.insert(topic)
+                    logRepository.log("Inserted new topic $forumName/$topicName during unread sync with $unreadCount unreads", "INSERT")
+                } else {
+                    folderDao.setUnread(topicId, unreadCount)
+                }
             }
+            // Merge with local knowledge from messages table
+            folderDao.mergeTopicUnreadCounts()
             folderDao.recalculateForumUnreadCounts()
         } catch (e: Exception) {
             Log.e(tag, "Failed to refresh all topic unreads", e)

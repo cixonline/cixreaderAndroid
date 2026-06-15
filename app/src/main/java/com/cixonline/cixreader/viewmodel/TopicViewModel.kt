@@ -312,7 +312,7 @@ class TopicViewModel(
             }
         }
 
-        if (found != null) {
+        if (found != null && found.remoteId != currentMessageId) {
             if (!found.isActuallyUnread && found.commentId == 0 && found.threadUnread > 0) {
                 Log.d("TopicViewModel", "Found root #${found.remoteId} with unread children. Fetching thread.")
                 repository.fetchThreadThenBackfill(forumName, topicName, found.remoteId, topicId)
@@ -339,7 +339,7 @@ class TopicViewModel(
         // 2. Not found locally. Check the server for any unread in the current topic.
         try {
             val serverFirstUnreadId = repository.getFirstUnreadMessageId(forumName, topicName)
-            if (serverFirstUnreadId > 0) {
+            if (serverFirstUnreadId > 0 && serverFirstUnreadId != currentMessageId) {
                 Log.d("TopicViewModel", "Server says first unread is #$serverFirstUnreadId. Fetching.")
                 repository.fetchMessageAndChildren(forumName, topicName, serverFirstUnreadId, topicId)
                 val refreshed = repository.getMessagesForTopic(topicId).first()
@@ -368,17 +368,29 @@ class TopicViewModel(
         // Refresh all topic unread counts from server to ensure we have the latest status
         repository.refreshAllTopicUnreads()
 
-        val allFolders = folderDao.getAll().first()
+        val allFolders = folderDao.getAllSync()
         val rootFolders = allFolders.filter { it.isRootFolder }.sortedBy { it.name.lowercase() }
         val currentForum = rootFolders.find { it.name.equals(forumName, ignoreCase = true) }
         
-        // 1. Check remaining topics in CURRENT forum
+        // 1. Check topics in CURRENT forum
         if (currentForum != null) {
             val forumTopics = allFolders.filter { it.parentId == currentForum.id }.sortedBy { it.name.lowercase() }
             val currentTopicIndex = forumTopics.indexOfFirst { it.id == topicId }
+            
+            // 1a. Topics AFTER current in same forum
             if (currentTopicIndex != -1) {
                 for (i in (currentTopicIndex + 1) until forumTopics.size) {
-                    if (forumTopics[i].unread > 0) return NextUnreadItem.Topic(forumName, forumTopics[i].name, forumTopics[i].id)
+                    if (forumTopics[i].unread > 0) {
+                        Log.d("TopicViewModel", "Next Unread: Found subsequent topic ${forumTopics[i].name} in current forum")
+                        return NextUnreadItem.Topic(forumName, forumTopics[i].name, forumTopics[i].id)
+                    }
+                }
+                // 1b. Topics BEFORE current in same forum (to finish the forum before moving out)
+                for (i in 0 until currentTopicIndex) {
+                    if (forumTopics[i].unread > 0) {
+                        Log.d("TopicViewModel", "Next Unread: Found previous topic ${forumTopics[i].name} in current forum")
+                        return NextUnreadItem.Topic(forumName, forumTopics[i].name, forumTopics[i].id)
+                    }
                 }
             }
         }
@@ -388,35 +400,37 @@ class TopicViewModel(
         if (currentForumIndex != -1) {
             // Check forwards from current forum
             for (i in (currentForumIndex + 1) until rootFolders.size) {
-                if (rootFolders[i].unread > 0) {
-                    val topics = allFolders.filter { it.parentId == rootFolders[i].id }.sortedBy { it.name.lowercase() }
-                    topics.find { it.unread > 0 }?.let {
-                        return NextUnreadItem.Topic(rootFolders[i].name, it.name, it.id)
-                    }
+                val forum = rootFolders[i]
+                val topics = allFolders.filter { it.parentId == forum.id }.sortedBy { it.name.lowercase() }
+                val unreadTopic = topics.find { it.unread > 0 }
+                if (unreadTopic != null) {
+                    Log.d("TopicViewModel", "Next Unread: Found topic ${unreadTopic.name} in subsequent forum ${forum.name}")
+                    return NextUnreadItem.Topic(forum.name, unreadTopic.name, unreadTopic.id)
                 }
             }
-            // Wrap around: check from beginning of list
+            // Wrap around: check from beginning of list up to current forum
             for (i in 0 until currentForumIndex) {
-                if (rootFolders[i].unread > 0) {
-                    val topics = allFolders.filter { it.parentId == rootFolders[i].id }.sortedBy { it.name.lowercase() }
-                    topics.find { it.unread > 0 }?.let {
-                        return NextUnreadItem.Topic(rootFolders[i].name, it.name, it.id)
-                    }
+                val forum = rootFolders[i]
+                val topics = allFolders.filter { it.parentId == forum.id }.sortedBy { it.name.lowercase() }
+                val unreadTopic = topics.find { it.unread > 0 }
+                if (unreadTopic != null) {
+                    Log.d("TopicViewModel", "Next Unread: Found topic ${unreadTopic.name} in wrapped forum ${forum.name}")
+                    return NextUnreadItem.Topic(forum.name, unreadTopic.name, unreadTopic.id)
+                }
+            }
+        } else {
+            // Forum not found in DB (unlikely), just check everything
+            for (forum in rootFolders) {
+                val topics = allFolders.filter { it.parentId == forum.id }.sortedBy { it.name.lowercase() }
+                val unreadTopic = topics.find { it.unread > 0 }
+                if (unreadTopic != null) {
+                    Log.d("TopicViewModel", "Next Unread: Found topic ${unreadTopic.name} in forum ${forum.name} (fallback search)")
+                    return NextUnreadItem.Topic(forum.name, unreadTopic.name, unreadTopic.id)
                 }
             }
         }
 
-        // 3. Final check: earlier topics in CURRENT forum (wrap around within forum)
-        if (currentForum != null) {
-            val forumTopics = allFolders.filter { it.parentId == currentForum.id }.sortedBy { it.name.lowercase() }
-            val currentTopicIndex = forumTopics.indexOfFirst { it.id == topicId }
-            if (currentTopicIndex != -1) {
-                for (i in 0 until currentTopicIndex) {
-                    if (forumTopics[i].unread > 0) return NextUnreadItem.Topic(forumName, forumTopics[i].name, forumTopics[i].id)
-                }
-            }
-        }
-
+        Log.d("TopicViewModel", "Next Unread: No unread topics found outside current topic")
         return NextUnreadItem.NoMoreUnread
     }
 

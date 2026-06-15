@@ -219,7 +219,7 @@ class UserForumTopicResultSet2 {
     @field:Element(name = "Start", required = false)
     var start: String? = null
 
-    @field:ElementList(entry = "UserForumTopic2", inline = true, required = false)
+    @field:ElementList(name = "UserTopics", entry = "UserForumTopic2", inline = false, required = false)
     var userTopics: List<UserForumTopic2> = mutableListOf()
 }
 
