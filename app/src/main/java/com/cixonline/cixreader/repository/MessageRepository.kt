@@ -173,7 +173,7 @@ class MessageRepository(
             )
         }
         messageDao.insertAll(messagesToInsert)
-        refreshAllTopicUnreads()
+        recalculateCounts() // Optimization: Recalculate locally instead of hitting server
     }
 
     suspend fun fetchThreadThenBackfill(forum: String, topic: String, msgId: Int, topicId: Int) = withContext(Dispatchers.IO) {
@@ -287,6 +287,7 @@ class MessageRepository(
                 threadUnread = existing?.threadUnread ?: -1
             )
             messageDao.insert(message)
+            recalculateCounts() // Optimization
         } catch (e: Exception) {
             Log.e(tag, "fetchMessageAndChildren failed for $msgId", e)
         }
@@ -399,6 +400,11 @@ class MessageRepository(
             
             // Decrement the folder unread count instead of full recalculation
             folderDao.decrementUnread(message.topicId)
+
+            // Decrement the thread unread count on the root if there is one
+            if (message.rootId != 0) {
+                messageDao.decrementThreadUnread(message.rootId, message.topicId)
+            }
             
             // Recalculate forum level only
             recalculateCounts()
@@ -411,6 +417,7 @@ class MessageRepository(
         try {
             // 1. Update local messages
             messageDao.markTopicAsRead(topicId)
+            messageDao.zeroThreadUnreads(topicId)
 
             // 2. Clear topic unread count
             folderDao.setUnread(topicId, 0)

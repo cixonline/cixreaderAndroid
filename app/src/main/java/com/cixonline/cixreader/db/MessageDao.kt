@@ -57,6 +57,12 @@ interface MessageDao {
     @Query("UPDATE messages SET unread = :unread, readPending = :readPending WHERE id = :id")
     suspend fun updateUnreadAndPending(id: Int, unread: Boolean, readPending: Boolean)
 
+    @Query("UPDATE messages SET threadUnread = MAX(0, threadUnread - 1) WHERE remoteId = :rootId AND topicId = :topicId")
+    suspend fun decrementThreadUnread(rootId: Int, topicId: Int)
+
+    @Query("UPDATE messages SET threadUnread = 0 WHERE topicId = :topicId")
+    suspend fun zeroThreadUnreads(topicId: Int)
+
     @Delete
     suspend fun delete(message: CIXMessage)
 

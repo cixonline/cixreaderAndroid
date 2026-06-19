@@ -119,41 +119,16 @@ class TopicViewModel(
                 
                 var targetMessage: CIXMessage? = null
 
+                // 1. Determine landing message
                 if (initialMessageId != 0 || initialRootId != 0) {
                     val msgToFetch = if (initialMessageId != 0) initialMessageId else initialRootId
-                    
                     targetMessage = repository.getMessagesForTopic(topicId).first().find { it.remoteId == msgToFetch }
                     if (targetMessage == null) {
                         repository.fetchMessageAndChildren(forumName, topicName, msgToFetch, topicId)
                         targetMessage = repository.getMessagesForTopic(topicId).first().find { it.remoteId == msgToFetch }
                     }
-
-                    if (targetMessage != null) {
-                        val rootId = if (targetMessage.rootId != 0) targetMessage.rootId else targetMessage.remoteId
-                        val rootMsg = repository.getMessagesForTopic(topicId).first().find { it.remoteId == rootId }
-                        
-                        val currentCount = countThreadMessages(repository.getMessagesForTopic(topicId).first(), rootId)
-                        val expectedCount = if (rootMsg != null && rootMsg.threadReplies != -1) rootMsg.threadReplies + 1 else Int.MAX_VALUE
-
-                        if (currentCount < expectedCount) {
-                            Log.d("TopicViewModel", "Landing on message #${targetMessage.remoteId}. Fetching thread.xml")
-                            repository.fetchThreadThenBackfill(forumName, topicName, rootId, topicId)
-                        }
-                        if (_scrollToMessageId.value == null) {
-                            _scrollToMessageId.value = targetMessage.remoteId
-                        }
-                    }
-                }
-
-                // After handling initial direct linking (if any), populate the rest of the topic
-                _isBackfilling.value = true
-                repository.backfillToMessageOne(forumName, topicName, topicId)
-                repository.refreshMessages(forumName, topicName, topicId)
-                _isBackfilling.value = false
-
-                if (initialMessageId == 0 && initialRootId == 0) {
+                } else {
                     targetMessage = repository.getOldestUnreadInTopic(topicId)
-                    
                     if (targetMessage == null) {
                         Log.d("TopicViewModel", "No unread found locally. Checking firstunread API.")
                         val serverFirstUnreadId = repository.getFirstUnreadMessageId(forumName, topicName)
@@ -162,25 +137,42 @@ class TopicViewModel(
                             targetMessage = repository.getMessagesForTopic(topicId).first().find { it.remoteId == serverFirstUnreadId }
                         }
                     }
-
                     if (targetMessage == null) {
                         targetMessage = repository.getLatestMessageInTopic(topicId)
                     }
+                }
 
-                    if (targetMessage != null) {
-                        Log.d("TopicViewModel", "Landing on message #${targetMessage.remoteId}. Ensuring thread is loaded.")
-                        val rootId = if (targetMessage.rootId != 0) targetMessage.rootId else targetMessage.remoteId
-                        val rootMsg = repository.getMessagesForTopic(topicId).first().find { it.remoteId == rootId }
-                        
-                        val currentCount = countThreadMessages(repository.getMessagesForTopic(topicId).first(), rootId)
-                        val expectedCount = if (rootMsg != null && rootMsg.threadReplies != -1) rootMsg.threadReplies + 1 else Int.MAX_VALUE
+                // 2. Ensure target message thread is loaded and scroll to it
+                if (targetMessage != null) {
+                    val rootId = if (targetMessage.rootId != 0) targetMessage.rootId else targetMessage.remoteId
+                    val allMsgs = repository.getMessagesForTopic(topicId).first()
+                    val rootMsg = allMsgs.find { it.remoteId == rootId }
+                    
+                    val currentCount = countThreadMessages(allMsgs, rootId)
+                    val expectedCount = if (rootMsg != null && rootMsg.threadReplies != -1) rootMsg.threadReplies + 1 else Int.MAX_VALUE
 
-                        if (currentCount < expectedCount) {
-                            repository.fetchThreadThenBackfill(forumName, topicName, rootId, topicId)
-                        }
-                        if (_scrollToMessageId.value == null) {
-                            _scrollToMessageId.value = targetMessage.remoteId
-                        }
+                    if (currentCount < expectedCount) {
+                        Log.d("TopicViewModel", "Ensuring thread for #${targetMessage.remoteId} is loaded.")
+                        repository.fetchThreadThenBackfill(forumName, topicName, rootId, topicId)
+                    }
+                    if (_scrollToMessageId.value == null) {
+                        _scrollToMessageId.value = targetMessage.remoteId
+                    }
+                }
+
+                // 3. Landing successful, hide spinner while background loading happens
+                _isLoading.value = false
+
+                // 4. Background: populate the rest of the topic
+                launch {
+                    _isBackfilling.value = true
+                    try {
+                        repository.backfillToMessageOne(forumName, topicName, topicId)
+                        repository.refreshMessages(forumName, topicName, topicId)
+                    } catch (e: Exception) {
+                        Log.e("TopicViewModel", "Background tasks failed", e)
+                    } finally {
+                        _isBackfilling.value = false
                     }
                 }
 
@@ -193,7 +185,6 @@ class TopicViewModel(
                 }
             } finally {
                 _isLoading.value = false
-                _isBackfilling.value = false
             }
         }
     }
@@ -303,9 +294,7 @@ class TopicViewModel(
                             break
                         }
                     }
-                    if (found == null) {
-                        found = visualSequence.take(currentIndex).find { isCandidate(it) }
-                    }
+                    // Removed wrap-around within current topic to allow moving to next topic
                 } else {
                     found = visualSequence.find { isCandidate(it) }
                 }
@@ -365,8 +354,8 @@ class TopicViewModel(
     }
 
     private suspend fun findNextUnreadOutsideTopic(): NextUnreadItem {
-        // Refresh all topic unread counts from server to ensure we have the latest status
-        repository.refreshAllTopicUnreads()
+        // Optimization: Use locally cached unread status unless user explicitly refreshes
+        // repository.refreshAllTopicUnreads()
 
         val allFolders = folderDao.getAllSync()
         val rootFolders = allFolders.filter { it.isRootFolder }.sortedBy { it.name.lowercase() }

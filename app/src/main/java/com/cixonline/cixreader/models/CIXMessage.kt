@@ -43,8 +43,8 @@ data class CIXMessage(
 
     val isActuallyUnread: Boolean
         get() {
-            // Unread messages are those explicitly marked unread, not withdrawn, and not pseudo-messages
-            return unread && !isWithdrawn() && !isPseudo
+            // Unread messages are those explicitly marked unread, not withdrawn, not pseudo-messages, AND not pending read sync
+            return unread && !readPending && !isWithdrawn() && !isPseudo
         }
 
     val isRoot: Boolean
