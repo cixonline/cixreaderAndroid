@@ -442,9 +442,7 @@ class MessageRepository(
                 val topicId = HtmlUtils.calculateTopicId(forumName, topicName)
                 val unreadCount = result.effectiveUnread?.trim()?.toIntOrNull() ?: 0
                 
-                if (unreadCount <= 0) return@forEach
-
-                // Ensure topic and forum exist in DB
+                // Ensure topic and forum exist in DB even if unreadCount is 0
                 var topic = folderDao.getById(topicId)
                 if (topic == null) {
                     val forumId = HtmlUtils.calculateForumId(forumName)
