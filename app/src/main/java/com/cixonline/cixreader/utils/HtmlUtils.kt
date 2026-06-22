@@ -11,9 +11,6 @@ object HtmlUtils {
         if (text.isNullOrEmpty()) return ""
         
         // CIX messages are often plain text with HTML entities.
-        // HtmlCompat.fromHtml parses the input as HTML source, which collapses 
-        // whitespace (including newlines) into single spaces.
-        // To preserve them, we replace them with a temporary marker before decoding.
         val marker = "___NEWLINE_MARKER___"
         val withMarkers = text.replace("\r\n", marker)
             .replace("\r", marker)
@@ -41,6 +38,26 @@ object HtmlUtils {
     }
 
     /**
+     * Specifically handles CIX topic names which sometimes come with ordinal prefixes (e.g., "9general").
+     */
+    fun normalizeTopicName(text: String?): String {
+        val name = normalizeName(text)
+        if (name.length > 1 && name[0].isDigit()) {
+            // CIX ordinal prefixes are usually 1-2 digits at the start of a topic name
+            // but only in some specific API results. We strip them if they are followed by a letter.
+            val stripped = name.replaceFirst("^\\d+".toRegex(), "")
+            if (stripped.isNotEmpty() && Character.isLetter(stripped[0])) {
+                // Known exceptions where a topic name legitimately starts with a number
+                if (name.startsWith("3d", ignoreCase = true)) {
+                    return name
+                }
+                return stripped
+            }
+        }
+        return name
+    }
+
+    /**
      * Calculates a consistent forum ID regardless of casing or HTML encoding.
      */
     fun calculateForumId(forumName: String?): Int {
@@ -52,7 +69,7 @@ object HtmlUtils {
      */
     fun calculateTopicId(forumName: String?, topicName: String?): Int {
         val f = normalizeName(forumName).lowercase()
-        val t = normalizeName(topicName).lowercase()
+        val t = normalizeTopicName(topicName).lowercase()
         return (f + t).hashCode()
     }
 
@@ -66,17 +83,12 @@ object HtmlUtils {
 
     /**
      * Encodes a string for use in a CIX API path segment.
-     * The CIX API requires ampersands to be replaced with "+and+".
-     * We keep the '+' characters unencoded as required by the CIX API.
+     * Note: Conferences and topics cannot have ampersands.
      */
     fun cixEncode(text: String?): String {
         if (text.isNullOrEmpty()) return ""
-        // First decode any existing HTML entities (like &amp;)
         val decoded = decodeHtml(text)
-        // CIX API specific replacement for ampersands
-        val withAnd = decoded.replace("&", "+and+")
-        // Standard URL encode but allow '+' to remain for "+and+"
-        return Uri.encode(withAnd, "+")
+        return Uri.encode(decoded)
     }
 
     /**
@@ -88,7 +100,6 @@ object HtmlUtils {
 
     /**
      * Encodes a filename for CIX attachment.
-     * CIX filenames typically replace spaces with underscores and remove other special characters.
      */
     fun encodeFilename(filename: String?): String {
         if (filename.isNullOrBlank()) return ""

@@ -57,7 +57,7 @@ class ForumRepository(
         val resultSet = api.getUserForumTopics(encodedForumName)
         val topics = resultSet.userTopics.mapNotNull { result ->
             val name = result.name ?: return@mapNotNull null
-            val normalizedTopicName = HtmlUtils.normalizeName(name)
+            val normalizedTopicName = HtmlUtils.normalizeTopicName(name)
             Folder(
                 id = HtmlUtils.calculateTopicId(forumName, normalizedTopicName),
                 name = normalizedTopicName,
@@ -73,8 +73,10 @@ class ForumRepository(
             Log.d("ForumRepository", "Refreshing all topic unread counts from server using User.AllTopics")
             val resultSet = api.getAllTopics()
             resultSet.userTopics.forEach { result ->
-                val forumName = result.forum ?: return@forEach
-                val topicName = result.topic ?: return@forEach
+                val rawForum = result.forum ?: return@forEach
+                val rawTopic = result.topic ?: return@forEach
+                val forumName = HtmlUtils.normalizeName(rawForum)
+                val topicName = HtmlUtils.normalizeTopicName(rawTopic)
                 val topicId = HtmlUtils.calculateTopicId(forumName, topicName)
                 val unreadCount = result.effectiveUnread?.toIntOrNull() ?: 0
                 folderDao.setUnread(topicId, unreadCount)

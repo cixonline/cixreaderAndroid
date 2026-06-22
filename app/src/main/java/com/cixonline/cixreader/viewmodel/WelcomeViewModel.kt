@@ -26,6 +26,7 @@ import com.cixonline.cixreader.utils.SyncManager
 import com.google.ai.client.generativeai.GenerativeModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.xmlpull.v1.XmlPullParserFactory
@@ -151,7 +152,7 @@ class WelcomeViewModel(
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val allFolders = folderDao.getAll().first()
+                val allFolders = folderDao.getAllSync()
                 val forums = allFolders.filter { it.isRootFolder }
                 val topics = allFolders.filter { !it.isRootFolder }
                 var dirForums = dirForumDao.getAll().first()
@@ -313,7 +314,7 @@ class WelcomeViewModel(
             } else {
                 topics.find { it.name.equals("general", ignoreCase = true) } ?: topics.first()
             }
-            Folder(id = HtmlUtils.calculateTopicId(forum.name, matchedTopic.name ?: ""), name = HtmlUtils.normalizeName(matchedTopic.name ?: ""), parentId = forum.id)
+            Folder(id = HtmlUtils.calculateTopicId(forum.name, matchedTopic.name ?: ""), name = HtmlUtils.normalizeTopicName(matchedTopic.name ?: ""), parentId = forum.id)
         } catch (e: Exception) {
             Log.e("WelcomeViewModel", "Topic fetch failed for ${forum.name}", e)
             null
@@ -342,17 +343,17 @@ class WelcomeViewModel(
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                if (folderDao.getAll().first().isEmpty()) refreshFolders()
+                if (folderDao.getAllSync().isEmpty()) messageRepository.refreshFoldersFromServer()
                 val response = api.getInterestingThreads(count = 20)
                 val threads = response.messages ?: emptyList()
                 val uniqueThreads = threads.distinctBy { 
-                    "${HtmlUtils.normalizeName(it.forum)}/${HtmlUtils.normalizeName(it.topic)}/${it.effectiveRootId}" 
+                    "${HtmlUtils.normalizeName(it.forum)}/${HtmlUtils.normalizeTopicName(it.topic)}/${it.effectiveRootId}" 
                 }
-                val memberForums = folderDao.getAll().first().filter { it.isRootFolder }.map { it.name.lowercase() }.toSet()
+                val memberForums = folderDao.getAllSync().filter { it.isRootFolder }.map { it.name.lowercase() }.toSet()
                 val resolvedThreads = uniqueThreads.map { thread ->
                     async {
                         val forum = HtmlUtils.normalizeName(thread.forum ?: "")
-                        val topic = HtmlUtils.normalizeName(thread.topic ?: "")
+                        val topic = HtmlUtils.normalizeTopicName(thread.topic ?: "")
                         val topicId = HtmlUtils.calculateTopicId(forum, topic)
                         
                         // Optimize: Use rootId from thread if available, otherwise resolve via API
@@ -445,22 +446,18 @@ class WelcomeViewModel(
     }
 
     suspend fun joinForumIfNeeded(forumName: String): JoinResult {
-        val isMember = folderDao.getAll().first().any { it.isRootFolder && it.name.equals(forumName, ignoreCase = true) }
+        val folders = folderDao.getAllSync()
+        val isMember = folders.any { it.isRootFolder && it.name.equals(forumName, ignoreCase = true) }
+        
         if (!isMember) {
-            return try {
-                val response = api.joinForum(HtmlUtils.cixEncode(forumName))
-                val resultStr = extractStringFromXml(response.string())
-                if (resultStr == "Success") {
-                    refreshFolders()
-                    JoinResult.Success
-                } else if (resultStr == "Failure" || resultStr.contains("Free account limited to 10 forums", ignoreCase = true)) {
-                    JoinResult.LimitReached(forumName)
-                } else {
-                    JoinResult.Error(resultStr)
-                }
-            } catch (e: Exception) { 
-                Log.e("WelcomeViewModel", "Join failed", e)
-                JoinResult.Error(e.message ?: "Unknown error")
+            Log.d("WelcomeViewModel", "Joining forum: $forumName")
+            val resultStr = messageRepository.joinForumSync(forumName)
+            return if (resultStr == "Success" || resultStr.contains("Already", ignoreCase = true)) {
+                JoinResult.Success
+            } else if (resultStr.contains("limited to 10 forums", ignoreCase = true)) {
+                JoinResult.LimitReached(forumName)
+            } else {
+                JoinResult.Error(resultStr)
             }
         }
         return JoinResult.Success

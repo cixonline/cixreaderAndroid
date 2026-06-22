@@ -22,6 +22,7 @@ import com.cixonline.cixreader.ui.screens.*
 import com.cixonline.cixreader.utils.SettingsManager
 import com.cixonline.cixreader.utils.SyncManager
 import com.cixonline.cixreader.viewmodel.*
+import com.cixonline.cixreader.utils.HtmlUtils
 
 @Composable
 fun AppNavHost(
@@ -320,10 +321,12 @@ class NavigationActions(private val navController: NavHostController, private va
     }
 
     val navigateToThread: (String, String, Int, Int, Int) -> Unit = { forum, topic, topicId, rootId, msgId ->
+        val cleanTopic = HtmlUtils.normalizeTopicName(topic)
+        val cleanTopicId = HtmlUtils.calculateTopicId(forum, cleanTopic)
         val encodedForum = Uri.encode(forum)
-        val encodedTopic = Uri.encode(topic)
+        val encodedTopic = Uri.encode(cleanTopic)
         // Using query parameters for forum and topic names to safely handle special characters (like slashes)
-        navController.navigate("thread/$topicId?forumName=$encodedForum&topicName=$encodedTopic&rootId=$rootId&msgId=$msgId")
+        navController.navigate("thread/$cleanTopicId?forumName=$encodedForum&topicName=$encodedTopic&rootId=$rootId&msgId=$msgId")
     }
 
     val navigateToActivityLog: () -> Unit = {

@@ -15,6 +15,7 @@ import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -62,30 +63,52 @@ class MessageRepository(
 
     suspend fun refreshMessages(forumName: String, topicName: String, topicId: Int, force: Boolean = false, sinceOverride: String? = null) = withContext(Dispatchers.IO) {
         try {
-            val encodedForum = HtmlUtils.cixEncode(forumName)
-            val encodedTopic = HtmlUtils.cixEncode(topicName)
-            
             val latestMessage = messageDao.getLatestMessage(topicId)
-            val since = sinceOverride ?: if (force || latestMessage == null) null else DateUtils.formatApiDate(latestMessage.date)
-
-            Log.d(tag, "Refreshing messages for $forumName/$topicName. Since: $since")
+            
+            if (force || latestMessage == null) {
+                Log.d(tag, "Refreshing messages for $forumName/$topicName via backfill.")
+                backfillToMessageOne(forumName, topicName, topicId)
+            } else {
+                Log.d(tag, "Topic $forumName/$topicName already has messages. Skipping full refresh.")
+            }
         } catch (e: Exception) {
-            if (e.message?.contains("not a member", ignoreCase = true) == true) {
+            handleException(e, forumName)
+        }
+    }
+
+    private fun handleException(e: Exception, forumName: String) {
+        if (e is HttpException) {
+            val code = e.code()
+            var errorBody: String? = null
+            try {
+                errorBody = e.response()?.errorBody()?.string()
+            } catch (ioe: Exception) {
+                // Ignore
+            }
+
+            val isNotAMember = code == 403 || 
+                               (code == 400 && errorBody?.contains("not a member", ignoreCase = true) == true) ||
+                               (code == 400 && e.response()?.message()?.contains("not a member", ignoreCase = true) == true)
+
+            if (isNotAMember) {
                 throw NotAMemberException(forumName)
             }
-            Log.e(tag, "Refresh messages failed", e)
-            throw e
+            
+            // Log specific 400 errors that aren't membership related
+            if (code == 400) {
+                Log.w(tag, "HTTP 400 for $forumName: $errorBody")
+            }
         }
+        
+        if (e.message?.contains("not a member", ignoreCase = true) == true) {
+            throw NotAMemberException(forumName)
+        }
+        Log.e(tag, "Operation failed", e)
+        throw e
     }
 
     suspend fun backfillToMessageOne(forumName: String, topicName: String, topicId: Int) = withContext(Dispatchers.IO) {
         try {
-            val oldestLocal = messageDao.getOldestMessage(topicId)
-            if (oldestLocal != null && oldestLocal.remoteId <= 1) {
-                Log.d(tag, "Already have message 1 for $forumName/$topicName")
-                return@withContext
-            }
-
             val encodedForum = HtmlUtils.cixEncode(forumName)
             val encodedTopic = HtmlUtils.cixEncode(topicName)
 
@@ -95,7 +118,6 @@ class MessageRepository(
             if (resultSet.threads.isNotEmpty()) {
                 Log.d(tag, "Backfill fetched ${resultSet.threads.size} roots for $forumName/$topicName")
                 
-                // Convert ThreadApi to MessageApi to reuse saveMessagesToDb
                 val mappedMessages = resultSet.threads.map { thread ->
                     MessageApi().apply {
                         id = thread.id
@@ -105,7 +127,7 @@ class MessageRepository(
                         forum = thread.forum
                         topic = thread.topic
                         rootId = thread.rootId
-                        replyTo = 0 // threads.xml returns roots
+                        replyTo = 0 
                         unread = thread.unread > 0
                         threadReplies = thread.replies
                         threadUnread = thread.unread
@@ -115,7 +137,7 @@ class MessageRepository(
             }
             Log.d(tag, "Backfill complete for $forumName/$topicName")
         } catch (e: Exception) {
-            Log.e(tag, "Backfill failed for $forumName/$topicName", e)
+            handleException(e, forumName)
         }
     }
 
@@ -173,7 +195,7 @@ class MessageRepository(
             )
         }
         messageDao.insertAll(messagesToInsert)
-        recalculateCounts() // Optimization: Recalculate locally instead of hitting server
+        recalculateCounts() 
     }
 
     suspend fun fetchThreadThenBackfill(forum: String, topic: String, msgId: Int, topicId: Int) = withContext(Dispatchers.IO) {
@@ -187,7 +209,7 @@ class MessageRepository(
                 saveMessagesToDb(threadSet.messages, forum, topic, topicId)
             }
         } catch (e: Exception) {
-            Log.e(tag, "fetchThreadThenBackfill failed for $msgId", e)
+            handleException(e, forum)
         }
     }
 
@@ -287,9 +309,9 @@ class MessageRepository(
                 threadUnread = existing?.threadUnread ?: -1
             )
             messageDao.insert(message)
-            recalculateCounts() // Optimization
+            recalculateCounts() 
         } catch (e: Exception) {
-            Log.e(tag, "fetchMessageAndChildren failed for $msgId", e)
+            handleException(e, forum)
         }
     }
 
@@ -304,7 +326,7 @@ class MessageRepository(
     ): Int = withContext(Dispatchers.IO) {
         try {
             val forumParam = HtmlUtils.normalizeName(forum)
-            val topicParam = HtmlUtils.normalizeName(topic)
+            val topicParam = HtmlUtils.normalizeTopicName(topic)
 
             val processedAttachments: List<PostAttachment>? = if (attachments != null) {
                 attachments.map { it.copy(filename = HtmlUtils.encodeFilename(it.filename)) }
@@ -361,15 +383,42 @@ class MessageRepository(
         }
     }
 
-    suspend fun joinForum(forum: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun joinForumSync(forum: String): String = withContext(Dispatchers.IO) {
         try {
-            val encodedForum = HtmlUtils.cixEncode(forum)
+            val encodedForum = HtmlUtils.cixEncode(HtmlUtils.decodeHtml(forum))
+            Log.d(tag, "Joining forum: $forum (encoded: $encodedForum)")
             val response = api.joinForum(encodedForum)
-            val result = extractStringFromXml(response.string())
-            result.trim() == "Success"
+            val responseBody = response.string()
+            Log.d(tag, "Join forum response body: $responseBody")
+            val result = extractStringFromXml(responseBody).trim()
+            if (result == "Success" || result.contains("Already", ignoreCase = true)) {
+                refreshFoldersFromServer()
+                // Essential delay to allow server session to update permissions
+                delay(2000)
+            }
+            result
         } catch (e: Exception) {
             Log.e(tag, "Join forum failed", e)
-            false
+            "Error: ${e.message}"
+        }
+    }
+
+    suspend fun joinForum(forum: String): Boolean {
+        val result = joinForumSync(forum)
+        return result == "Success" || result.contains("Already", ignoreCase = true)
+    }
+
+    suspend fun refreshFoldersFromServer() {
+        try {
+            val resultSet = api.getForums()
+            val folders = resultSet.forums.mapNotNull { row ->
+                val name = row.name ?: return@mapNotNull null
+                val normalizedName = HtmlUtils.normalizeName(name)
+                Folder(id = HtmlUtils.calculateForumId(normalizedName), name = normalizedName, parentId = -1, unread = row.effectiveUnread?.toIntOrNull() ?: 0, unreadPriority = row.priority?.toIntOrNull() ?: 0)
+            }
+            folderDao.insertAll(folders)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to refresh folders from server", e)
         }
     }
 
@@ -395,36 +444,22 @@ class MessageRepository(
 
     suspend fun markAsRead(message: CIXMessage) = withContext(Dispatchers.IO) {
         if (message.unread) {
-            // Optimistically mark as read and pending in local DB
             messageDao.updateUnreadAndPending(message.id, unread = false, readPending = true)
-            
-            // Decrement the folder unread count instead of full recalculation
             folderDao.decrementUnread(message.topicId)
-
-            // Decrement the thread unread count on the root if there is one
             if (message.rootId != 0) {
                 messageDao.decrementThreadUnread(message.rootId, message.topicId)
             }
-            
-            // Recalculate forum level only
             recalculateCounts()
-
             logRepository.log("Marked #${message.remoteId} as read (locally pending) in ${message.forumName}/${message.topicName}", "READ_STATUS")
         }
     }
 
     suspend fun markTopicAsRead(forumName: String, topicName: String, topicId: Int) = withContext(Dispatchers.IO) {
         try {
-            // 1. Update local messages
             messageDao.markTopicAsRead(topicId)
             messageDao.zeroThreadUnreads(topicId)
-
-            // 2. Clear topic unread count
             folderDao.setUnread(topicId, 0)
-
-            // 3. Recalculate forum unread counts
             recalculateCounts()
-
             logRepository.log("Marked topic $forumName/$topicName as read", "READ_STATUS")
         } catch (e: Exception) {
             Log.e(tag, "Failed to mark topic as read", e)
@@ -435,21 +470,17 @@ class MessageRepository(
         try {
             Log.d(tag, "Refreshing all topic unread counts from server using User.AllTopics")
             val resultSet = api.getAllTopics()
-            
             Log.d(tag, "Server returned ${resultSet.userTopics.size} user topics")
-
-            // Success! Only now we zero out existing unreads for topics to refresh them correctly
             folderDao.zeroAllTopicUnreads()
 
             resultSet.userTopics.forEach { result ->
                 val rawForum = result.forum ?: return@forEach
                 val rawTopic = result.topic ?: return@forEach
                 val forumName = HtmlUtils.normalizeName(rawForum)
-                val topicName = HtmlUtils.normalizeName(rawTopic)
+                val topicName = HtmlUtils.normalizeTopicName(rawTopic)
                 val topicId = HtmlUtils.calculateTopicId(forumName, topicName)
                 val unreadCount = result.effectiveUnread?.trim()?.toIntOrNull() ?: 0
                 
-                // Ensure topic and forum exist in DB even if unreadCount is 0
                 var topic = folderDao.getById(topicId)
                 if (topic == null) {
                     val forumId = HtmlUtils.calculateForumId(forumName)
@@ -466,7 +497,6 @@ class MessageRepository(
                     folderDao.setUnread(topicId, unreadCount)
                 }
             }
-            // Merge with local knowledge from messages table
             folderDao.mergeTopicUnreadCounts()
             folderDao.recalculateForumUnreadCounts()
         } catch (e: Exception) {

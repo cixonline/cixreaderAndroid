@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -13,9 +14,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cixonline.cixreader.models.CIXMessage
+import com.cixonline.cixreader.ui.components.linkify
+import com.cixonline.cixreader.utils.HtmlUtils
 import com.cixonline.cixreader.viewmodel.TopicViewModel
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -29,11 +35,13 @@ fun TopicScreen(
     onTitleClick: (forumName: String) -> Unit,
     onLogout: () -> Unit,
     onSettingsClick: () -> Unit,
-    onDraftsClick: () -> Unit
+    onDraftsClick: () -> Unit,
+    onNavigateToThread: (forum: String, topic: String, topicId: Int, rootId: Int, msgId: Int) -> Unit
 ) {
     val messages by viewModel.messages.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
     val scrollToMessageId by viewModel.scrollToMessageId.collectAsState()
     val showJoinDialog by viewModel.showJoinDialog.collectAsState()
     
@@ -169,7 +177,29 @@ fun TopicScreen(
                 )
             )
 
-            if (isLoading && messages.isEmpty()) {
+            if (error != null) {
+                Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = error!!,
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = { viewModel.refresh() }) {
+                            Text("Retry")
+                        }
+                    }
+                }
+            } else if (isLoading && messages.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
@@ -186,7 +216,8 @@ fun TopicScreen(
                         MessageItem(
                             message = message,
                             onStarClick = { viewModel.toggleStar(message) },
-                            onReadClick = { viewModel.markAsRead(message) }
+                            onReadClick = { viewModel.markAsRead(message) },
+                            onNavigateToThread = onNavigateToThread
                         )
                     }
                 }
@@ -199,11 +230,13 @@ fun TopicScreen(
 fun MessageItem(
     message: CIXMessage,
     onStarClick: () -> Unit,
-    onReadClick: () -> Unit
+    onReadClick: () -> Unit,
+    onNavigateToThread: (forum: String, topic: String, topicId: Int, rootId: Int, msgId: Int) -> Unit
 ) {
     val indentLevel = message.level.coerceAtMost(10)
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy HH:mm", Locale.getDefault()) }
     val dateString = remember(message.date) { dateFormat.format(Date(message.date)) }
+    val uriHandler = LocalUriHandler.current
 
     Card(
         modifier = Modifier
@@ -245,10 +278,19 @@ fun MessageItem(
             
             Spacer(modifier = Modifier.height(6.dp))
             
-            Text(
-                text = message.body,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
+            val annotatedBody = linkify(message.body, message.forumName, message.topicName)
+            ClickableText(
+                text = annotatedBody,
+                style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                onClick = { offset ->
+                    annotatedBody.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                        .firstOrNull()?.let { uriHandler.openUri(it.item) }
+                    annotatedBody.getStringAnnotations(tag = "CIX_REF", start = offset, end = offset)
+                        .firstOrNull()?.let { annotation ->
+                            val parts = annotation.item.split(":")
+                            onNavigateToThread(parts[0], parts[1], HtmlUtils.calculateTopicId(parts[0], parts[1]), 0, parts[2].toIntOrNull() ?: 0)
+                        }
+                }
             )
             
             Spacer(modifier = Modifier.height(8.dp))
@@ -256,8 +298,7 @@ fun MessageItem(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+                verticalAlignment = Alignment.CenterVertically) {
                 if (message.isActuallyUnread) {
                     TextButton(onClick = onReadClick) {
                         Text("Mark Read", style = MaterialTheme.typography.labelSmall)

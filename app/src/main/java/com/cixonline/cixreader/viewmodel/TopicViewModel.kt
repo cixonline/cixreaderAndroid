@@ -24,6 +24,7 @@ import com.cixonline.cixreader.repository.NotAMemberException
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
 import com.cixonline.cixreader.utils.SyncManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.net.UnknownHostException
@@ -43,13 +44,16 @@ class TopicViewModel(
     private val folderDao: FolderDao,
     private val logRepository: LogRepository,
     private val syncManager: SyncManager?,
-    val forumName: String,
-    val topicName: String,
+    _forumName: String,
+    _topicName: String,
     val topicId: Int,
     val initialMessageId: Int = 0,
     val initialRootId: Int = 0,
     private val historyRepository: HistoryRepository
 ) : ViewModel(), ProfileHost {
+
+    val forumName = HtmlUtils.normalizeName(_forumName)
+    val topicName = HtmlUtils.normalizeTopicName(_topicName)
 
     private val profileDelegate = ProfileDelegate(api, cachedProfileDao)
 
@@ -116,7 +120,43 @@ class TopicViewModel(
             try {
                 _isLoading.value = true
                 _error.value = null
-                
+
+                // Ensure membership check first
+                var allFolders = folderDao.getAllSync()
+
+                // If folders list is empty, refresh it from server before checking membership
+                if (allFolders.isEmpty()) {
+                    Log.d("TopicViewModel", "Folder list empty. Refreshing from server.")
+                    repository.refreshFoldersFromServer()
+                    allFolders = folderDao.getAllSync()
+                }
+
+                var isMember = allFolders.any { it.isRootFolder && it.name.equals(forumName, ignoreCase = true) }
+
+                if (!isMember) {
+                    Log.d("TopicViewModel", "Not a member of $forumName. Attempting automatic join.")
+                    if (repository.joinForum(forumName)) {
+                        Log.d("TopicViewModel", "Automatically joined $forumName.")
+                        isMember = true
+                    } else {
+                        Log.d("TopicViewModel", "Automatic join failed, showing dialog")
+                        _showJoinDialog.value = forumName
+                        _isLoading.value = false
+                        return@launch
+                    }
+                }
+
+                // If the topic has no messages locally, we MUST fetch something in the foreground
+                if (repository.getMessageCount(topicId) == 0) {
+                    Log.d("TopicViewModel", "Topic is empty locally. Performing initial foreground fetch.")
+                    try {
+                        repository.backfillToMessageOne(forumName, topicName, topicId)
+                    } catch (e: Exception) {
+                        Log.e("TopicViewModel", "Initial foreground backfill failed for $forumName/$topicName", e)
+                        if (e is NotAMemberException) throw e
+                    }
+                }
+
                 var targetMessage: CIXMessage? = null
 
                 // 1. Determine landing message
@@ -124,17 +164,28 @@ class TopicViewModel(
                     val msgToFetch = if (initialMessageId != 0) initialMessageId else initialRootId
                     targetMessage = repository.getMessagesForTopic(topicId).first().find { it.remoteId == msgToFetch }
                     if (targetMessage == null) {
-                        repository.fetchMessageAndChildren(forumName, topicName, msgToFetch, topicId)
-                        targetMessage = repository.getMessagesForTopic(topicId).first().find { it.remoteId == msgToFetch }
+                        try {
+                            Log.d("TopicViewModel", "Fetching specific landing message $msgToFetch")
+                            repository.fetchMessageAndChildren(forumName, topicName, msgToFetch, topicId)
+                            targetMessage = repository.getMessagesForTopic(topicId).first().find { it.remoteId == msgToFetch }
+                        } catch (e: Exception) {
+                            Log.e("TopicViewModel", "Specific message fetch failed for $msgToFetch in $forumName/$topicName", e)
+                            if (e is NotAMemberException) throw e
+                        }
                     }
                 } else {
                     targetMessage = repository.getOldestUnreadInTopic(topicId)
                     if (targetMessage == null) {
                         Log.d("TopicViewModel", "No unread found locally. Checking firstunread API.")
-                        val serverFirstUnreadId = repository.getFirstUnreadMessageId(forumName, topicName)
-                        if (serverFirstUnreadId > 0) {
-                            repository.fetchMessageAndChildren(forumName, topicName, serverFirstUnreadId, topicId)
-                            targetMessage = repository.getMessagesForTopic(topicId).first().find { it.remoteId == serverFirstUnreadId }
+                        try {
+                            val serverFirstUnreadId = repository.getFirstUnreadMessageId(forumName, topicName)
+                            if (serverFirstUnreadId > 0) {
+                                repository.fetchMessageAndChildren(forumName, topicName, serverFirstUnreadId, topicId)
+                                targetMessage = repository.getMessagesForTopic(topicId).first().find { it.remoteId == serverFirstUnreadId }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("TopicViewModel", "First unread fetch failed", e)
+                            if (e is NotAMemberException) throw e
                         }
                     }
                     if (targetMessage == null) {
@@ -153,7 +204,11 @@ class TopicViewModel(
 
                     if (currentCount < expectedCount) {
                         Log.d("TopicViewModel", "Ensuring thread for #${targetMessage.remoteId} is loaded.")
-                        repository.fetchThreadThenBackfill(forumName, topicName, rootId, topicId)
+                        try {
+                            repository.fetchThreadThenBackfill(forumName, topicName, rootId, topicId)
+                        } catch (e: Exception) {
+                            Log.e("TopicViewModel", "Thread backfill failed for root $rootId", e)
+                        }
                     }
                     if (_scrollToMessageId.value == null) {
                         _scrollToMessageId.value = targetMessage.remoteId
@@ -176,6 +231,9 @@ class TopicViewModel(
                     }
                 }
 
+            } catch (e: NotAMemberException) {
+                Log.w("TopicViewModel", "Caught NotAMemberException for $forumName")
+                _showJoinDialog.value = forumName
             } catch (e: Exception) {
                 Log.e("TopicViewModel", "Init failed for $forumName/$topicName", e)
                 if (isOfflineError(e) && repository.getMessageCount(topicId) == 0) {
@@ -425,7 +483,7 @@ class TopicViewModel(
 
     fun preparePostDialog() {
         viewModelScope.launch {
-            val allFolders = folderDao.getAll().first()
+            val allFolders = folderDao.getAllSync()
             val currentForum = allFolders.find { it.isRootFolder && it.name.equals(forumName, ignoreCase = true) }
             _selectedForumForPost.value = currentForum
             if (currentForum != null) {
