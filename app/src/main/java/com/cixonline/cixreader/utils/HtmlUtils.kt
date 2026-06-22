@@ -38,23 +38,10 @@ object HtmlUtils {
     }
 
     /**
-     * Specifically handles CIX topic names which sometimes come with ordinal prefixes (e.g., "9general").
+     * Returns the normalized topic name.
      */
     fun normalizeTopicName(text: String?): String {
-        val name = normalizeName(text)
-        if (name.length > 1 && name[0].isDigit()) {
-            // CIX ordinal prefixes are usually 1-2 digits at the start of a topic name
-            // but only in some specific API results. We strip them if they are followed by a letter.
-            val stripped = name.replaceFirst("^\\d+".toRegex(), "")
-            if (stripped.isNotEmpty() && Character.isLetter(stripped[0])) {
-                // Known exceptions where a topic name legitimately starts with a number
-                if (name.startsWith("3d", ignoreCase = true)) {
-                    return name
-                }
-                return stripped
-            }
-        }
-        return name
+        return normalizeName(text)
     }
 
     /**
