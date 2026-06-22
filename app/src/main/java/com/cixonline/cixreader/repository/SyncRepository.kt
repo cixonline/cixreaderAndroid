@@ -80,7 +80,9 @@ class SyncRepository(
                         false
                     } else {
                         // If server says unread (isReadFromServer is false), we check the API unread status.
-                        apiMsgs.any { it.unread == true }
+                        // If unread is explicitly true, it's unread.
+                        // If unread is null, we preserve existing status or default to unread for new messages.
+                        apiMsgs.mapNotNull { it.unread }.firstOrNull() ?: (existing?.unread ?: true)
                     }
 
                     // Log cache update
@@ -255,7 +257,7 @@ class SyncRepository(
                 val isUnread = if (isReadFromServer) {
                     false
                 } else {
-                    apiMsgs.any { it.unread == true }
+                    apiMsgs.mapNotNull { it.unread }.firstOrNull() ?: (existing?.unread ?: true)
                 }
 
                 if (existing == null) {

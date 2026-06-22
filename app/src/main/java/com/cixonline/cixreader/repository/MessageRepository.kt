@@ -162,7 +162,9 @@ class MessageRepository(
             val isUnread = if (isReadFromServer || isFromSelf) {
                 false
             } else {
-                apiMsg.unread
+                // If unread is explicitly true, it's unread.
+                // If unread is null, we preserve existing status or default to unread for new messages.
+                apiMsg.unread ?: (existing?.unread ?: true)
             }
 
             if (existing == null) {
@@ -277,7 +279,9 @@ class MessageRepository(
             val isUnread = if (isReadFromServer || isFromSelf) {
                 false
             } else {
-                messageApi.unread
+                // If unread is explicitly true, it's unread.
+                // If unread is null, we preserve existing status or default to unread for new messages.
+                messageApi.unread ?: (existing?.unread ?: true)
             }
 
             if (existing == null) {
