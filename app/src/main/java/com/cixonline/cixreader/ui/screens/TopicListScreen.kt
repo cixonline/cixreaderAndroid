@@ -228,7 +228,7 @@ fun CompactListItem(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
+                fontWeight = if (unreadCount > 0) FontWeight.ExtraBold else FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)

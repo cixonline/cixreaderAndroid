@@ -76,26 +76,47 @@ class MessageRepository(
         }
     }
 
+    private fun isMembershipError(e: HttpException): Boolean {
+        val code = e.code()
+        if (code == 403) return true
+        if (code != 400) return false
+        
+        val response = e.response()
+        val errorBody = try { response?.errorBody()?.string() } catch (ioe: Exception) { null }
+        val statusMessage = response?.message() ?: ""
+        val fullMessage = e.message ?: ""
+        
+        return errorBody?.contains("not a member", ignoreCase = true) == true ||
+               errorBody?.contains("no row at position 0", ignoreCase = true) == true ||
+               statusMessage.contains("not a member", ignoreCase = true) == true ||
+               statusMessage.contains("no row at position 0", ignoreCase = true) == true ||
+               fullMessage.contains("no row at position 0", ignoreCase = true) == true
+    }
+
+    private suspend fun <T> withMembershipRetry(forumName: String, block: suspend () -> T): T {
+        try {
+            return block()
+        } catch (e: Exception) {
+            if (e is HttpException && isMembershipError(e)) {
+                Log.i(tag, "Detected membership error for $forumName. Attempting automatic join.")
+                if (joinForum(forumName)) {
+                    Log.i(tag, "Auto-join successful for $forumName. Retrying operation.")
+                    return block()
+                }
+            }
+            throw e
+        }
+    }
+
     private fun handleException(e: Exception, forumName: String) {
         if (e is HttpException) {
-            val code = e.code()
-            var errorBody: String? = null
-            try {
-                errorBody = e.response()?.errorBody()?.string()
-            } catch (ioe: Exception) {
-                // Ignore
-            }
-
-            val isNotAMember = code == 403 || 
-                               (code == 400 && errorBody?.contains("not a member", ignoreCase = true) == true) ||
-                               (code == 400 && e.response()?.message()?.contains("not a member", ignoreCase = true) == true)
-
-            if (isNotAMember) {
+            if (isMembershipError(e)) {
                 throw NotAMemberException(forumName)
             }
             
-            // Log specific 400 errors that aren't membership related
+            val code = e.code()
             if (code == 400) {
+                val errorBody = try { e.response()?.errorBody()?.string() } catch (ioe: Exception) { null }
                 Log.w(tag, "HTTP 400 for $forumName: $errorBody")
             }
         }
@@ -113,7 +134,9 @@ class MessageRepository(
             val encodedTopic = HtmlUtils.cixEncode(topicName)
 
             Log.d(tag, "Backfilling $forumName/$topicName using threads.xml")
-            val resultSet = api.getTopicThreads(encodedForum, encodedTopic)
+            val resultSet = withMembershipRetry(forumName) {
+                api.getTopicThreads(encodedForum, encodedTopic)
+            }
 
             if (resultSet.threads.isNotEmpty()) {
                 Log.d(tag, "Backfill fetched ${resultSet.threads.size} roots for $forumName/$topicName")
@@ -206,7 +229,9 @@ class MessageRepository(
             val encodedTopic = HtmlUtils.cixEncode(topic)
             
             Log.d(tag, "Fetching thread for msg $msgId in $forum/$topic")
-            val threadSet = api.getThread(encodedForum, encodedTopic, msgId)
+            val threadSet = withMembershipRetry(forum) {
+                api.getThread(encodedForum, encodedTopic, msgId)
+            }
             if (threadSet.messages.isNotEmpty()) {
                 saveMessagesToDb(threadSet.messages, forum, topic, topicId)
             }
@@ -255,9 +280,12 @@ class MessageRepository(
         try {
             val encodedForum = HtmlUtils.cixEncode(forum)
             val encodedTopic = HtmlUtils.cixEncode(topic)
-            val response = api.getFirstUnread(encodedForum, encodedTopic)
+            val response = withMembershipRetry(forum) {
+                api.getFirstUnread(encodedForum, encodedTopic)
+            }
             extractIntFromXml(response.string())
         } catch (e: Exception) {
+            Log.w(tag, "Failed to get first unread for $forum/$topic: ${e.message}")
             0
         }
     }
@@ -267,7 +295,9 @@ class MessageRepository(
             val encodedForum = HtmlUtils.cixEncode(forum)
             val encodedTopic = HtmlUtils.cixEncode(topic)
             
-            val messageApi = api.getMessage(encodedForum, encodedTopic, msgId)
+            val messageApi = withMembershipRetry(forum) {
+                api.getMessage(encodedForum, encodedTopic, msgId)
+            }
             val existing = messageDao.getByRemoteId(msgId, topicId)
             
             val messageDate = DateUtils.parseCixDate(messageApi.dateTime)
@@ -354,7 +384,9 @@ class MessageRepository(
                 attachments = processedAttachments
             )
 
-            val response = JsonNetworkClient.api.postMessageJson(request)
+            val response = withMembershipRetry(forum) {
+                JsonNetworkClient.api.postMessageJson(request)
+            }
 
             val rootId = if (replyTo != 0) {
                 val parentMessage = messageDao.getByRemoteId(replyTo, topicId)
@@ -395,10 +427,13 @@ class MessageRepository(
             val responseBody = response.string()
             Log.d(tag, "Join forum response body: $responseBody")
             val result = extractStringFromXml(responseBody).trim()
-            if (result == "Success" || result.contains("Already", ignoreCase = true)) {
+            if (result == "Success") {
                 refreshFoldersFromServer()
                 // Essential delay to allow server session to update permissions
                 delay(2000)
+            } else if (result.contains("Already", ignoreCase = true)) {
+                // If already joined, we might still need a tiny delay for the session
+                delay(200)
             }
             result
         } catch (e: Exception) {
@@ -428,11 +463,13 @@ class MessageRepository(
 
     suspend fun withdrawMessage(message: CIXMessage): Boolean = withContext(Dispatchers.IO) {
         try {
-            val response = api.withdrawMessage(
-                HtmlUtils.cixEncode(message.forumName),
-                HtmlUtils.cixEncode(message.topicName),
-                message.remoteId
-            )
+            val response = withMembershipRetry(message.forumName) {
+                api.withdrawMessage(
+                    HtmlUtils.cixEncode(message.forumName),
+                    HtmlUtils.cixEncode(message.topicName),
+                    message.remoteId
+                )
+            }
             val result = extractStringFromXml(response.string())
             result.trim() == "Success"
         } catch (e: Exception) {
