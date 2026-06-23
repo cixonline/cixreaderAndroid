@@ -524,7 +524,7 @@ fun ThreadScreen(
                                     CircularProgressIndicator()
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        text = if (isBackfilling) "Backfilling messages..." else "Fetching messages...",
+                                        text = "Syncing messages...",
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 }
@@ -606,7 +606,7 @@ fun ThreadScreen(
                         CircularProgressIndicator()
                         if (isBackfilling) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text("Backfilling...", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                            Text("Syncing...", color = Color.White, style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
