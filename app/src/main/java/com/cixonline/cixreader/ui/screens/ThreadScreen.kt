@@ -708,7 +708,7 @@ fun PostMessageDialog(
     var isPosting by remember { mutableStateOf(false) }
 
     val speechRecognizer = remember { SpeechRecognizer.createSpeechRecognizer(context) }
-    val speechRecognizerIntent = remember {
+    val speechRecognizerIntent = remember<Intent> {
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
@@ -1176,7 +1176,7 @@ fun ThreadItem(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall,
-                fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
+                fontWeight = if (unreadCount > 0) FontWeight.ExtraBold else FontWeight.Normal,
                 color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f)
             )
@@ -1185,14 +1185,14 @@ fun ThreadItem(
                 text = "$unreadCount/$totalMessages",
                 style = MaterialTheme.typography.labelSmall,
                 color = if (isSelected) Color.White else if (unreadCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal
+                fontWeight = if (unreadCount > 0) FontWeight.ExtraBold else FontWeight.Normal
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = message.author,
                 maxLines = 1,
                 style = MaterialTheme.typography.labelSmall,
-                fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
+                fontWeight = if (unreadCount > 0) FontWeight.ExtraBold else FontWeight.Normal,
                 color = if (isSelected) Color.White else MaterialTheme.colorScheme.secondary,
                 textAlign = TextAlign.End
             )
@@ -1242,7 +1242,7 @@ fun ThreadRow(
                 style = MaterialTheme.typography.bodySmall.copy(
                     textAlign = if (isSelected) TextAlign.Start else TextAlign.Start
                 ),
-                fontWeight = if (message.isActuallyUnread) FontWeight.Bold else FontWeight.Normal,
+                fontWeight = if (message.isActuallyUnread) FontWeight.ExtraBold else FontWeight.Normal,
                 color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f)
             )
@@ -1251,7 +1251,7 @@ fun ThreadRow(
                 text = message.author,
                 maxLines = 1,
                 style = MaterialTheme.typography.labelSmall,
-                fontWeight = if (message.isActuallyUnread) FontWeight.Bold else FontWeight.Normal,
+                fontWeight = if (message.isActuallyUnread) FontWeight.ExtraBold else FontWeight.Normal,
                 color = if (isSelected) Color.White else MaterialTheme.colorScheme.secondary,
                 textAlign = TextAlign.End
             )
@@ -1604,7 +1604,7 @@ fun ReplyPane(
     val context = LocalContext.current
     
     val speechRecognizer = remember { SpeechRecognizer.createSpeechRecognizer(context) }
-    val speechRecognizerIntent = remember {
+    val speechRecognizerIntent = remember<Intent> {
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
