@@ -93,14 +93,20 @@ class MessageRepository(
                fullMessage.contains("no row at position 0", ignoreCase = true) == true
     }
 
-    private suspend fun <T> withMembershipRetry(forumName: String, block: suspend () -> T): T {
+    private suspend fun <T> withMembershipRetry(forumName: String, topicName: String? = null, block: suspend () -> T): T {
         try {
             return block()
         } catch (e: Exception) {
             if (e is HttpException && isMembershipError(e)) {
-                Log.i(tag, "Detected membership error for $forumName. Attempting automatic join.")
-                if (joinForum(forumName)) {
-                    Log.i(tag, "Auto-join successful for $forumName. Retrying operation.")
+                Log.i(tag, "Detected membership error for $forumName${if (topicName != null) "/$topicName" else ""}. Attempting automatic join.")
+                val joined = if (topicName != null) {
+                    joinTopic(forumName, topicName)
+                } else {
+                    joinForum(forumName)
+                }
+                
+                if (joined) {
+                    Log.i(tag, "Auto-join successful. Retrying operation.")
                     return block()
                 }
             }
@@ -134,7 +140,7 @@ class MessageRepository(
             val encodedTopic = HtmlUtils.cixEncode(topicName)
 
             Log.d(tag, "Backfilling $forumName/$topicName using threads.xml")
-            val resultSet = withMembershipRetry(forumName) {
+            val resultSet = withMembershipRetry(forumName, topicName) {
                 api.getTopicThreads(encodedForum, encodedTopic)
             }
 
@@ -229,7 +235,7 @@ class MessageRepository(
             val encodedTopic = HtmlUtils.cixEncode(topic)
             
             Log.d(tag, "Fetching thread for msg $msgId in $forum/$topic")
-            val threadSet = withMembershipRetry(forum) {
+            val threadSet = withMembershipRetry(forum, topic) {
                 api.getThread(encodedForum, encodedTopic, msgId)
             }
             if (threadSet.messages.isNotEmpty()) {
@@ -280,7 +286,7 @@ class MessageRepository(
         try {
             val encodedForum = HtmlUtils.cixEncode(forum)
             val encodedTopic = HtmlUtils.cixEncode(topic)
-            val response = withMembershipRetry(forum) {
+            val response = withMembershipRetry(forum, topic) {
                 api.getFirstUnread(encodedForum, encodedTopic)
             }
             extractIntFromXml(response.string())
@@ -295,7 +301,7 @@ class MessageRepository(
             val encodedForum = HtmlUtils.cixEncode(forum)
             val encodedTopic = HtmlUtils.cixEncode(topic)
             
-            val messageApi = withMembershipRetry(forum) {
+            val messageApi = withMembershipRetry(forum, topic) {
                 api.getMessage(encodedForum, encodedTopic, msgId)
             }
             val existing = messageDao.getByRemoteId(msgId, topicId)
@@ -384,7 +390,7 @@ class MessageRepository(
                 attachments = processedAttachments
             )
 
-            val response = withMembershipRetry(forum) {
+            val response = withMembershipRetry(forum, topic) {
                 JsonNetworkClient.api.postMessageJson(request)
             }
 
@@ -447,6 +453,32 @@ class MessageRepository(
         return result == "Success" || result.contains("Already", ignoreCase = true)
     }
 
+    suspend fun joinTopicSync(forum: String, topic: String): String = withContext(Dispatchers.IO) {
+        try {
+            val encodedForum = HtmlUtils.cixEncode(HtmlUtils.decodeHtml(forum))
+            val encodedTopic = HtmlUtils.cixEncode(HtmlUtils.decodeHtml(topic))
+            Log.d(tag, "Joining topic: $forum/$topic")
+            val response = api.joinTopic(encodedForum, encodedTopic)
+            val responseBody = response.string()
+            Log.d(tag, "Join topic response body: $responseBody")
+            val result = extractStringFromXml(responseBody).trim()
+            if (result == "Success") {
+                delay(2000)
+            } else if (result.contains("Already", ignoreCase = true)) {
+                delay(200)
+            }
+            result
+        } catch (e: Exception) {
+            Log.e(tag, "Join topic failed", e)
+            "Error: ${e.message}"
+        }
+    }
+
+    suspend fun joinTopic(forum: String, topic: String): Boolean {
+        val result = joinTopicSync(forum, topic)
+        return result == "Success" || result.contains("Already", ignoreCase = true)
+    }
+
     suspend fun refreshFoldersFromServer() {
         try {
             val resultSet = api.getForums()
@@ -463,7 +495,7 @@ class MessageRepository(
 
     suspend fun withdrawMessage(message: CIXMessage): Boolean = withContext(Dispatchers.IO) {
         try {
-            val response = withMembershipRetry(message.forumName) {
+            val response = withMembershipRetry(message.forumName, message.topicName) {
                 api.withdrawMessage(
                     HtmlUtils.cixEncode(message.forumName),
                     HtmlUtils.cixEncode(message.topicName),

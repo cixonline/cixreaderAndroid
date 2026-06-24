@@ -99,7 +99,13 @@ interface CixApi {
     @GET("forums/{forum}/join.xml")
     suspend fun joinForum(
         @Path("forum", encoded = true) forum: String,
-        @Query("mark") mark: Boolean = true
+        @Query("mark") mark: Boolean = false
+    ): ResponseBody
+
+    @GET("forums/{forum}/{topic}/jointopic.xml")
+    suspend fun joinTopic(
+        @Path("forum", encoded = true) forum: String,
+        @Path("topic", encoded = true) topic: String
     ): ResponseBody
 
     @GET("forums/{forum}/resign.xml")
