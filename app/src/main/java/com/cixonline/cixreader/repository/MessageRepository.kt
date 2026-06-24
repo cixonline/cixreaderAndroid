@@ -19,6 +19,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.simpleframework.xml.core.Persister
 import org.xmlpull.v1.XmlPullParserFactory
 import retrofit2.HttpException
@@ -34,6 +36,7 @@ class MessageRepository(
     private val logRepository: LogRepository
 ) {
     private val tag = "MessageRepository"
+    private val membershipMutex = Mutex()
 
     fun getMessagesForTopic(topicId: Int): Flow<List<CIXMessage>> {
         return messageDao.getByTopic(topicId)
@@ -81,16 +84,21 @@ class MessageRepository(
         if (code == 403) return true
         if (code != 400) return false
         
-        val response = e.response()
-        val errorBody = try { response?.errorBody()?.string() } catch (ioe: Exception) { null }
-        val statusMessage = response?.message() ?: ""
+        val statusMessage = e.response()?.message() ?: ""
         val fullMessage = e.message ?: ""
+        val combined = "$statusMessage $fullMessage".lowercase()
         
-        return errorBody?.contains("not a member", ignoreCase = true) == true ||
-               errorBody?.contains("no row at position 0", ignoreCase = true) == true ||
-               statusMessage.contains("not a member", ignoreCase = true) == true ||
-               statusMessage.contains("no row at position 0", ignoreCase = true) == true ||
-               fullMessage.contains("no row at position 0", ignoreCase = true) == true
+        // If it's specifically "no row" when listing a message, it's likely "Not Found" not membership
+        if (combined.contains("no row at position 0") && combined.contains("listing the message")) {
+            return false
+        }
+        
+        val isMatch = combined.contains("not a member") || combined.contains("no row at position 0")
+               
+        if (isMatch) {
+            Log.d(tag, "Confirmed membership error: code=$code, message=$fullMessage")
+        }
+        return isMatch
     }
 
     private suspend fun <T> withMembershipRetry(forumName: String, topicName: String? = null, block: suspend () -> T): T {
@@ -99,10 +107,28 @@ class MessageRepository(
         } catch (e: Exception) {
             if (e is HttpException && isMembershipError(e)) {
                 Log.i(tag, "Detected membership error for $forumName${if (topicName != null) "/$topicName" else ""}. Attempting automatic join.")
-                val joined = if (topicName != null) {
-                    joinTopic(forumName, topicName)
-                } else {
-                    joinForum(forumName)
+                
+                val joined = membershipMutex.withLock {
+                    val folders = folderDao.getAllSync()
+                    val isForumJoined = folders.any { it.isRootFolder && it.name.equals(forumName, ignoreCase = true) }
+                    
+                    if (!isForumJoined) {
+                        Log.d(tag, "Not a member of forum $forumName. Joining forum and all topics.")
+                        joinForum(forumName)
+                    } else if (topicName != null) {
+                        // Double check topic membership if forum is already joined
+                        val topicId = HtmlUtils.calculateTopicId(forumName, topicName)
+                        val isTopicJoined = folders.any { it.id == topicId }
+                        if (!isTopicJoined) {
+                            Log.d(tag, "Member of forum $forumName but not topic $topicName. Joining topic via conf/topic.")
+                            joinTopic(forumName, topicName)
+                        } else {
+                            Log.d(tag, "Already joined forum $forumName and topic $topicName according to DB, but server said no. Re-joining topic just in case.")
+                            joinTopic(forumName, topicName)
+                        }
+                    } else {
+                        false
+                    }
                 }
                 
                 if (joined) {
@@ -122,8 +148,12 @@ class MessageRepository(
             
             val code = e.code()
             if (code == 400) {
-                val errorBody = try { e.response()?.errorBody()?.string() } catch (ioe: Exception) { null }
-                Log.w(tag, "HTTP 400 for $forumName: $errorBody")
+                val fullMsg = e.message ?: ""
+                if (fullMsg.contains("no row at position 0", ignoreCase = true)) {
+                    Log.w(tag, "HTTP 400 (Not Found/No row) for $forumName: $fullMsg")
+                    throw e
+                }
+                Log.w(tag, "HTTP 400 for $forumName: $fullMsg")
             }
         }
         
@@ -296,6 +326,63 @@ class MessageRepository(
         }
     }
 
+    suspend fun resolveRootId(forum: String, topic: String, msgId: Int): Int = withContext(Dispatchers.IO) {
+        try {
+            val encodedForum = HtmlUtils.cixEncode(forum)
+            val encodedTopic = HtmlUtils.cixEncode(topic)
+            val response = withMembershipRetry(forum, topic) {
+                api.getRootMessageId(encodedForum, encodedTopic, msgId)
+            }
+            extractIntFromXml(response.string())
+        } catch (e: Exception) {
+            Log.w(tag, "Failed to resolve root ID for $forum/$topic/$msgId", e)
+            0
+        }
+    }
+
+    suspend fun fetchMessageMetadata(forum: String, topic: String, msgId: Int, topicId: Int): CIXMessage? = withContext(Dispatchers.IO) {
+        try {
+            val encodedForum = HtmlUtils.cixEncode(forum)
+            val encodedTopic = HtmlUtils.cixEncode(topic)
+            
+            val messageApi = withMembershipRetry(forum, topic) {
+                api.getMessage(encodedForum, encodedTopic, msgId)
+            }
+            
+            val messageDate = DateUtils.parseCixDate(messageApi.dateTime)
+            val currentUsername = NetworkClient.getUsername()
+            
+            val isReadFromServer = messageApi.status?.contains("R", ignoreCase = true) == true || messageApi.unread == false
+            val isFromSelf = messageApi.author?.equals(currentUsername, ignoreCase = true) == true
+            
+            val message = CIXMessage(
+                remoteId = messageApi.id,
+                author = HtmlUtils.decodeHtml(messageApi.author ?: ""),
+                body = HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(messageApi.body ?: "")),
+                date = messageDate,
+                commentId = messageApi.replyTo,
+                rootId = if (messageApi.rootId != 0) messageApi.rootId else (if (messageApi.replyTo == 0) messageApi.id else 0),
+                topicId = topicId,
+                forumName = forum,
+                topicName = topic,
+                subject = HtmlUtils.decodeHtml(messageApi.subject),
+                unread = !(isReadFromServer || isFromSelf)
+            )
+            messageDao.insert(message)
+            message
+        } catch (e: Exception) {
+            if (e is HttpException && e.code() == 400) {
+                val fullMsg = e.message ?: ""
+                if (fullMsg.contains("no row at position 0", ignoreCase = true)) {
+                    Log.w(tag, "Message $msgId not found in $forum/$topic (Server: no row at position 0)")
+                    return@withContext null
+                }
+            }
+            Log.e(tag, "fetchMessageMetadata failed for $forum/$topic/$msgId", e)
+            null
+        }
+    }
+
     suspend fun fetchMessageAndChildren(forum: String, topic: String, msgId: Int, topicId: Int) = withContext(Dispatchers.IO) {
         try {
             val encodedForum = HtmlUtils.cixEncode(forum)
@@ -351,6 +438,14 @@ class MessageRepository(
             messageDao.insert(message)
             recalculateCounts() 
         } catch (e: Exception) {
+            if (e is HttpException && e.code() == 400) {
+                val fullMsg = e.message ?: ""
+                if (fullMsg.contains("no row at position 0", ignoreCase = true) && 
+                    fullMsg.contains("listing the message", ignoreCase = true)) {
+                    Log.w(tag, "Message $msgId not found in $forum/$topic during fetchMessageAndChildren")
+                    return@withContext
+                }
+            }
             handleException(e, forum)
         }
     }

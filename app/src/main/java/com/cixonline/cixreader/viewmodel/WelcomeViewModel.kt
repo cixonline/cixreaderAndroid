@@ -12,6 +12,7 @@ import com.cixonline.cixreader.api.CixApi
 import com.cixonline.cixreader.api.InterestingThreadApi
 import com.cixonline.cixreader.api.NetworkClient
 import com.cixonline.cixreader.api.PostAttachment
+import com.cixonline.cixreader.api.NetworkClient.getUsername
 import com.cixonline.cixreader.db.*
 import com.cixonline.cixreader.models.CIXMessage
 import com.cixonline.cixreader.models.DirForum
@@ -349,27 +350,20 @@ class WelcomeViewModel(
                 val uniqueThreads = threads.distinctBy { 
                     "${HtmlUtils.normalizeName(it.forum)}/${HtmlUtils.normalizeTopicName(it.topic)}/${it.effectiveRootId}" 
                 }
-                val memberForums = folderDao.getAllSync().filter { it.isRootFolder }.map { it.name.lowercase() }.toSet()
+                
                 val resolvedThreads = uniqueThreads.map { thread ->
                     async {
                         val forum = HtmlUtils.normalizeName(thread.forum ?: "")
                         val topic = HtmlUtils.normalizeTopicName(thread.topic ?: "")
                         val topicId = HtmlUtils.calculateTopicId(forum, topic)
                         
-                        // Optimize: Use rootId from thread if available, otherwise resolve via API
+                        // Optimize: Use rootId from thread if available, otherwise resolve via repository
                         val rootId = if (thread.rootId != 0) {
                             thread.rootId
                         } else if (thread.rootIdVariant != 0) {
                             thread.rootIdVariant
                         } else if (thread.id != 0) {
-                            try {
-                                val rootResponse = api.getRootMessageId(HtmlUtils.cixEncode(forum), HtmlUtils.cixEncode(topic), thread.id)
-                                val rootIdStr = extractStringFromXml(rootResponse.string()).trim()
-                                rootIdStr.toIntOrNull() ?: thread.id
-                            } catch (e: Exception) {
-                                Log.w("WelcomeViewModel", "Failed to get root ID for ${thread.id} in $forum/$topic, using id", e)
-                                thread.id
-                            }
+                            messageRepository.resolveRootId(forum, topic, thread.id).let { if (it == 0) thread.id else it }
                         } else {
                             thread.effectiveRootId
                         }
@@ -385,34 +379,9 @@ class WelcomeViewModel(
                         }
 
                         var cachedRoot = messageDao.getByRemoteId(rootId, topicId)
-                        if (cachedRoot == null && memberForums.contains(forum.lowercase())) {
-                            try {
-                                // Now use message.xml to get the metadata and content for that root message ID
-                                val messageApi = api.getMessage(HtmlUtils.cixEncode(forum), HtmlUtils.cixEncode(topic), rootId)
-                                val newMessage = CIXMessage(
-                                    remoteId = messageApi.id, 
-                                    author = HtmlUtils.decodeHtml(messageApi.author ?: ""), 
-                                    body = HtmlUtils.decodeHtml(messageApi.body ?: ""), 
-                                    date = DateUtils.parseCixDate(messageApi.dateTime), 
-                                    commentId = messageApi.replyTo, 
-                                    rootId = messageApi.rootId, 
-                                    topicId = topicId, 
-                                    forumName = forum, 
-                                    topicName = topic, 
-                                    subject = HtmlUtils.decodeHtml(messageApi.subject),
-                                    unread = true
-                                )
-                                messageDao.insert(newMessage)
-                                cachedRoot = newMessage
-                            } catch (e: HttpException) {
-                                if (e.code() == 400 || e.code() == 404) {
-                                    Log.w("WelcomeViewModel", "Root message $rootId not found in $forum/$topic (HTTP ${e.code()})")
-                                } else {
-                                    Log.e("WelcomeViewModel", "HTTP error fetching root message $rootId", e)
-                                }
-                            } catch (e: Exception) { 
-                                Log.e("WelcomeViewModel", "Failed to fetch root message $rootId", e)
-                            }
+                        if (cachedRoot == null) {
+                            // Use repository to fetch metadata - this handles auto-joining if needed
+                            cachedRoot = messageRepository.fetchMessageMetadata(forum, topic, rootId, topicId)
                         }
                         
                         if (cachedRoot != null) {
@@ -452,12 +421,11 @@ class WelcomeViewModel(
         if (forum == null) {
             Log.d("WelcomeViewModel", "Joining forum: $forumName (and all its topics)")
             val resultStr = messageRepository.joinForumSync(forumName)
-            return if (resultStr == "Success" || resultStr.contains("Already", ignoreCase = true)) {
-                JoinResult.Success
-            } else if (resultStr.contains("limited to 10 forums", ignoreCase = true)) {
-                JoinResult.LimitReached(forumName)
-            } else {
-                JoinResult.Error(resultStr)
+            return when {
+                resultStr == "Success" || resultStr.contains("Already", ignoreCase = true) -> JoinResult.Success
+                resultStr.contains("limited to 10 forums", ignoreCase = true) || 
+                resultStr.contains("Failure", ignoreCase = true) -> JoinResult.LimitReached(forumName)
+                else -> JoinResult.Error(resultStr)
             }
         } else {
             // User is joined to the forum. Check if they are joined to the topic.
@@ -466,10 +434,11 @@ class WelcomeViewModel(
             if (!isTopicJoined) {
                 Log.d("WelcomeViewModel", "Already in forum $forumName, but joining topic: $topicName")
                 val resultStr = messageRepository.joinTopicSync(forumName, topicName)
-                return if (resultStr == "Success" || resultStr.contains("Already", ignoreCase = true)) {
-                    JoinResult.Success
-                } else {
-                    JoinResult.Error(resultStr)
+                return when {
+                    resultStr == "Success" || resultStr.contains("Already", ignoreCase = true) -> JoinResult.Success
+                    resultStr.contains("limited to 10 forums", ignoreCase = true) || 
+                    resultStr.contains("Failure", ignoreCase = true) -> JoinResult.LimitReached(forumName)
+                    else -> JoinResult.Error(resultStr)
                 }
             }
         }
@@ -556,7 +525,7 @@ class WelcomeViewModel(
                  _joinResult.emit(joinRes)
                  return false
             }
-            val author = NetworkClient.getUsername()
+            val author = getUsername()
             val topicId = HtmlUtils.calculateTopicId(forum, topic)
             val messageId = messageRepository.postMessage(forum, topic, topicId, body, 0, author, attachments)
             if (messageId > 0) draftDao.deleteDraftForContext(forum, topic, 0)

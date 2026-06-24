@@ -62,6 +62,7 @@ fun WelcomeScreen(
     onActivityLogClick: () -> Unit,
     debugModeEnabled: Boolean = false
 ) {
+    val context = LocalContext.current
     val threads by viewModel.interestingThreads.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     var showMenu by remember { mutableStateOf(false) }
@@ -77,6 +78,29 @@ fun WelcomeScreen(
         viewModel.refresh()
     }
 
+    // Unified helper for joining and navigating to a thread
+    val onThreadJoinAndNavigate = { thread: InterestingThreadUI ->
+        scope.launch {
+            when (val result = viewModel.ensureJoined(thread.forum, thread.topic)) {
+                is JoinResult.Success -> {
+                    onThreadClick(
+                        thread.forum,
+                        thread.topic,
+                        HtmlUtils.calculateTopicId(thread.forum, thread.topic),
+                        thread.rootId,
+                        thread.msgId
+                    )
+                }
+                is JoinResult.LimitReached -> {
+                    pendingThreadToJoin = thread
+                }
+                is JoinResult.Error -> {
+                    snackbarHostState.showSnackbar("Error: ${result.message}")
+                }
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         viewModel.joinResult.collect { result ->
             if (result is JoinResult.LimitReached) {
@@ -88,7 +112,18 @@ fun WelcomeScreen(
 
     LaunchedEffect(Unit) {
         viewModel.navigateToMessage.collect { (forum, topic, msgId) ->
-            onThreadClick(forum, topic, HtmlUtils.calculateTopicId(forum, topic), 0, msgId)
+            onThreadJoinAndNavigate(
+                InterestingThreadUI(
+                    forum = forum,
+                    topic = topic,
+                    rootId = 0,
+                    msgId = msgId,
+                    author = "",
+                    dateTime = "",
+                    body = null,
+                    subject = null
+                )
+            )
         }
     }
 
@@ -241,27 +276,7 @@ fun WelcomeScreen(
                         items(threads) { thread ->
                             InterestingThreadItem(
                                 thread = thread,
-                                onClick = {
-                                    scope.launch {
-                                        when (val result = viewModel.ensureJoined(thread.forum, thread.topic)) {
-                                            is JoinResult.Success -> {
-                                                onThreadClick(
-                                                    thread.forum,
-                                                    thread.topic,
-                                                    HtmlUtils.calculateTopicId(thread.forum, thread.topic),
-                                                    thread.rootId,
-                                                    thread.msgId
-                                                )
-                                            }
-                                            is JoinResult.LimitReached -> {
-                                                pendingThreadToJoin = thread
-                                            }
-                                            is JoinResult.Error -> {
-                                                snackbarHostState.showSnackbar("Error: ${result.message}")
-                                            }
-                                        }
-                                    }
-                                },
+                                onClick = { onThreadJoinAndNavigate(thread) },
                                 onAuthorClick = { onProfileClick(thread.author) }
                             )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
@@ -282,53 +297,18 @@ fun WelcomeScreen(
                         scope.launch {
                             val firstUnread = viewModel.getFirstUnreadMessage()
                             if (firstUnread != null) {
-                                when (val result = viewModel.ensureJoined(firstUnread.forumName, firstUnread.topicName)) {
-                                    is JoinResult.Success -> {
-                                        onThreadClick(
-                                            firstUnread.forumName,
-                                            firstUnread.topicName,
-                                            firstUnread.topicId,
-                                            firstUnread.rootId,
-                                            firstUnread.remoteId
-                                        )
-                                    }
-                                    is JoinResult.LimitReached -> {
-                                        // Create a synthetic InterestingThreadUI for the limit dialog
-                                        pendingThreadToJoin = InterestingThreadUI(
-                                            forum = firstUnread.forumName,
-                                            topic = firstUnread.topicName,
-                                            rootId = firstUnread.rootId,
-                                            msgId = firstUnread.remoteId,
-                                            author = firstUnread.author,
-                                            dateTime = DateUtils.formatDateTime(firstUnread.date),
-                                            body = firstUnread.body,
-                                            subject = firstUnread.subject
-                                        )
-                                    }
-                                    is JoinResult.Error -> {
-                                        snackbarHostState.showSnackbar("Error: ${result.message}")
-                                    }
-                                }
+                                onThreadJoinAndNavigate(InterestingThreadUI(
+                                    forum = firstUnread.forumName,
+                                    topic = firstUnread.topicName,
+                                    rootId = firstUnread.rootId,
+                                    msgId = firstUnread.remoteId,
+                                    author = firstUnread.author,
+                                    dateTime = DateUtils.formatDateTime(firstUnread.date),
+                                    body = firstUnread.body,
+                                    subject = firstUnread.subject
+                                ))
                             } else if (threads.isNotEmpty()) {
-                                // Fallback to interesting threads if no unread in cache
-                                val firstThread = threads.first()
-                                when (val result = viewModel.ensureJoined(firstThread.forum, firstThread.topic)) {
-                                    is JoinResult.Success -> {
-                                        onThreadClick(
-                                            firstThread.forum,
-                                            firstThread.topic,
-                                            HtmlUtils.calculateTopicId(firstThread.forum, firstThread.topic),
-                                            firstThread.rootId,
-                                            firstThread.msgId
-                                        )
-                                    }
-                                    is JoinResult.LimitReached -> {
-                                        pendingThreadToJoin = firstThread
-                                    }
-                                    is JoinResult.Error -> {
-                                        snackbarHostState.showSnackbar("Error: ${result.message}")
-                                    }
-                                }
+                                onThreadJoinAndNavigate(threads.first())
                             } else {
                                 snackbarHostState.showSnackbar("No unread messages or recent threads found")
                             }
@@ -445,7 +425,18 @@ fun WelcomeScreen(
             title = { Text("Forum Limit Reached") },
             text = {
                 Column {
-                    Text("You have reached the Forum limit for CIX Basic accounts. To join \"${targetThread.forum}\", you must first resign from an existing forum:")
+                    Text("You have reached the Forum limit for CIX Basic accounts.")
+                    Button(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://signup-forums.cix.co.uk/upgrade"))
+                            context.startActivity(intent)
+                        },
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD91B5C))
+                    ) {
+                        Text("Upgrade to full account", color = Color.White)
+                    }
+                    Text("Alternatively, to join \"${targetThread.forum}\" now you could resign from one of your existing forums first:")
                     Spacer(modifier = Modifier.height(8.dp))
                     LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
                         items(myForums) { forum ->
