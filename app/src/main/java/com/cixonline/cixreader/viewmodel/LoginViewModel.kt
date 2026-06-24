@@ -12,6 +12,7 @@ import com.cixonline.cixreader.utils.SettingsManager
 import kotlinx.coroutines.launch
 import org.simpleframework.xml.core.Persister
 import org.simpleframework.xml.convert.AnnotationStrategy
+import java.io.IOException
 
 class LoginViewModel(private val settingsManager: SettingsManager) : ViewModel() {
     var username by mutableStateOf("")
@@ -59,7 +60,18 @@ class LoginViewModel(private val settingsManager: SettingsManager) : ViewModel()
                     onSuccess()
                 }
             } catch (e: Exception) {
-                errorMessage = "Authentication failed: ${e.message}"
+                // Check if it's a network error and we can do an offline login
+                if (e is IOException) {
+                    val (savedUser, savedPass) = settingsManager.getCredentials()
+                    if (username == savedUser && password == savedPass) {
+                        settingsManager.setLoggedIn(true)
+                        onSuccess()
+                    } else {
+                        errorMessage = "Network error. Please check your connection."
+                    }
+                } else {
+                    errorMessage = "Authentication failed: ${e.message}"
+                }
             } finally {
                 isLoading = false
             }

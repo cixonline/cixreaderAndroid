@@ -41,13 +41,14 @@ class SettingsManager(context: Context) {
     private val _debugModeFlow = MutableStateFlow(isDebugModeEnabled())
     val debugModeFlow: StateFlow<Boolean> = _debugModeFlow.asStateFlow()
 
-    private val _usernameFlow = MutableStateFlow(sharedPreferences.getString("username", null))
+    private val _usernameFlow = MutableStateFlow(if (isLoggedIn()) sharedPreferences.getString("username", null) else null)
     val usernameFlow: StateFlow<String?> = _usernameFlow.asStateFlow()
 
     fun saveCredentials(username: String, password: String) {
         sharedPreferences.edit()
             .putString("username", username)
             .putString("password", password)
+            .putBoolean("is_logged_in", true)
             .apply()
         _usernameFlow.value = username
     }
@@ -55,6 +56,19 @@ class SettingsManager(context: Context) {
     fun hasCredentials(): Boolean {
         val (u, p) = getCredentials()
         return !u.isNullOrEmpty() && !p.isNullOrEmpty()
+    }
+
+    fun isLoggedIn(): Boolean {
+        return sharedPreferences.getBoolean("is_logged_in", false) && 
+               !sharedPreferences.getString("username", null).isNullOrEmpty() &&
+               !sharedPreferences.getString("password", null).isNullOrEmpty()
+    }
+
+    fun setLoggedIn(loggedIn: Boolean) {
+        sharedPreferences.edit()
+            .putBoolean("is_logged_in", loggedIn)
+            .apply()
+        _usernameFlow.value = if (loggedIn) sharedPreferences.getString("username", null) else null
     }
 
     fun getCredentials(): Pair<String?, String?> {
@@ -68,9 +82,10 @@ class SettingsManager(context: Context) {
     }
 
     fun clearCredentials() {
+        // We keep the credentials for offline re-login as requested, 
+        // but mark the user as logged out.
         sharedPreferences.edit()
-            .remove("username")
-            .remove("password")
+            .putBoolean("is_logged_in", false)
             .apply()
         _usernameFlow.value = null
     }
@@ -125,14 +140,14 @@ class SettingsManager(context: Context) {
     }
 
     fun saveLastSyncDate(date: String) {
-        val user = _usernameFlow.value ?: "guest"
+        val user = sharedPreferences.getString("username", "guest")
         sharedPreferences.edit()
             .putString("last_sync_date_$user", date)
             .apply()
     }
 
     fun getLastSyncDate(): String? {
-        val user = _usernameFlow.value ?: "guest"
+        val user = sharedPreferences.getString("username", "guest")
         val lastSync = sharedPreferences.getString("last_sync_date_$user", null) ?: return null
         return try {
             val timestamp = DateUtils.parseCixDate(lastSync)

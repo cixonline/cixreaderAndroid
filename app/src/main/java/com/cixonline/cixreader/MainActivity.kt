@@ -40,7 +40,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 settingsManager.backgroundSyncFlow.collect { enabled ->
-                    if (settingsManager.hasCredentials()) {
+                    if (settingsManager.isLoggedIn()) {
                         syncManager.handleSyncStateChange(enabled)
                     }
                 }
@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
         lifecycle.addObserver(LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 Log.d("MainActivity", "App resumed, triggering immediate sync")
-                if (settingsManager.hasCredentials()) {
+                if (settingsManager.isLoggedIn()) {
                     syncManager.triggerImmediateSync()
                 }
             }
@@ -102,10 +102,14 @@ fun MainContent(
         val navController = rememberNavController()
 
         val startDestination = remember {
-            val (user, pass) = settingsManager.getCredentials()
-            if (user != null && pass != null) {
-                NetworkClient.setCredentials(user, pass)
-                "welcome"
+            if (settingsManager.isLoggedIn()) {
+                val (user, pass) = settingsManager.getCredentials()
+                if (user != null && pass != null) {
+                    NetworkClient.setCredentials(user, pass)
+                    "welcome"
+                } else {
+                    "login"
+                }
             } else {
                 "login"
             }
