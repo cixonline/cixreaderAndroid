@@ -445,12 +445,12 @@ class WelcomeViewModel(
         }
     }
 
-    suspend fun joinForumIfNeeded(forumName: String): JoinResult {
+    suspend fun ensureJoined(forumName: String, topicName: String): JoinResult {
         val folders = folderDao.getAllSync()
-        val isMember = folders.any { it.isRootFolder && it.name.equals(forumName, ignoreCase = true) }
+        val forum = folders.find { it.isRootFolder && it.name.equals(forumName, ignoreCase = true) }
         
-        if (!isMember) {
-            Log.d("WelcomeViewModel", "Joining forum: $forumName")
+        if (forum == null) {
+            Log.d("WelcomeViewModel", "Joining forum: $forumName (and all its topics)")
             val resultStr = messageRepository.joinForumSync(forumName)
             return if (resultStr == "Success" || resultStr.contains("Already", ignoreCase = true)) {
                 JoinResult.Success
@@ -458,6 +458,19 @@ class WelcomeViewModel(
                 JoinResult.LimitReached(forumName)
             } else {
                 JoinResult.Error(resultStr)
+            }
+        } else {
+            // User is joined to the forum. Check if they are joined to the topic.
+            val topicId = HtmlUtils.calculateTopicId(forumName, topicName)
+            val isTopicJoined = folders.any { it.id == topicId }
+            if (!isTopicJoined) {
+                Log.d("WelcomeViewModel", "Already in forum $forumName, but joining topic: $topicName")
+                val resultStr = messageRepository.joinTopicSync(forumName, topicName)
+                return if (resultStr == "Success" || resultStr.contains("Already", ignoreCase = true)) {
+                    JoinResult.Success
+                } else {
+                    JoinResult.Error(resultStr)
+                }
             }
         }
         return JoinResult.Success
@@ -538,7 +551,7 @@ class WelcomeViewModel(
                     if (bytes != null) listOf(PostAttachment(data = Base64.encodeToString(bytes, Base64.NO_WRAP), filename = attachmentName)) else null
                 } catch (e: Exception) { e.printStackTrace(); null }
             } else null
-            val joinRes = joinForumIfNeeded(forum)
+            val joinRes = ensureJoined(forum, topic)
             if (joinRes !is JoinResult.Success) {
                  _joinResult.emit(joinRes)
                  return false

@@ -243,7 +243,7 @@ fun WelcomeScreen(
                                 thread = thread,
                                 onClick = {
                                     scope.launch {
-                                        when (val result = viewModel.joinForumIfNeeded(thread.forum)) {
+                                        when (val result = viewModel.ensureJoined(thread.forum, thread.topic)) {
                                             is JoinResult.Success -> {
                                                 onThreadClick(
                                                     thread.forum,
@@ -282,7 +282,7 @@ fun WelcomeScreen(
                         scope.launch {
                             val firstUnread = viewModel.getFirstUnreadMessage()
                             if (firstUnread != null) {
-                                when (val result = viewModel.joinForumIfNeeded(firstUnread.forumName)) {
+                                when (val result = viewModel.ensureJoined(firstUnread.forumName, firstUnread.topicName)) {
                                     is JoinResult.Success -> {
                                         onThreadClick(
                                             firstUnread.forumName,
@@ -312,7 +312,7 @@ fun WelcomeScreen(
                             } else if (threads.isNotEmpty()) {
                                 // Fallback to interesting threads if no unread in cache
                                 val firstThread = threads.first()
-                                when (val result = viewModel.joinForumIfNeeded(firstThread.forum)) {
+                                when (val result = viewModel.ensureJoined(firstThread.forum, firstThread.topic)) {
                                     is JoinResult.Success -> {
                                         onThreadClick(
                                             firstThread.forum,
@@ -456,7 +456,7 @@ fun WelcomeScreen(
                                         scope.launch {
                                             if (viewModel.resignForum(forum.name)) {
                                                 pendingThreadToJoin = null
-                                                when (val res = viewModel.joinForumIfNeeded(targetThread.forum)) {
+                                                when (val res = viewModel.ensureJoined(targetThread.forum, targetThread.topic)) {
                                                     is JoinResult.Success -> {
                                                         snackbarHostState.showSnackbar("Joined ${targetThread.forum}")
                                                         onThreadClick(
