@@ -58,3 +58,12 @@
 -keepclassmembers class **$WhenMappings {
     <fields>;
 }
+
+# Google Play Services & Integrity
+-keep class com.google.android.gms.** { *; }
+-dontwarn com.google.android.gms.**
+
+# Security-Crypto & Tink
+-keep class androidx.security.crypto.** { *; }
+-keep class com.google.crypto.tink.** { *; }
+-dontwarn com.google.crypto.tink.**
