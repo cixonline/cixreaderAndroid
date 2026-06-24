@@ -1128,7 +1128,10 @@ fun CombinedThreadList(
 fun buildThreadTree(messages: List<CIXMessage>, startId: Int): List<Pair<CIXMessage, Int>> {
     val children = messages.groupBy { it.commentId }
     val result = mutableListOf<Pair<CIXMessage, Int>>()
+    val visited = mutableSetOf<Int>()
     fun walk(m: CIXMessage, depth: Int) {
+        if (m.remoteId in visited) return
+        visited.add(m.remoteId)
         result.add(m to depth)
         children[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it, depth + 1) }
     }
