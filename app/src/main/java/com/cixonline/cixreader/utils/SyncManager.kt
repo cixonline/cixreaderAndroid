@@ -44,7 +44,8 @@ class SyncManager(private val context: Context, private val settingsManager: Set
         SyncWorker.enqueueImmediateSync(context)
     }
 
-    private fun cancelBackgroundSync() {
+    fun cancelBackgroundSync() {
         WorkManager.getInstance(context).cancelUniqueWork("CixBackgroundSync")
+        WorkManager.getInstance(context).cancelUniqueWork("CixImmediateSync")
     }
 }

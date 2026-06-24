@@ -37,8 +37,8 @@ fun AppNavHost(
     logRepository: LogRepository,
     historyRepository: HistoryRepository
 ) {
-    val actions = remember(navController, settingsManager) { 
-        NavigationActions(navController, settingsManager) 
+    val actions = remember(navController, settingsManager, syncManager) { 
+        NavigationActions(navController, settingsManager, syncManager) 
     }
 
     val debugModeEnabled by settingsManager.debugModeFlow.collectAsState(initial = settingsManager.isDebugModeEnabled())
@@ -288,9 +288,15 @@ fun AppNavHost(
     }
 }
 
-class NavigationActions(private val navController: NavHostController, private val settingsManager: SettingsManager) {
+class NavigationActions(
+    private val navController: NavHostController, 
+    private val settingsManager: SettingsManager,
+    private val syncManager: SyncManager
+) {
     val onLogout: () -> Unit = {
+        syncManager.cancelBackgroundSync()
         settingsManager.clearCredentials()
+        NetworkClient.setCredentials("", "")
         navController.navigate("login") {
             popUpTo(0) { inclusive = true }
         }

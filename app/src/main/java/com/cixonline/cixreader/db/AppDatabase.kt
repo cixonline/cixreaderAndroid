@@ -21,18 +21,27 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
+        private var CURRENT_USER: String? = null
 
-        fun getDatabase(context: Context): AppDatabase {
-            return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "cix_database"
-                )
-                .fallbackToDestructiveMigration()
-                .build()
-                INSTANCE = instance
-                instance
+        fun getDatabase(context: Context, username: String? = null): AppDatabase {
+            val dbName = if (username.isNullOrBlank()) "cix_database" else "cix_database_$username"
+            
+            return synchronized(this) {
+                if (INSTANCE != null && (username == CURRENT_USER || (username == null && CURRENT_USER == null))) {
+                    INSTANCE!!
+                } else {
+                    INSTANCE?.close()
+                    val instance = Room.databaseBuilder(
+                        context.applicationContext,
+                        AppDatabase::class.java,
+                        dbName
+                    )
+                    .fallbackToDestructiveMigration()
+                    .build()
+                    INSTANCE = instance
+                    CURRENT_USER = username
+                    instance
+                }
             }
         }
     }

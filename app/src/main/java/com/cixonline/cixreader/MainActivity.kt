@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
@@ -33,18 +34,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         
-        val database = AppDatabase.getDatabase(this)
         settingsManager = SettingsManager(this)
-        val logRepository = LogRepository(database.logDao(), settingsManager)
-        val forumRepository = ForumRepository(NetworkClient.api, database.folderDao())
-        val messageRepository = MessageRepository(NetworkClient.api, database.messageDao(), database.folderDao(), logRepository)
-        val historyRepository = HistoryRepository(database.historyDao())
         syncManager = SyncManager(this, settingsManager)
 
         lifecycleScope.launch {
-            // Cleanup old logs on startup
-            logRepository.deleteOldLogs(48)
-
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 settingsManager.backgroundSyncFlow.collect { enabled ->
                     if (settingsManager.hasCredentials()) {
@@ -67,12 +60,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MainContent(
                 settingsManager = settingsManager,
-                database = database,
-                forumRepository = forumRepository,
-                messageRepository = messageRepository,
-                syncManager = syncManager,
-                logRepository = logRepository,
-                historyRepository = historyRepository
+                syncManager = syncManager
             )
         }
     }
@@ -81,17 +69,26 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainContent(
     settingsManager: SettingsManager,
-    database: AppDatabase,
-    forumRepository: ForumRepository,
-    messageRepository: MessageRepository,
-    syncManager: SyncManager,
-    logRepository: LogRepository,
-    historyRepository: HistoryRepository
+    syncManager: SyncManager
 ) {
+    val context = LocalContext.current
     val fontSizeMultiplier by settingsManager.fontSizeFlow.collectAsState(initial = settingsManager.getFontSize())
     val themeMode by settingsManager.themeFlow.collectAsState(initial = settingsManager.getThemeMode())
     val currentUsername by settingsManager.usernameFlow.collectAsState()
     
+    val database = remember(currentUsername) { 
+        AppDatabase.getDatabase(context, currentUsername) 
+    }
+    
+    val logRepository = remember(database) { LogRepository(database.logDao(), settingsManager) }
+    val forumRepository = remember(database) { ForumRepository(NetworkClient.api, database.folderDao()) }
+    val messageRepository = remember(database) { MessageRepository(NetworkClient.api, database.messageDao(), database.folderDao(), logRepository) }
+    val historyRepository = remember(database) { HistoryRepository(database.historyDao()) }
+
+    LaunchedEffect(logRepository) {
+        logRepository.deleteOldLogs(48)
+    }
+
     val useDarkTheme = when (themeMode) {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
@@ -108,7 +105,6 @@ fun MainContent(
             val (user, pass) = settingsManager.getCredentials()
             if (user != null && pass != null) {
                 NetworkClient.setCredentials(user, pass)
-                // syncManager.triggerImmediateSync() // Already handled by Lifecycle observer
                 "welcome"
             } else {
                 "login"

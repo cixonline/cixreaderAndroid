@@ -125,13 +125,15 @@ class SettingsManager(context: Context) {
     }
 
     fun saveLastSyncDate(date: String) {
+        val user = _usernameFlow.value ?: "guest"
         sharedPreferences.edit()
-            .putString("last_sync_date", date)
+            .putString("last_sync_date_$user", date)
             .apply()
     }
 
     fun getLastSyncDate(): String? {
-        val lastSync = sharedPreferences.getString("last_sync_date", null) ?: return null
+        val user = _usernameFlow.value ?: "guest"
+        val lastSync = sharedPreferences.getString("last_sync_date_$user", null) ?: return null
         return try {
             val timestamp = DateUtils.parseCixDate(lastSync)
             if (timestamp > 0) {

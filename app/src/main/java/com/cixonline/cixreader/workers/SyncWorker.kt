@@ -16,26 +16,25 @@ class SyncWorker(appContext: Context, workerParams: WorkerParameters):
 
     override suspend fun doWork(): Result {
         val settingsManager = SettingsManager(applicationContext)
+        val (username, _) = settingsManager.getCredentials()
         
         // Don't sync if we don't have credentials
-        if (!NetworkClient.hasCredentials()) {
+        if (username.isNullOrBlank()) {
             Log.d("SyncWorker", "Skipping sync: no credentials")
             return Result.success()
         }
 
         // For direct triggers (like marking read), we might want to proceed even if background sync is disabled.
         // But the 1-minute periodic sync should respect the setting.
-        // We can distinguish by looking at the tags or input data if needed, but for now let's just 
-        // check the setting here.
         val isManualTrigger = tags.contains("ManualTrigger")
         if (!settingsManager.isBackgroundSyncEnabled() && !isManualTrigger) {
             Log.d("SyncWorker", "Skipping periodic sync: background sync disabled")
             return Result.success()
         }
 
-        Log.d("SyncWorker", "Starting sync (Run attempt: $runAttemptCount, Manual: $isManualTrigger)")
+        Log.d("SyncWorker", "Starting sync for $username (Run attempt: $runAttemptCount, Manual: $isManualTrigger)")
         try {
-            val database = AppDatabase.getDatabase(applicationContext)
+            val database = AppDatabase.getDatabase(applicationContext, username)
             val logRepository = LogRepository(database.logDao(), settingsManager)
             val syncRepository = SyncRepository(
                 api = NetworkClient.api,
