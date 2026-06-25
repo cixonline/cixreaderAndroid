@@ -319,7 +319,7 @@ fun ThreadScreen(
                             Text(
                                 text = "${viewModel.forumName} / ${viewModel.topicName}",
                                 color = Color.White.copy(alpha = 0.7f),
-                                style = MaterialTheme.typography.labelLarge
+                                style = MaterialTheme.typography.labelMedium
                             )
                         }
                     }

@@ -221,8 +221,6 @@ class MessageRepository(
             val isUnread = if (isReadFromServer || isFromSelf) {
                 false
             } else {
-                // If unread is explicitly true, it's unread.
-                // If unread is null, we preserve existing status or default to unread for new messages.
                 apiMsg.unread ?: (existing?.unread ?: true)
             }
 
@@ -234,7 +232,7 @@ class MessageRepository(
                 id = existing?.id ?: 0,
                 remoteId = apiMsg.id,
                 author = HtmlUtils.normalizeName(apiMsg.author ?: ""),
-                body = HtmlUtils.formatMessageBody(apiMsg.body ?: ""),
+                body = HtmlUtils.formatForStorage(apiMsg.body),
                 date = messageDate,
                 commentId = apiMsg.replyTo,
                 rootId = if (apiMsg.rootId != 0) apiMsg.rootId else (if (apiMsg.replyTo == 0) apiMsg.id else (existing?.rootId ?: 0)),
@@ -358,7 +356,7 @@ class MessageRepository(
             val message = CIXMessage(
                 remoteId = messageApi.id,
                 author = HtmlUtils.normalizeName(messageApi.author ?: ""),
-                body = HtmlUtils.formatMessageBody(messageApi.body ?: ""),
+                body = HtmlUtils.formatForStorage(messageApi.body),
                 date = messageDate,
                 commentId = messageApi.replyTo,
                 rootId = if (messageApi.rootId != 0) messageApi.rootId else (if (messageApi.replyTo == 0) messageApi.id else 0),
@@ -402,8 +400,6 @@ class MessageRepository(
             val isUnread = if (isReadFromServer || isFromSelf) {
                 false
             } else {
-                // If unread is explicitly true, it's unread.
-                // If unread is null, we preserve existing status or default to unread for new messages.
                 messageApi.unread ?: (existing?.unread ?: true)
             }
 
@@ -415,7 +411,7 @@ class MessageRepository(
                 id = existing?.id ?: 0,
                 remoteId = messageApi.id,
                 author = HtmlUtils.normalizeName(messageApi.author ?: ""),
-                body = HtmlUtils.formatMessageBody(messageApi.body ?: ""),
+                body = HtmlUtils.formatForStorage(messageApi.body),
                 date = messageDate,
                 commentId = messageApi.replyTo,
                 rootId = if (messageApi.rootId != 0) messageApi.rootId else (if (messageApi.replyTo == 0) messageApi.id else (existing?.rootId ?: 0)),
@@ -499,7 +495,7 @@ class MessageRepository(
             val message = CIXMessage(
                 remoteId = response.id,
                 author = author,
-                body = HtmlUtils.formatMessageBody(body),
+                body = body,
                 date = System.currentTimeMillis(),
                 commentId = replyTo,
                 rootId = rootId,
@@ -530,10 +526,8 @@ class MessageRepository(
             val result = extractStringFromXml(responseBody).trim()
             if (result == "Success") {
                 refreshFoldersFromServer()
-                // Essential delay to allow server session to update permissions
                 delay(2000)
             } else if (result.contains("Already", ignoreCase = true)) {
-                // If already joined, we might still need a tiny delay for the session
                 delay(200)
             }
             result

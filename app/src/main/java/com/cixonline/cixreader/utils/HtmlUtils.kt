@@ -87,9 +87,9 @@ object HtmlUtils {
                     } else {
                         // Check if the last "word" looks like a URL or a very long word being broken.
                         val lastSpace = trimmedCurrent.lastIndexOf(' ')
-                        val lastWordLength = if (lastSpace == -1) trimmedCurrent.length else trimmedCurrent.length - lastSpace - 1
+                        val lastWord = if (lastSpace == -1) trimmedCurrent else trimmedCurrent.substring(lastSpace + 1)
                         
-                        if (lastWordLength > 15 || trimmedCurrent.contains("http")) {
+                        if (lastWord.length > 15 || lastWord.contains("http") || trimmedNext.startsWith("http")) {
                             // Likely a URL or long word continuation, join without adding a space.
                         } else {
                             // Likely a regular word wrap, add a space to separate words.
@@ -109,21 +109,19 @@ object HtmlUtils {
     }
 
     /**
-     * Decodes HTML, cleans CIX URLs, and reflows hard-wrapped text.
-     */
-    fun formatMessageBody(text: String?): String {
-        if (text == null) return ""
-        val decoded = decodeHtml(text)
-        val cleaned = cleanCixUrls(decoded)
-        return reflowText(cleaned)
-    }
-
-    /**
      * Cleans up CIX attachment URLs in the text (removes :80, ensures https).
      */
     fun cleanCixUrls(text: String?): String {
         if (text == null) return ""
         return text.replace(":80", "").replace("http://", "https://")
+    }
+
+    /**
+     * Decodes HTML and cleans URLs for storage.
+     */
+    fun formatForStorage(text: String?): String {
+        if (text == null) return ""
+        return cleanCixUrls(decodeHtml(text))
     }
 
     /**
