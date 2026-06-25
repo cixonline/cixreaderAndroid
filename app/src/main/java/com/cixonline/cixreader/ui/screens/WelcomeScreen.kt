@@ -947,14 +947,14 @@ fun InterestingThreadItem(thread: InterestingThreadUI, onClick: () -> Unit, onAu
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.clickable(onClick = onAuthorClick)
             )
-            if (thread.isRootResolved) {
-                Text(
-                    text = "ROOT",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFFD91B5C),
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            //if (thread.isRootResolved) {
+            //    Text(
+            //        text = "ROOT",
+            //        style = MaterialTheme.typography.labelSmall,
+            //        color = Color(0xFFD91B5C),
+            //        fontWeight = FontWeight.Bold
+            //    )
+            //}
         }
         Spacer(modifier = Modifier.height(4.dp))
         Text(
