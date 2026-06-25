@@ -233,8 +233,8 @@ class MessageRepository(
             CIXMessage(
                 id = existing?.id ?: 0,
                 remoteId = apiMsg.id,
-                author = HtmlUtils.decodeHtml(apiMsg.author ?: ""),
-                body = HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(apiMsg.body ?: "")),
+                author = HtmlUtils.normalizeName(apiMsg.author ?: ""),
+                body = HtmlUtils.formatMessageBody(apiMsg.body ?: ""),
                 date = messageDate,
                 commentId = apiMsg.replyTo,
                 rootId = if (apiMsg.rootId != 0) apiMsg.rootId else (if (apiMsg.replyTo == 0) apiMsg.id else (existing?.rootId ?: 0)),
@@ -357,8 +357,8 @@ class MessageRepository(
             
             val message = CIXMessage(
                 remoteId = messageApi.id,
-                author = HtmlUtils.decodeHtml(messageApi.author ?: ""),
-                body = HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(messageApi.body ?: "")),
+                author = HtmlUtils.normalizeName(messageApi.author ?: ""),
+                body = HtmlUtils.formatMessageBody(messageApi.body ?: ""),
                 date = messageDate,
                 commentId = messageApi.replyTo,
                 rootId = if (messageApi.rootId != 0) messageApi.rootId else (if (messageApi.replyTo == 0) messageApi.id else 0),
@@ -414,8 +414,8 @@ class MessageRepository(
             val message = CIXMessage(
                 id = existing?.id ?: 0,
                 remoteId = messageApi.id,
-                author = HtmlUtils.decodeHtml(messageApi.author ?: ""),
-                body = HtmlUtils.cleanCixUrls(HtmlUtils.decodeHtml(messageApi.body ?: "")),
+                author = HtmlUtils.normalizeName(messageApi.author ?: ""),
+                body = HtmlUtils.formatMessageBody(messageApi.body ?: ""),
                 date = messageDate,
                 commentId = messageApi.replyTo,
                 rootId = if (messageApi.rootId != 0) messageApi.rootId else (if (messageApi.replyTo == 0) messageApi.id else (existing?.rootId ?: 0)),
@@ -499,7 +499,7 @@ class MessageRepository(
             val message = CIXMessage(
                 remoteId = response.id,
                 author = author,
-                body = body,
+                body = HtmlUtils.formatMessageBody(body),
                 date = System.currentTimeMillis(),
                 commentId = replyTo,
                 rootId = rootId,

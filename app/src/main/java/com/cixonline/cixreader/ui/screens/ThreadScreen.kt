@@ -1404,8 +1404,10 @@ fun MessageViewer(
     onNavigateToThread: (forum: String, topic: String, topicId: Int, rootId: Int, msgId: Int) -> Unit
 ) {
     val uriHandler = LocalUriHandler.current
+
+    // Use reflowText to handle hard-wrapped CIX messages
     val normalizedBody = remember(message.body) {
-        message.body.replace("\r\n", "\n").replace("\r", "\n")
+        HtmlUtils.reflowText(message.body)
     }
 
     val chunks = remember(normalizedBody) {
@@ -1721,7 +1723,7 @@ fun ReplyPane(
     Surface(modifier = modifier, color = MaterialTheme.colorScheme.surface) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
             OutlinedTextField(
-                value = text, 
+                value = text,
                 onValueChange = onTextChange, 
                 modifier = Modifier.fillMaxWidth().height(110.dp), // Approx 3 lines
                 placeholder = { Text(if (isListening) "Listening..." else "Type your message here...") }, 
