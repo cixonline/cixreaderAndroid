@@ -288,7 +288,10 @@ class TopicViewModel(
     private fun countThreadMessages(allMessages: List<CIXMessage>, startId: Int): Int {
         val children = allMessages.groupBy { it.commentId }
         var count = 0
+        val visited = mutableSetOf<Int>()
         fun walk(mId: Int) {
+            if (mId in visited) return
+            visited.add(mId)
             count++
             children[mId]?.forEach { walk(it.remoteId) }
         }
@@ -335,7 +338,10 @@ class TopicViewModel(
                 .sortedByDescending { it.date }
 
             val visualSequence = mutableListOf<CIXMessage>()
+            val visited = mutableSetOf<Int>()
             fun walk(m: CIXMessage) {
+                if (m.remoteId in visited) return
+                visited.add(m.remoteId)
                 visualSequence.add(m)
                 tree[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it) }
             }
@@ -366,7 +372,10 @@ class TopicViewModel(
                 val refreshed = repository.getMessagesForTopic(topicId).first()
                 val threadMsgs = mutableListOf<CIXMessage>()
                 val refreshedTree = refreshed.groupBy { it.commentId }
+                val visitedThread = mutableSetOf<Int>()
                 fun walk(m: CIXMessage) {
+                    if (m.remoteId in visitedThread) return
+                    visitedThread.add(m.remoteId)
                     threadMsgs.add(m)
                     refreshedTree[m.remoteId]?.sortedBy { it.date }?.forEach { walk(it) }
                 }
