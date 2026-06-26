@@ -31,6 +31,8 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // Explicitly use debug signing for release to bypass missing external key
+            signingConfig signingConfigs.debug
         }
     }
     compileOptions {
