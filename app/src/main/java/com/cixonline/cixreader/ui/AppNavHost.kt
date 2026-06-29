@@ -83,6 +83,7 @@ fun AppNavHost(
                 onDraftsClick = actions.onDraftsClick,
                 onProfileClick = actions.onProfileClick,
                 onActivityLogClick = actions.navigateToActivityLog,
+                settingsManager = settingsManager,
                 debugModeEnabled = debugModeEnabled
             )
         }

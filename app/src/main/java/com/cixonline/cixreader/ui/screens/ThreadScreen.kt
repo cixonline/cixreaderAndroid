@@ -73,6 +73,7 @@ import com.cixonline.cixreader.viewmodel.TopicViewModel
 import com.cixonline.cixreader.utils.SettingsManager
 import com.cixonline.cixreader.ui.theme.LocalIsDarkTheme
 import com.cixonline.cixreader.utils.HtmlUtils
+import com.cixonline.cixreader.utils.PlaceholderUtils
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
@@ -1180,7 +1181,8 @@ fun ThreadItem(
             Spacer(modifier = Modifier.width(4.dp))
             val summary = remember(message, placeholderTextEnabled) {
                 if (placeholderTextEnabled) {
-                    "This is a placeholder for the message thread summary."
+                    val original = if (!message.subject.isNullOrBlank()) message.subject else message.body
+                    PlaceholderUtils.getPlaceholderText(original, 100)
                 } else {
                     val text = if (!message.subject.isNullOrBlank()) message.subject else message.body
                     text.take(100).replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
@@ -1204,7 +1206,7 @@ fun ThreadItem(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = if (placeholderTextEnabled) "User Name" else message.author,
+                text = if (placeholderTextEnabled) PlaceholderUtils.getPlaceholderUsername(message.author) else message.author,
                 maxLines = 1,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = if (unreadCount > 0) FontWeight.ExtraBold else FontWeight.Normal,
@@ -1252,7 +1254,7 @@ fun ThreadRow(
                 Spacer(modifier = Modifier.width(4.dp))
             }
             Text(
-                text = if (placeholderTextEnabled) "This is a placeholder for the message snippet content." else message.body.take(100).replace("\r\n", " ").replace("\r", " ").replace("\n", " "),
+                text = if (placeholderTextEnabled) PlaceholderUtils.getPlaceholderText(message.body, 100) else message.body.take(100).replace("\r\n", " ").replace("\r", " ").replace("\n", " "),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall.copy(
@@ -1264,7 +1266,7 @@ fun ThreadRow(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = if (placeholderTextEnabled) "User Name" else message.author,
+                text = if (placeholderTextEnabled) PlaceholderUtils.getPlaceholderUsername(message.author) else message.author,
                 maxLines = 1,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = if (message.isActuallyUnread) FontWeight.ExtraBold else FontWeight.Normal,
@@ -1332,7 +1334,7 @@ fun MessageActionBar(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (placeholderTextEnabled) "User Name" else message.author,
+                        text = if (placeholderTextEnabled) PlaceholderUtils.getPlaceholderUsername(message.author) else message.author,
                         style = MaterialTheme.typography.labelLarge,
                         color = Color(0xFFD0BCFF),
                         modifier = Modifier.clickable(onClick = onAuthorClick)
@@ -1423,7 +1425,7 @@ fun MessageViewer(
     // Use reflowText to handle hard-wrapped CIX messages
     val normalizedBody = remember(message.body, placeholderTextEnabled) {
         if (placeholderTextEnabled) {
-            "This is placeholder text for the message body. It replaces the actual content of the message as per the advanced settings."
+            PlaceholderUtils.getPlaceholderText(message.body)
         } else {
             HtmlUtils.reflowText(message.body)
         }
@@ -1476,7 +1478,7 @@ fun MessageViewer(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = if (placeholderTextEnabled) "In reply to User Name (#000000)" else "In reply to ${parentMessage.author} (#${parentMessage.remoteId})",
+                            text = if (placeholderTextEnabled) "In reply to ${PlaceholderUtils.getPlaceholderUsername(parentMessage.author)} (#${parentMessage.remoteId})" else "In reply to ${parentMessage.author} (#${parentMessage.remoteId})",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold
@@ -1484,7 +1486,7 @@ fun MessageViewer(
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = if (placeholderTextEnabled) "This is a placeholder for the parent message snippet." else parentMessage.body.take(200).replace("\r\n", " ").replace("\r", " ").replace("\n", " ") + if (parentMessage.body.length > 200) "..." else "",
+                        text = if (placeholderTextEnabled) PlaceholderUtils.getPlaceholderText(parentMessage.body, 200) else parentMessage.body.take(200).replace("\r\n", " ").replace("\r", " ").replace("\n", " ") + if (parentMessage.body.length > 200) "..." else "",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,

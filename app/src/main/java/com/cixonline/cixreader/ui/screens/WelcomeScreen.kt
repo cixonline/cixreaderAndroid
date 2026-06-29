@@ -40,6 +40,8 @@ import com.cixonline.cixreader.R
 import com.cixonline.cixreader.models.Folder
 import com.cixonline.cixreader.utils.DateUtils
 import com.cixonline.cixreader.utils.HtmlUtils
+import com.cixonline.cixreader.utils.PlaceholderUtils
+import com.cixonline.cixreader.utils.SettingsManager
 import com.cixonline.cixreader.viewmodel.InterestingThreadUI
 import com.cixonline.cixreader.viewmodel.WelcomeViewModel
 import com.cixonline.cixreader.viewmodel.JoinResult
@@ -60,11 +62,13 @@ fun WelcomeScreen(
     onDraftsClick: () -> Unit,
     onProfileClick: (String) -> Unit,
     onActivityLogClick: () -> Unit,
+    settingsManager: SettingsManager,
     debugModeEnabled: Boolean = false
 ) {
     val context = LocalContext.current
     val threads by viewModel.interestingThreads.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val placeholderTextEnabled by settingsManager.placeholderTextFlow.collectAsState(initial = settingsManager.isPlaceholderTextEnabled())
     var showMenu by remember { mutableStateOf(false) }
     var showPostDialog by remember { mutableStateOf(false) }
     var showVersionDialog by remember { mutableStateOf(false) }
@@ -277,7 +281,8 @@ fun WelcomeScreen(
                             InterestingThreadItem(
                                 thread = thread,
                                 onClick = { onThreadJoinAndNavigate(thread) },
-                                onAuthorClick = { onProfileClick(thread.author) }
+                                onAuthorClick = { onProfileClick(thread.author) },
+                                placeholderTextEnabled = placeholderTextEnabled
                             )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                         }
@@ -913,7 +918,12 @@ fun PostMessageDialog(
 }
 
 @Composable
-fun InterestingThreadItem(thread: InterestingThreadUI, onClick: () -> Unit, onAuthorClick: () -> Unit) {
+fun InterestingThreadItem(
+    thread: InterestingThreadUI, 
+    onClick: () -> Unit, 
+    onAuthorClick: () -> Unit,
+    placeholderTextEnabled: Boolean = false
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -941,24 +951,22 @@ fun InterestingThreadItem(thread: InterestingThreadUI, onClick: () -> Unit, onAu
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = thread.author,
+                text = if (placeholderTextEnabled) PlaceholderUtils.getPlaceholderUsername(thread.author) else thread.author,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.clickable(onClick = onAuthorClick)
             )
-            //if (thread.isRootResolved) {
-            //    Text(
-            //        text = "ROOT",
-            //        style = MaterialTheme.typography.labelSmall,
-            //        color = Color(0xFFD91B5C),
-            //        fontWeight = FontWeight.Bold
-            //    )
-            //}
         }
         Spacer(modifier = Modifier.height(4.dp))
+        val subject = if (placeholderTextEnabled) {
+            val original = thread.subject ?: thread.body?.substringBefore("\n")?.trim() ?: ""
+            PlaceholderUtils.getPlaceholderText(original, 100)
+        } else {
+            thread.subject ?: thread.body?.substringBefore("\n")?.trim() ?: ""
+        }
         Text(
-            text = thread.subject ?: thread.body?.substringBefore("\n")?.trim() ?: "",
+            text = subject,
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -967,7 +975,7 @@ fun InterestingThreadItem(thread: InterestingThreadUI, onClick: () -> Unit, onAu
         if (thread.body != null) {
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = thread.body!!,
+                text = if (placeholderTextEnabled) PlaceholderUtils.getPlaceholderText(thread.body!!, 200) else thread.body!!,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
