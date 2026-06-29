@@ -35,6 +35,7 @@ fun SettingsScreen(
     var themeMode by remember { mutableStateOf(settingsManager.getThemeMode()) }
     var backgroundSyncEnabled by remember { mutableStateOf(settingsManager.isBackgroundSyncEnabled()) }
     var debugModeEnabled by remember { mutableStateOf(settingsManager.isDebugModeEnabled()) }
+    var placeholderTextEnabled by remember { mutableStateOf(settingsManager.isPlaceholderTextEnabled()) }
     var showMenu by remember { mutableStateOf(false) }
     var showVersionDialog by remember { mutableStateOf(false) }
     val currentUsername = NetworkClient.getUsername()
@@ -288,31 +289,62 @@ fun SettingsScreen(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                 )
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Debug Mode",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        Text(
-                            text = "Enable additional diagnostic information and tools",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Debug Mode",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = "Enable additional diagnostic information and tools",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = debugModeEnabled,
+                            onCheckedChange = {
+                                debugModeEnabled = it
+                                settingsManager.saveDebugModeEnabled(it)
+                            }
                         )
                     }
-                    Switch(
-                        checked = debugModeEnabled,
-                        onCheckedChange = {
-                            debugModeEnabled = it
-                            settingsManager.saveDebugModeEnabled(it)
+
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Placeholder Text",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = "Show placeholder text in message threads",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
-                    )
+                        Switch(
+                            checked = placeholderTextEnabled,
+                            onCheckedChange = {
+                                placeholderTextEnabled = it
+                                settingsManager.savePlaceholderTextEnabled(it)
+                            }
+                        )
+                    }
                 }
             }
         }

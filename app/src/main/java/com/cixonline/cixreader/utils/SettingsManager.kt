@@ -41,6 +41,9 @@ class SettingsManager(context: Context) {
     private val _debugModeFlow = MutableStateFlow(isDebugModeEnabled())
     val debugModeFlow: StateFlow<Boolean> = _debugModeFlow.asStateFlow()
 
+    private val _placeholderTextFlow = MutableStateFlow(isPlaceholderTextEnabled())
+    val placeholderTextFlow: StateFlow<Boolean> = _placeholderTextFlow.asStateFlow()
+
     private val _usernameFlow = MutableStateFlow(if (isLoggedIn()) sharedPreferences.getString("username", null) else null)
     val usernameFlow: StateFlow<String?> = _usernameFlow.asStateFlow()
 
@@ -137,6 +140,17 @@ class SettingsManager(context: Context) {
 
     fun isDebugModeEnabled(): Boolean {
         return sharedPreferences.getBoolean("debug_mode_enabled", false)
+    }
+
+    fun savePlaceholderTextEnabled(enabled: Boolean) {
+        sharedPreferences.edit()
+            .putBoolean("placeholder_text_enabled", enabled)
+            .apply()
+        _placeholderTextFlow.value = enabled
+    }
+
+    fun isPlaceholderTextEnabled(): Boolean {
+        return sharedPreferences.getBoolean("placeholder_text_enabled", false)
     }
 
     fun saveLastSyncDate(date: String) {
