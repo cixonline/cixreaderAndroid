@@ -147,7 +147,7 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             TextButton(
-                onClick = { uriHandler.openUri("https://signup-forums.cix.co.uk/") }
+                onClick = { uriHandler.openUri("https://signup-forums.cix.co.uk/signup.cgi?codepassed=PlayStoreVerified") }
             ) {
                 Text(
                     text = "Don't have an account? Sign up here",
