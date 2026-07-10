@@ -24,11 +24,30 @@ android {
         buildConfigField "String", "GEMINI_API_KEY", "\"\""
     }
 
+    def ksFile = project.findProperty('RELEASE_STORE_FILE')
+    def ksPassword = project.findProperty('RELEASE_STORE_PASSWORD')
+    def aliasName = project.findProperty('RELEASE_KEY_ALIAS')
+    def aliasPassword = project.findProperty('RELEASE_KEY_PASSWORD')
+
+    signingConfigs {
+        release {
+            if (ksFile != null) {
+                storeFile file(ksFile)
+                storePassword ksPassword
+                keyAlias aliasName
+                keyPassword aliasPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+
+            // 2. ADD THIS LINE HERE
+            signingConfig signingConfigs.release
         }
         debug {
             debuggable true
